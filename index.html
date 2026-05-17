@@ -106,7 +106,7 @@
     background: rgba(0,0,0,0.18); border-radius: 6px; padding: 4px;
   }
   #collection-cards:empty::before {
-    content: "No rares, mythics, or foils yet.";
+    content: "No mythics or foils yet.";
     color: var(--muted); font-size: 0.75rem; font-style: italic;
   }
   .mini-card {
@@ -118,6 +118,14 @@
     background-size: 250% 250%;
     animation: shimmer 2.5s linear infinite;
     border-color: #fff;
+  }
+  .mini-card.foil-common   { border-color: #d8d8e6; }
+  .mini-card.foil-uncommon { border-color: var(--uncommon); box-shadow: 0 0 4px rgba(90,208,106,0.7); }
+  .mini-card.foil-rare     { border-color: var(--rare);     box-shadow: 0 0 5px rgba(90,168,255,0.8); }
+  .mini-card.foil-mythic   {
+    border-color: var(--mythic);
+    box-shadow: 0 0 9px rgba(255,122,61,0.9);
+    width: 16px; height: 22px;
   }
   @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
 
@@ -436,8 +444,7 @@ function renderCollectionCards() {
   const container = $("collection-cards");
   container.innerHTML = "";
   const items = [
-    ...Array(state.stock.rare).fill({ rarity: "rare",     foil: false }),
-    ...Array(state.stock.mythic).fill({ rarity: "mythic",  foil: false }),
+    ...Array(state.stock.mythic).fill({ rarity: "mythic", foil: false }),
     ...Array(state.stockFoil.common).fill({ rarity: "common",   foil: true }),
     ...Array(state.stockFoil.uncommon).fill({ rarity: "uncommon", foil: true }),
     ...Array(state.stockFoil.rare).fill({ rarity: "rare",     foil: true }),
@@ -446,7 +453,7 @@ function renderCollectionCards() {
   const MAX = 250;
   items.slice(0, MAX).forEach(item => {
     const el = document.createElement("div");
-    el.className = "mini-card" + (item.foil ? " foil-card" : "");
+    el.className = item.foil ? `mini-card foil-card foil-${item.rarity}` : "mini-card";
     if (!item.foil) el.style.borderColor = RARITY_COLOURS[item.rarity];
     container.appendChild(el);
   });
@@ -466,19 +473,23 @@ function renderSandPile() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const commons   = state.stock.common;
   const uncommons = state.stock.uncommon;
-  const total = commons + uncommons;
+  const rares     = state.stock.rare;
+  const total = commons + uncommons + rares;
   if (total === 0) return;
   const MAX_GRAINS = 600;
   const count = Math.min(total, MAX_GRAINS);
   const GRAIN = 5, CELL = 7;
   const cols = Math.floor(canvas.width / CELL);
+  const ratioC = commons / total;
+  const ratioU = uncommons / total;
   for (let i = 0; i < count; i++) {
     const jitter = ((i * 1664525 + 1013904223) >>> 0) % 3;
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = col * CELL + jitter;
     const y = canvas.height - (row + 1) * CELL - jitter;
-    ctx.fillStyle = (i / count < commons / total) ? "#b8b8c8" : "#5ad06a";
+    const t = i / count;
+    ctx.fillStyle = t < ratioC ? "#b8b8c8" : (t < ratioC + ratioU ? "#5ad06a" : "#5aa8ff");
     ctx.beginPath();
     ctx.arc(x + GRAIN / 2, y + GRAIN / 2, GRAIN / 2, 0, Math.PI * 2);
     ctx.fill();
