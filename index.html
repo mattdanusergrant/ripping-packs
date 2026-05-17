@@ -59,16 +59,16 @@
 
   #hint { text-align: center; font-size: 0.9rem; color: var(--gold); min-height: 1.2em; }
 
-  #reveal { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  #reveal { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .card {
     aspect-ratio: 2 / 3;
     background: var(--panel-light);
-    border-radius: 8px; padding: 8px;
+    border-radius: 6px; padding: 6px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     border: 2px solid #333; position: relative;
     transform: rotateY(180deg);
     transition: transform 0.5s ease;
-    font-size: 0.75rem; text-align: center; gap: 6px;
+    font-size: 0.65rem; text-align: center; gap: 4px;
   }
   .card.flipped { transform: rotateY(0deg); }
   .card.common   { border-color: var(--common); }
@@ -83,7 +83,7 @@
   }
   .card.foil .meta { color: #1a1a1a; }
   @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
-  .card .glyph { font-size: 2rem; }
+  .card .glyph { font-size: 1.4rem; }
   .card .name { font-weight: bold; letter-spacing: 1px; }
   .card .meta { color: var(--muted); font-size: 0.65rem; }
   .card .foil-stamp { position: absolute; top: 4px; right: 6px; font-size: 0.65rem; font-weight: bold; letter-spacing: 1px; color: #111; background: rgba(255,255,255,0.85); padding: 1px 5px; border-radius: 4px; }
@@ -190,7 +190,7 @@
   <button id="sell-all" class="sell-all-btn" disabled>SELL COMPLETE COLLECTION</button>
 </section>
 
-<footer>MVP v0.4 — Builder. Foils 5% drop, 3× sell value. Foils are protected by default — sell them separately.</footer>
+<footer>15 cards/pack — 10C · 3U · 1R/M · 1 special (85% common, 15% foil). Foil 3× sell value.</footer>
 
 <script>
 // ---- Config --------------------------------------------------------------
@@ -200,8 +200,10 @@ const RARITY_COLOURS = { common: "#b8b8c8",  uncommon: "#5ad06a",  rare: "#5aa8f
 const RARITY_GLYPHS  = { common: "●",        uncommon: "◆",        rare: "★",      mythic: "✦" };
 const SELL_PRICE     = { common: 1,          uncommon: 5,          rare: 50,       mythic: 500 };
 
-const FOIL_CHANCE = 0.05;
 const FOIL_MULTIPLIER = 3;
+// Special slot: 15% chance the slot becomes a foil; foil rarity weighted toward common
+const FOIL_SLOT_CHANCE = 0.15;
+const FOIL_RARITY_WEIGHTS = { common: 0.60, uncommon: 0.25, rare: 0.12, mythic: 0.03 };
 
 const BASE_PACK_COST = 10;
 const PACK_COST_GROWTH = 1.03;
@@ -239,16 +241,29 @@ function fmt(n) { return Math.floor(n).toLocaleString(); }
 function usd(n) { return "$" + fmt(n); }
 
 // ---- Pulls ---------------------------------------------------------------
-function rollRareSlot() {
+function rollRareMythicSlot() {
+  return Math.random() < 0.10 ? "mythic" : "rare";
+}
+function rollFoilRarity() {
   const r = Math.random();
-  if (r < 0.02) return "mythic";
-  if (r < 0.20) return "rare";
-  return "uncommon";
+  if (r < FOIL_RARITY_WEIGHTS.mythic)   return "mythic";
+  if (r < FOIL_RARITY_WEIGHTS.mythic + FOIL_RARITY_WEIGHTS.rare)   return "rare";
+  if (r < FOIL_RARITY_WEIGHTS.mythic + FOIL_RARITY_WEIGHTS.rare + FOIL_RARITY_WEIGHTS.uncommon) return "uncommon";
+  return "common";
+}
+function rollSpecialSlot() {
+  // Only source of foils: 15% foil (rarity-weighted), otherwise a common
+  if (Math.random() < FOIL_SLOT_CHANCE) return { rarity: rollFoilRarity(), foil: true };
+  return { rarity: "common", foil: false };
 }
 function rollPack() {
-  // 3 commons + 1 uncommon + 1 rare-slot, each independently rolls for foil
-  const rarities = ["common", "common", "common", "uncommon", rollRareSlot()];
-  return rarities.map(r => ({ rarity: r, foil: Math.random() < FOIL_CHANCE }));
+  // 10 commons, 3 uncommons, 1 rare/mythic, 1 special (common or foil)
+  const cards = [];
+  for (let i = 0; i < 10; i++) cards.push({ rarity: "common",   foil: false });
+  for (let i = 0; i <  3; i++) cards.push({ rarity: "uncommon", foil: false });
+  cards.push({ rarity: rollRareMythicSlot(), foil: false });
+  cards.push(rollSpecialSlot());
+  return cards;
 }
 function addPull(card) {
   if (card.foil) {
