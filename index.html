@@ -57,15 +57,6 @@
   .pack .label { text-align: center; font-weight: 600; letter-spacing: 1px; }
   .pack .label small { display: block; color: var(--muted); font-weight: normal; margin-top: 6px; }
 
-  .rip-buttons { display: flex; gap: 8px; justify-content: center; }
-  .rip-btn {
-    background: transparent; color: var(--ink); border: 1px solid var(--mythic);
-    border-radius: 6px; padding: 6px 12px; cursor: pointer; font-family: inherit;
-    font-size: 0.8rem; font-weight: bold; letter-spacing: 1px;
-  }
-  .rip-btn:hover { background: var(--mythic); color: #111; }
-  .rip-btn[hidden] { display: none; }
-
   #hint { text-align: center; font-size: 0.9rem; color: var(--gold); min-height: 1.2em; }
 
   #reveal { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
@@ -188,10 +179,7 @@
     <div class="pack" id="pack">
       <div class="label">SERIES I<br>BOOSTER<small id="supply-label">Supply: 0</small></div>
     </div>
-    <div class="rip-buttons">
-      <button class="rip-btn" id="rip-x10" hidden>RIP ×10</button>
-    </div>
-    <div id="hint">A box on the house — start ripping!</div>
+<div id="hint">A box on the house — start ripping!</div>
   </div>
   <div id="reveal"></div>
 </section>
@@ -297,7 +285,6 @@ function renderHeader() {
   const pack = $("pack");
   if (state.packSupply < 1) pack.classList.add("disabled");
   else pack.classList.remove("disabled");
-  $("rip-x10").hidden = state.packSupply < 10;
 }
 
 function renderVault() {
@@ -388,26 +375,6 @@ function ripOne() {
   $("hint").textContent = `Nice rip. ${state.packSupply} left.${tail}`;
 }
 
-function ripBatch(qty) {
-  if (state.packSupply < qty) return;
-  const summary = { common: 0, uncommon: 0, rare: 0, mythic: 0, foils: 0 };
-  let lastPulls = [];
-  for (let i = 0; i < qty; i++) {
-    state.packSupply -= 1;
-    state.packsOpened += 1;
-    const pulls = rollPack();
-    pulls.forEach(c => {
-      addPull(c);
-      summary[c.rarity] += 1;
-      if (c.foil) summary.foils += 1;
-    });
-    lastPulls = pulls;
-  }
-  renderReveal(lastPulls);
-  renderAll(); save();
-  $("hint").textContent = `Ripped ${qty} packs — ${summary.mythic} mythic, ${summary.rare} rare, ✨ ${summary.foils} foil. Showing last pack.`;
-}
-
 function sellRarity(rarity, foil) {
   const bucket = foil ? state.stockFoil : state.stock;
   const price  = foil ? foilPrice(rarity) : SELL_PRICE[rarity];
@@ -450,7 +417,6 @@ $("pack").addEventListener("click", ripOne);
 $("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
 $("buy-box").addEventListener("click",  () => buyPacks(BOX_SIZE,  boxCost(),  "a box (36 packs)"));
 $("buy-case").addEventListener("click", () => buyPacks(CASE_SIZE, caseCost(), "a case (216 packs)"));
-$("rip-x10").addEventListener("click", () => ripBatch(10));
 $("sell-all").addEventListener("click", sellAll);
 $("stock-rows").addEventListener("click", (e) => {
   const btn = e.target.closest(".sell-btn");
