@@ -156,7 +156,7 @@
 <header>
   <h1>CRYPTID ALMANAC</h1>
   <div class="stats">
-    <span>Coins: <b id="coins">0</b></span>
+    <span>Cash: <b id="coins">$0</b></span>
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
     <button class="reset" id="reset-btn">Reset</button>
@@ -169,18 +169,18 @@
     <button class="buy-btn" id="buy-pack">
       <div class="lbl">PACK</div>
       <div class="qty">1 pack</div>
-      <div class="cost" id="cost-pack">10</div>
+      <div class="cost" id="cost-pack">$10</div>
     </button>
     <button class="buy-btn" id="buy-box">
       <div class="lbl">BOX</div>
       <div class="qty">36 packs</div>
-      <div class="cost" id="cost-box">320</div>
+      <div class="cost" id="cost-box">$320</div>
       <div class="save">save 11%</div>
     </button>
     <button class="buy-btn" id="buy-case">
       <div class="lbl">CASE</div>
       <div class="qty">6 boxes · 216 packs</div>
-      <div class="cost" id="cost-case">1,790</div>
+      <div class="cost" id="cost-case">$1,790</div>
       <div class="save">save 17%</div>
     </button>
   </div>
@@ -248,6 +248,7 @@ function load() {
 }
 function save() { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
 function fmt(n) { return Math.floor(n).toLocaleString(); }
+function usd(n) { return "$" + fmt(n); }
 
 // ---- Pulls ---------------------------------------------------------------
 function rollRareSlot() {
@@ -283,13 +284,13 @@ function caseCost() { return Math.floor(packCost() * CASE_SIZE * CASE_DISCOUNT);
 const $ = id => document.getElementById(id);
 
 function renderHeader() {
-  $("coins").textContent        = fmt(state.coins);
+  $("coins").textContent        = usd(state.coins);
   $("packs-opened").textContent = state.packsOpened;
   $("foils-pulled").textContent = totalFoilsOpened();
   $("supply-label").textContent = `Supply: ${state.packSupply}`;
-  $("cost-pack").textContent = fmt(packCost());
-  $("cost-box").textContent  = fmt(boxCost());
-  $("cost-case").textContent = fmt(caseCost());
+  $("cost-pack").textContent = usd(packCost());
+  $("cost-box").textContent  = usd(boxCost());
+  $("cost-case").textContent = usd(caseCost());
   $("buy-pack").disabled = state.coins < packCost();
   $("buy-box").disabled  = state.coins < boxCost();
   $("buy-case").disabled = state.coins < caseCost();
@@ -314,17 +315,17 @@ function renderVault() {
     row.innerHTML = `
       <div class="rarity-name" style="color:${RARITY_COLOURS[rarity]}">${RARITY_GLYPHS[rarity]} ${RARITY_LABELS[rarity]}</div>
       <div class="counts">
-        <span>Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">@ ${SELL_PRICE[rarity]}</span></span>
+        <span>Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">@ ${usd(SELL_PRICE[rarity])}</span></span>
         ${(stockF + openedF) > 0
-          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">@ ${foilPrice(rarity)}</span></span>`
+          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">@ ${usd(foilPrice(rarity))}</span></span>`
           : ""}
       </div>
       <div class="sell-stack">
         <button class="sell-btn" data-rarity="${rarity}" data-foil="0" ${stock === 0 ? "disabled" : ""}>
-          ${stock === 0 ? "—" : `SELL ${stock} → ${fmt(normalProceeds)}`}
+          ${stock === 0 ? "—" : `SELL ${stock} → ${usd(normalProceeds)}`}
         </button>
         ${stockF > 0
-          ? `<button class="sell-btn foil" data-rarity="${rarity}" data-foil="1">SELL ✨${stockF} → ${fmt(foilProceeds)}</button>`
+          ? `<button class="sell-btn foil" data-rarity="${rarity}" data-foil="1">SELL ✨${stockF} → ${usd(foilProceeds)}</button>`
           : ""}
       </div>`;
     grid.appendChild(row);
@@ -337,7 +338,7 @@ function renderVault() {
   $("sell-all").disabled = totalCount === 0;
   $("sell-all").textContent = totalCount === 0
     ? "SELL COMPLETE COLLECTION"
-    : `SELL COMPLETE COLLECTION  ·  ${totalCount} cards → ${fmt(totalValue)}`;
+    : `SELL COMPLETE COLLECTION  ·  ${totalCount} cards → ${usd(totalValue)}`;
 }
 
 function renderReveal(pulls) {
@@ -351,7 +352,7 @@ function renderReveal(pulls) {
       ${card.foil ? `<div class="foil-stamp">FOIL</div>` : ""}
       <div class="glyph" style="${card.foil ? "color:#111" : `color:${RARITY_COLOURS[card.rarity]}`}">${RARITY_GLYPHS[card.rarity]}</div>
       <div class="name">${RARITY_LABELS[card.rarity]}</div>
-      <div class="meta">sells for ${price}</div>`;
+      <div class="meta">sells for ${usd(price)}</div>`;
     wrap.appendChild(el);
     setTimeout(() => { el.classList.add("flipped"); el.classList.add("new"); }, 80 * i);
   });
@@ -362,7 +363,7 @@ function renderAll() { renderHeader(); renderVault(); }
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
   if (state.coins < totalCost) {
-    $("hint").textContent = `Need ${fmt(totalCost - state.coins)} more coins.`;
+    $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
     return;
   }
   state.coins -= totalCost;
@@ -417,7 +418,7 @@ function sellRarity(rarity, foil) {
   bucket[rarity] = 0;
   renderAll(); save();
   const label = `${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()}${qty > 1 ? "s" : ""}`;
-  $("hint").textContent = `Sold ${qty} ${label} for ${fmt(proceeds)} coins.`;
+  $("hint").textContent = `Sold ${qty} ${label} for ${usd(proceeds)}.`;
 }
 
 function sellAll() {
@@ -432,7 +433,7 @@ function sellAll() {
   if (count === 0) return;
   state.coins += total;
   renderAll(); save();
-  $("hint").textContent = `Sold complete collection — ${count} cards (foils included) for ${fmt(total)} coins.`;
+  $("hint").textContent = `Sold complete collection — ${count} cards (foils included) for ${usd(total)}.`;
 }
 
 function resetGame() {
