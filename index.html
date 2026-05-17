@@ -415,10 +415,9 @@ function showHits(pulls) {
   const cy = rect.top  + rect.height / 2;
 
   const hits = [];
-  const rareMythic = pulls.find(c => !c.foil && (c.rarity === "rare" || c.rarity === "mythic"));
-  if (rareMythic) {
-    const isMythic = rareMythic.rarity === "mythic";
-    hits.push({ text: isMythic ? "MYTHIC!" : "RARE!", color: RARITY_COLOURS[rareMythic.rarity], size: isMythic ? "2rem" : "1.5rem" });
+  const mythic = pulls.find(c => !c.foil && c.rarity === "mythic");
+  if (mythic) {
+    hits.push({ text: "MYTHIC!", color: RARITY_COLOURS.mythic, size: "2rem" });
   }
   const foilCard = pulls.find(c => c.foil);
   if (foilCard) {
