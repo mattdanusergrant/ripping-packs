@@ -129,6 +129,33 @@
   }
   @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
 
+  #set-progress {
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 8px 10px;
+    background: rgba(0,0,0,0.18);
+    border-radius: 6px;
+  }
+  .set-bar { display: flex; flex-direction: column; gap: 2px; }
+  .set-bar-label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 0.7rem; font-weight: bold; letter-spacing: 1px;
+  }
+  .set-bar-count { color: var(--muted); font-weight: normal; }
+  .set-bar-track {
+    height: 5px; background: rgba(255,255,255,0.06);
+    border-radius: 3px; overflow: hidden;
+  }
+  .set-bar-fill {
+    height: 100%; border-radius: 3px;
+    transition: width 0.35s ease;
+  }
+  .set-bar.complete .set-bar-fill {
+    background: linear-gradient(90deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3) !important;
+    background-size: 200% auto;
+    animation: shimmer-bar 2s linear infinite;
+  }
+  .set-bar.complete .set-bar-count { color: var(--gold); }
+  @keyframes shimmer-bar { to { background-position: 200% center; } }
   #sand-canvas {
     display: block; width: 100%; height: 90px;
     background: rgba(0,0,0,0.18); border-radius: 6px;
@@ -221,6 +248,7 @@
     </button>
   </div>
   <div id="collection-cards"></div>
+  <div id="set-progress"></div>
   <div id="pack-area">
     <div class="pack" id="pack">
       <div class="label">SERIES I<br>BOOSTER<small id="supply-label">Supply: 0</small></div>
@@ -251,6 +279,8 @@ const FOIL_MULTIPLIER = 3;
 const FOIL_SLOT_CHANCE = 0.15;
 const FOIL_RARITY_WEIGHTS = { common: 0.60, uncommon: 0.25, rare: 0.12, mythic: 0.03 };
 
+const SET_SIZE = 100; // unique cards per rarity
+
 const PACK_COST = 4;
 const BOX_COST  = 125;
 const CASE_COST = 700;
@@ -270,7 +300,21 @@ const defaultState = () => ({
   opened:     { common: 0, uncommon: 0, rare: 0, mythic: 0 },
   openedFoil: { common: 0, uncommon: 0, rare: 0, mythic: 0 },
   pile: [], // [colIndex] = array of rarity strings, bottom-up
+  owned:     { common: [], uncommon: [], rare: [], mythic: [] },
+  ownedFoil: { common: [], uncommon: [], rare: [], mythic: [] },
+  setsCelebrated:     { common: false, uncommon: false, rare: false, mythic: false },
+  setsCelebratedFoil: { common: false, uncommon: false, rare: false, mythic: false },
 });
+
+function pickRandomIds(n) {
+  const all = [];
+  for (let i = 1; i <= SET_SIZE; i++) all.push(i);
+  for (let i = all.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [all[i], all[j]] = [all[j], all[i]];
+  }
+  return all.slice(0, Math.min(n, SET_SIZE)).sort((a, b) => a - b);
+}
 let state = load() || defaultState();
 
 function load() {
@@ -280,6 +324,23 @@ function load() {
     const parsed = JSON.parse(raw);
     if (typeof parsed.coins !== "number" || !parsed.stock || !parsed.stockFoil) return null;
     if (!Array.isArray(parsed.pile)) parsed.pile = [];
+    if (!parsed.owned) {
+      // Backfill set ownership for legacy saves: grant random IDs based on lifetime opened.
+      parsed.owned     = { common: [], uncommon: [], rare: [], mythic: [] };
+      parsed.ownedFoil = { common: [], uncommon: [], rare: [], mythic: [] };
+      RARITIES.forEach(r => {
+        parsed.owned[r]     = pickRandomIds(parsed.opened[r]     || 0);
+        parsed.ownedFoil[r] = pickRandomIds(parsed.openedFoil[r] || 0);
+      });
+    }
+    if (!parsed.setsCelebrated) {
+      parsed.setsCelebrated     = { common: false, uncommon: false, rare: false, mythic: false };
+      parsed.setsCelebratedFoil = { common: false, uncommon: false, rare: false, mythic: false };
+      RARITIES.forEach(r => {
+        if (parsed.owned[r].length     >= SET_SIZE) parsed.setsCelebrated[r]     = true;
+        if (parsed.ownedFoil[r].length >= SET_SIZE) parsed.setsCelebratedFoil[r] = true;
+      });
+    }
     return parsed;
   } catch { return null; }
 }
@@ -303,6 +364,7 @@ function rollSpecialSlot() {
   if (Math.random() < FOIL_SLOT_CHANCE) return { rarity: rollFoilRarity(), foil: true };
   return { rarity: "common", foil: false };
 }
+function randomCardId() { return Math.floor(Math.random() * SET_SIZE) + 1; }
 function rollPack() {
   // 10 commons, 3 uncommons, 1 rare/mythic, 1 special (common or foil)
   const cards = [];
@@ -310,7 +372,7 @@ function rollPack() {
   for (let i = 0; i <  3; i++) cards.push({ rarity: "uncommon", foil: false });
   cards.push({ rarity: rollRareMythicSlot(), foil: false });
   cards.push(rollSpecialSlot());
-  return cards;
+  return cards.map(c => ({ ...c, id: randomCardId() }));
 }
 function addPull(card) {
   if (card.foil) {
@@ -320,6 +382,16 @@ function addPull(card) {
     state.stock[card.rarity]  += 1;
     state.opened[card.rarity] += 1;
   }
+  const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
+  if (!ownedList.includes(card.id)) {
+    ownedList.push(card.id);
+    const completed = ownedList.length >= SET_SIZE;
+    const celebratedFlag = card.foil ? state.setsCelebratedFoil : state.setsCelebrated;
+    const firstCompletion = completed && !celebratedFlag[card.rarity];
+    if (firstCompletion) celebratedFlag[card.rarity] = true;
+    return { isNew: true, completed: firstCompletion };
+  }
+  return { isNew: false, completed: false };
 }
 function totalFoilsOpened() {
   return RARITIES.reduce((s, r) => s + state.openedFoil[r], 0);
@@ -411,7 +483,7 @@ function spawnParticles(pulls) {
   });
 }
 
-function showHits(pulls) {
+function showHits(pulls, meta = {}) {
   const rect = $("pack").getBoundingClientRect();
   const cx = rect.left + rect.width  / 2;
   const cy = rect.top  + rect.height / 2;
@@ -426,6 +498,16 @@ function showHits(pulls) {
     const isMythic = foilCard.rarity === "mythic";
     hits.push({ text: `FOIL ${RARITY_LABELS[foilCard.rarity]}!`, size: isMythic ? "2rem" : "1.5rem", foil: true });
   }
+  if (meta.newCount > 0) {
+    hits.push({ text: `+${meta.newCount} NEW`, color: "#7fffaa", size: "1.3rem" });
+  }
+  (meta.completions || []).forEach(c => {
+    hits.push({
+      text: `${c.foil ? "FOIL " : ""}${RARITY_LABELS[c.rarity]} SET COMPLETE!`,
+      size: "1.7rem",
+      foil: true,
+    });
+  });
 
   hits.forEach((hit, i) => {
     const el = document.createElement("div");
@@ -599,7 +681,28 @@ function renderSandPile() {
   drawSand();
 }
 
-function renderAll() { renderHeader(); renderVault(); renderCollectionCards(); renderSandPile(); }
+function renderSetProgress() {
+  const wrap = $("set-progress");
+  wrap.innerHTML = "";
+  RARITIES.forEach(rarity => {
+    const owned = state.owned[rarity].length;
+    const pct = Math.min(100, (owned / SET_SIZE) * 100);
+    const complete = owned >= SET_SIZE;
+    const el = document.createElement("div");
+    el.className = "set-bar" + (complete ? " complete" : "");
+    el.innerHTML = `
+      <div class="set-bar-label" style="color:${RARITY_COLOURS[rarity]}">
+        ${RARITY_LABELS[rarity]}
+        <span class="set-bar-count">${owned}/${SET_SIZE}</span>
+      </div>
+      <div class="set-bar-track">
+        <div class="set-bar-fill" style="width:${pct}%;background:${RARITY_COLOURS[rarity]}"></div>
+      </div>`;
+    wrap.appendChild(el);
+  });
+}
+
+function renderAll() { renderHeader(); renderVault(); renderCollectionCards(); renderSetProgress(); renderSandPile(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -621,10 +724,16 @@ function ripOne() {
   state.packSupply -= 1;
   state.packsOpened += 1;
   const pulls = rollPack();
-  pulls.forEach(addPull);
+  let newCount = 0;
+  const completions = []; // {rarity, foil}
+  pulls.forEach(card => {
+    const r = addPull(card);
+    if (r.isNew) newCount += 1;
+    if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
+  });
   spawnSandFromPulls(pulls);
   spawnParticles(pulls);
-  showHits(pulls);
+  showHits(pulls, { newCount, completions });
   renderAll(); save();
   const foilCount = pulls.filter(p => p.foil).length;
   const tail = foilCount > 0 ? `  ✨ ${foilCount} foil${foilCount > 1 ? "s" : ""}!` : "";
