@@ -160,18 +160,18 @@
     <button class="buy-btn" id="buy-pack">
       <div class="lbl">PACK</div>
       <div class="qty">1 pack</div>
-      <div class="cost" id="cost-pack">$10</div>
+      <div class="cost" id="cost-pack">$4</div>
     </button>
     <button class="buy-btn" id="buy-box">
       <div class="lbl">BOX</div>
       <div class="qty">36 packs</div>
-      <div class="cost" id="cost-box">$320</div>
+      <div class="cost" id="cost-box">$125</div>
       <div class="save">save 11%</div>
     </button>
     <button class="buy-btn" id="buy-case">
       <div class="lbl">CASE</div>
       <div class="qty">6 boxes · 216 packs</div>
-      <div class="cost" id="cost-case">$1,790</div>
+      <div class="cost" id="cost-case">$700</div>
       <div class="save">save 17%</div>
     </button>
   </div>
@@ -205,12 +205,11 @@ const FOIL_MULTIPLIER = 3;
 const FOIL_SLOT_CHANCE = 0.15;
 const FOIL_RARITY_WEIGHTS = { common: 0.60, uncommon: 0.25, rare: 0.12, mythic: 0.03 };
 
-const BASE_PACK_COST = 10;
-const PACK_COST_GROWTH = 1.03;
-const BOX_SIZE = 36;
+const PACK_COST = 4;
+const BOX_COST  = 125;
+const CASE_COST = 700;
+const BOX_SIZE  = 36;
 const CASE_SIZE = 216;
-const BOX_DISCOUNT  = 0.89;
-const CASE_DISCOUNT = 0.83;
 
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 
@@ -279,9 +278,9 @@ function totalFoilsOpened() {
 }
 
 // ---- Economy -------------------------------------------------------------
-function packCost() { return Math.floor(BASE_PACK_COST * Math.pow(PACK_COST_GROWTH, state.packsOpened)); }
-function boxCost()  { return Math.floor(packCost() * BOX_SIZE  * BOX_DISCOUNT); }
-function caseCost() { return Math.floor(packCost() * CASE_SIZE * CASE_DISCOUNT); }
+function packCost() { return PACK_COST; }
+function boxCost()  { return BOX_COST; }
+function caseCost() { return CASE_COST; }
 
 // ---- Render --------------------------------------------------------------
 const $ = id => document.getElementById(id);
