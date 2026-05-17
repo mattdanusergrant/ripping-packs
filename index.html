@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cryptid Almanac — MVP v0.4</title>
+<style>
+  :root {
+    --bg: #0e0a1a;
+    --panel: #1a1530;
+    --panel-light: #251f44;
+    --ink: #ebe6ff;
+    --muted: #8a82b8;
+    --gold: #f5c542;
+    --common: #b8b8c8;
+    --uncommon: #5ad06a;
+    --rare: #5aa8ff;
+    --mythic: #ff7a3d;
+    --foil: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Segoe UI', Roboto, system-ui, sans-serif; height: 100%; }
+  body { display: grid; grid-template-columns: 1fr 1.3fr; grid-template-rows: auto 1fr auto; height: 100vh; gap: 12px; padding: 12px; }
+  header { grid-column: 1 / 3; display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: var(--panel); border-radius: 10px; }
+  header h1 { margin: 0; font-size: 1.2rem; letter-spacing: 1px; }
+  header .stats { display: flex; gap: 24px; font-size: 0.95rem; align-items: center; }
+  header .stats span b { color: var(--gold); }
+
+  #shop, #vault { background: var(--panel); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  #shop h2, #vault h2 { margin: 0; letter-spacing: 1px; font-size: 1rem; }
+
+  .buy-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .buy-btn {
+    background: var(--panel-light); border: 1px solid #3a3260; border-radius: 8px;
+    padding: 10px 8px; color: var(--ink); cursor: pointer; font-family: inherit;
+    display: flex; flex-direction: column; gap: 2px; transition: all 0.15s;
+    text-align: center;
+  }
+  .buy-btn:hover:not(:disabled) { background: #2a2348; border-color: var(--gold); transform: translateY(-1px); }
+  .buy-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .buy-btn .lbl { font-weight: bold; font-size: 0.95rem; letter-spacing: 1px; }
+  .buy-btn .qty { color: var(--muted); font-size: 0.7rem; }
+  .buy-btn .cost { color: var(--gold); font-size: 0.9rem; margin-top: 4px; font-weight: bold; }
+  .buy-btn .save { color: var(--uncommon); font-size: 0.65rem; }
+
+  #pack-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 0; }
+  .pack {
+    width: 200px; height: 290px; border-radius: 14px;
+    background: linear-gradient(135deg, #3a2562, #5a2d8a 50%, #2d4a8a);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5), inset 0 0 30px rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    user-select: none; position: relative; overflow: hidden;
+  }
+  .pack::after { content: ""; position: absolute; inset: 8px; border: 2px dashed rgba(255,255,255,0.2); border-radius: 10px; pointer-events: none; }
+  .pack:hover:not(.disabled) { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,0.6); }
+  .pack.disabled { opacity: 0.45; cursor: not-allowed; }
+  .pack .label { text-align: center; font-weight: 600; letter-spacing: 1px; }
+  .pack .label small { display: block; color: var(--muted); font-weight: normal; margin-top: 6px; }
+
+  .rip-buttons { display: flex; gap: 8px; justify-content: center; }
+  .rip-btn {
+    background: transparent; color: var(--ink); border: 1px solid var(--mythic);
+    border-radius: 6px; padding: 6px 12px; cursor: pointer; font-family: inherit;
+    font-size: 0.8rem; font-weight: bold; letter-spacing: 1px;
+  }
+  .rip-btn:hover { background: var(--mythic); color: #111; }
+  .rip-btn[hidden] { display: none; }
+
+  #hint { text-align: center; font-size: 0.9rem; color: var(--gold); min-height: 1.2em; }
+
+  #reveal { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .card {
+    aspect-ratio: 2 / 3;
+    background: var(--panel-light);
+    border-radius: 8px; padding: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 2px solid #333; position: relative;
+    transform: rotateY(180deg);
+    transition: transform 0.5s ease;
+    font-size: 0.75rem; text-align: center; gap: 6px;
+  }
+  .card.flipped { transform: rotateY(0deg); }
+  .card.common   { border-color: var(--common); }
+  .card.uncommon { border-color: var(--uncommon); box-shadow: 0 0 8px rgba(90,208,106,0.4); }
+  .card.rare     { border-color: var(--rare);     box-shadow: 0 0 12px rgba(90,168,255,0.5); }
+  .card.mythic   { border-color: var(--mythic);   box-shadow: 0 0 18px rgba(255,122,61,0.6); }
+  .card.foil {
+    background: var(--foil); background-size: 250% 250%;
+    animation: shimmer 3s linear infinite;
+    color: #111; border-color: #fff;
+    box-shadow: 0 0 24px rgba(255,255,255,0.55);
+  }
+  .card.foil .meta { color: #1a1a1a; }
+  @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
+  .card .glyph { font-size: 2rem; }
+  .card .name { font-weight: bold; letter-spacing: 1px; }
+  .card .meta { color: var(--muted); font-size: 0.65rem; }
+  .card .foil-stamp { position: absolute; top: 4px; right: 6px; font-size: 0.65rem; font-weight: bold; letter-spacing: 1px; color: #111; background: rgba(255,255,255,0.85); padding: 1px 5px; border-radius: 4px; }
+  .card.new { animation: pop 0.5s ease; }
+  @keyframes pop { 0% { transform: scale(0.6) rotateY(0); } 60% { transform: scale(1.15) rotateY(0); } 100% { transform: scale(1) rotateY(0); } }
+
+  #stock-rows { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 4px; }
+  .stock-row {
+    background: var(--panel-light); border-radius: 8px; padding: 12px 14px;
+    display: grid; grid-template-columns: 0.9fr 1.3fr auto; align-items: center; gap: 12px;
+    border-left: 4px solid #444;
+  }
+  .stock-row.common    { border-left-color: var(--common); }
+  .stock-row.uncommon  { border-left-color: var(--uncommon); }
+  .stock-row.rare      { border-left-color: var(--rare); }
+  .stock-row.mythic    { border-left-color: var(--mythic); box-shadow: 0 0 12px rgba(255,122,61,0.2); }
+  .rarity-name { font-weight: bold; letter-spacing: 1px; font-size: 0.95rem; }
+  .counts { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: var(--muted); }
+  .counts b { color: var(--ink); font-size: 0.9rem; }
+  .counts .foil-line b { color: #fff; }
+  .counts .foil-line { background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 4px; }
+  .counts .sell-price { font-size: 0.65rem; color: var(--gold); }
+  .sell-stack { display: flex; flex-direction: column; gap: 6px; }
+  .sell-btn {
+    background: transparent; color: var(--gold); border: 1px solid var(--gold);
+    border-radius: 6px; padding: 7px 12px; cursor: pointer; font-family: inherit;
+    font-weight: bold; font-size: 0.75rem; min-width: 160px; letter-spacing: 1px;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .sell-btn:hover:not(:disabled) { background: var(--gold); color: #111; }
+  .sell-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+  .sell-btn.foil {
+    background: var(--foil); background-size: 250% 250%;
+    animation: shimmer 3s linear infinite;
+    color: #111; border-color: #fff;
+  }
+  .sell-btn.foil:hover:not(:disabled) { filter: brightness(1.1); }
+
+  .sell-all-btn {
+    background: var(--gold); color: #111; border: none;
+    border-radius: 8px; padding: 14px; cursor: pointer; font-family: inherit;
+    font-weight: bold; letter-spacing: 1px; font-size: 0.95rem;
+    transition: all 0.15s;
+  }
+  .sell-all-btn:hover:not(:disabled) { background: #fcd968; transform: translateY(-1px); }
+  .sell-all-btn:disabled { opacity: 0.35; cursor: not-allowed; background: var(--panel-light); color: var(--muted); }
+
+  footer { grid-column: 1 / 3; text-align: center; color: var(--muted); font-size: 0.75rem; padding: 4px; }
+  button.reset { background: transparent; color: var(--muted); border: 1px solid var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.75rem; }
+  button.reset:hover { color: var(--ink); border-color: var(--ink); }
+
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; height: auto; }
+    header { grid-column: 1; }
+    footer { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CRYPTID ALMANAC</h1>
+  <div class="stats">
+    <span>Coins: <b id="coins">0</b></span>
+    <span>Packs opened: <b id="packs-opened">0</b></span>
+    <span>Foils pulled: <b id="foils-pulled">0</b></span>
+    <button class="reset" id="reset-btn">Reset</button>
+  </div>
+</header>
+
+<section id="shop">
+  <h2>SHOP</h2>
+  <div class="buy-buttons">
+    <button class="buy-btn" id="buy-pack">
+      <div class="lbl">PACK</div>
+      <div class="qty">1 pack</div>
+      <div class="cost" id="cost-pack">10</div>
+    </button>
+    <button class="buy-btn" id="buy-box">
+      <div class="lbl">BOX</div>
+      <div class="qty">36 packs</div>
+      <div class="cost" id="cost-box">320</div>
+      <div class="save">save 11%</div>
+    </button>
+    <button class="buy-btn" id="buy-case">
+      <div class="lbl">CASE</div>
+      <div class="qty">6 boxes · 216 packs</div>
+      <div class="cost" id="cost-case">1,790</div>
+      <div class="save">save 17%</div>
+    </button>
+  </div>
+  <div id="pack-area">
+    <div class="pack" id="pack">
+      <div class="label">SERIES I<br>BOOSTER<small id="supply-label">Supply: 0</small></div>
+    </div>
+    <div class="rip-buttons">
+      <button class="rip-btn" id="rip-x10" hidden>RIP ×10</button>
+    </div>
+    <div id="hint">A box on the house — start ripping!</div>
+  </div>
+  <div id="reveal"></div>
+</section>
+
+<section id="vault">
+  <h2>VAULT</h2>
+  <div id="stock-rows"></div>
+  <button id="sell-all" class="sell-all-btn" disabled>SELL COMPLETE COLLECTION</button>
+</section>
+
+<footer>MVP v0.4 — Builder. Foils 5% drop, 3× sell value. Foils are protected by default — sell them separately.</footer>
+
+<script>
+// ---- Config --------------------------------------------------------------
+const RARITIES = ["common", "uncommon", "rare", "mythic"];
+const RARITY_LABELS  = { common: "COMMON",   uncommon: "UNCOMMON", rare: "RARE",  mythic: "MYTHIC" };
+const RARITY_COLOURS = { common: "#b8b8c8",  uncommon: "#5ad06a",  rare: "#5aa8ff", mythic: "#ff7a3d" };
+const RARITY_GLYPHS  = { common: "●",        uncommon: "◆",        rare: "★",      mythic: "✦" };
+const SELL_PRICE     = { common: 1,          uncommon: 5,          rare: 50,       mythic: 500 };
+
+const FOIL_CHANCE = 0.05;
+const FOIL_MULTIPLIER = 3;
+
+const BASE_PACK_COST = 10;
+const PACK_COST_GROWTH = 1.03;
+const BOX_SIZE = 36;
+const CASE_SIZE = 216;
+const BOX_DISCOUNT  = 0.89;
+const CASE_DISCOUNT = 0.83;
+
+function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
+
+// ---- State ---------------------------------------------------------------
+const SAVE_KEY = "cryptid_almanac_save_v4"; // bumped: starter box
+const defaultState = () => ({
+  coins: 0,
+  packsOpened: 0,
+  packSupply: BOX_SIZE, // start with a box on the house
+  stock:      { common: 0, uncommon: 0, rare: 0, mythic: 0 },
+  stockFoil:  { common: 0, uncommon: 0, rare: 0, mythic: 0 },
+  opened:     { common: 0, uncommon: 0, rare: 0, mythic: 0 },
+  openedFoil: { common: 0, uncommon: 0, rare: 0, mythic: 0 },
+});
+let state = load() || defaultState();
+
+function load() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.coins !== "number" || !parsed.stock || !parsed.stockFoil) return null;
+    return parsed;
+  } catch { return null; }
+}
+function save() { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
+function fmt(n) { return Math.floor(n).toLocaleString(); }
+
+// ---- Pulls ---------------------------------------------------------------
+function rollRareSlot() {
+  const r = Math.random();
+  if (r < 0.02) return "mythic";
+  if (r < 0.20) return "rare";
+  return "uncommon";
+}
+function rollPack() {
+  // 3 commons + 1 uncommon + 1 rare-slot, each independently rolls for foil
+  const rarities = ["common", "common", "common", "uncommon", rollRareSlot()];
+  return rarities.map(r => ({ rarity: r, foil: Math.random() < FOIL_CHANCE }));
+}
+function addPull(card) {
+  if (card.foil) {
+    state.stockFoil[card.rarity]  += 1;
+    state.openedFoil[card.rarity] += 1;
+  } else {
+    state.stock[card.rarity]  += 1;
+    state.opened[card.rarity] += 1;
+  }
+}
+function totalFoilsOpened() {
+  return RARITIES.reduce((s, r) => s + state.openedFoil[r], 0);
+}
+
+// ---- Economy -------------------------------------------------------------
+function packCost() { return Math.floor(BASE_PACK_COST * Math.pow(PACK_COST_GROWTH, state.packsOpened)); }
+function boxCost()  { return Math.floor(packCost() * BOX_SIZE  * BOX_DISCOUNT); }
+function caseCost() { return Math.floor(packCost() * CASE_SIZE * CASE_DISCOUNT); }
+
+// ---- Render --------------------------------------------------------------
+const $ = id => document.getElementById(id);
+
+function renderHeader() {
+  $("coins").textContent        = fmt(state.coins);
+  $("packs-opened").textContent = state.packsOpened;
+  $("foils-pulled").textContent = totalFoilsOpened();
+  $("supply-label").textContent = `Supply: ${state.packSupply}`;
+  $("cost-pack").textContent = fmt(packCost());
+  $("cost-box").textContent  = fmt(boxCost());
+  $("cost-case").textContent = fmt(caseCost());
+  $("buy-pack").disabled = state.coins < packCost();
+  $("buy-box").disabled  = state.coins < boxCost();
+  $("buy-case").disabled = state.coins < caseCost();
+  const pack = $("pack");
+  if (state.packSupply < 1) pack.classList.add("disabled");
+  else pack.classList.remove("disabled");
+  $("rip-x10").hidden = state.packSupply < 10;
+}
+
+function renderVault() {
+  const grid = $("stock-rows");
+  grid.innerHTML = "";
+  RARITIES.forEach(rarity => {
+    const stock     = state.stock[rarity];
+    const stockF    = state.stockFoil[rarity];
+    const opened    = state.opened[rarity];
+    const openedF   = state.openedFoil[rarity];
+    const normalProceeds = stock  * SELL_PRICE[rarity];
+    const foilProceeds   = stockF * foilPrice(rarity);
+    const row = document.createElement("div");
+    row.className = `stock-row ${rarity}`;
+    row.innerHTML = `
+      <div class="rarity-name" style="color:${RARITY_COLOURS[rarity]}">${RARITY_GLYPHS[rarity]} ${RARITY_LABELS[rarity]}</div>
+      <div class="counts">
+        <span>Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">@ ${SELL_PRICE[rarity]}</span></span>
+        ${(stockF + openedF) > 0
+          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">@ ${foilPrice(rarity)}</span></span>`
+          : ""}
+      </div>
+      <div class="sell-stack">
+        <button class="sell-btn" data-rarity="${rarity}" data-foil="0" ${stock === 0 ? "disabled" : ""}>
+          ${stock === 0 ? "—" : `SELL ${stock} → ${fmt(normalProceeds)}`}
+        </button>
+        ${stockF > 0
+          ? `<button class="sell-btn foil" data-rarity="${rarity}" data-foil="1">SELL ✨${stockF} → ${fmt(foilProceeds)}</button>`
+          : ""}
+      </div>`;
+    grid.appendChild(row);
+  });
+  let totalCount = 0, totalValue = 0;
+  RARITIES.forEach(r => {
+    totalCount += state.stock[r] + state.stockFoil[r];
+    totalValue += state.stock[r] * SELL_PRICE[r] + state.stockFoil[r] * foilPrice(r);
+  });
+  $("sell-all").disabled = totalCount === 0;
+  $("sell-all").textContent = totalCount === 0
+    ? "SELL COMPLETE COLLECTION"
+    : `SELL COMPLETE COLLECTION  ·  ${totalCount} cards → ${fmt(totalValue)}`;
+}
+
+function renderReveal(pulls) {
+  const wrap = $("reveal");
+  wrap.innerHTML = "";
+  pulls.forEach((card, i) => {
+    const price = card.foil ? foilPrice(card.rarity) : SELL_PRICE[card.rarity];
+    const el = document.createElement("div");
+    el.className = `card ${card.rarity}${card.foil ? " foil" : ""}`;
+    el.innerHTML = `
+      ${card.foil ? `<div class="foil-stamp">FOIL</div>` : ""}
+      <div class="glyph" style="${card.foil ? "color:#111" : `color:${RARITY_COLOURS[card.rarity]}`}">${RARITY_GLYPHS[card.rarity]}</div>
+      <div class="name">${RARITY_LABELS[card.rarity]}</div>
+      <div class="meta">sells for ${price}</div>`;
+    wrap.appendChild(el);
+    setTimeout(() => { el.classList.add("flipped"); el.classList.add("new"); }, 80 * i);
+  });
+}
+
+function renderAll() { renderHeader(); renderVault(); }
+
+// ---- Actions -------------------------------------------------------------
+function buyPacks(qty, totalCost, label) {
+  if (state.coins < totalCost) {
+    $("hint").textContent = `Need ${fmt(totalCost - state.coins)} more coins.`;
+    return;
+  }
+  state.coins -= totalCost;
+  state.packSupply += qty;
+  renderAll(); save();
+  $("hint").textContent = `Bought ${label}. Supply: ${state.packSupply}.`;
+}
+
+function ripOne() {
+  if (state.packSupply < 1) {
+    $("hint").textContent = "No packs in supply. Buy one above.";
+    return;
+  }
+  state.packSupply -= 1;
+  state.packsOpened += 1;
+  const pulls = rollPack();
+  pulls.forEach(addPull);
+  renderReveal(pulls);
+  renderAll(); save();
+  const foilCount = pulls.filter(p => p.foil).length;
+  const tail = foilCount > 0 ? `  ✨ ${foilCount} foil${foilCount > 1 ? "s" : ""}!` : "";
+  $("hint").textContent = `Nice rip. ${state.packSupply} left.${tail}`;
+}
+
+function ripBatch(qty) {
+  if (state.packSupply < qty) return;
+  const summary = { common: 0, uncommon: 0, rare: 0, mythic: 0, foils: 0 };
+  let lastPulls = [];
+  for (let i = 0; i < qty; i++) {
+    state.packSupply -= 1;
+    state.packsOpened += 1;
+    const pulls = rollPack();
+    pulls.forEach(c => {
+      addPull(c);
+      summary[c.rarity] += 1;
+      if (c.foil) summary.foils += 1;
+    });
+    lastPulls = pulls;
+  }
+  renderReveal(lastPulls);
+  renderAll(); save();
+  $("hint").textContent = `Ripped ${qty} packs — ${summary.mythic} mythic, ${summary.rare} rare, ✨ ${summary.foils} foil. Showing last pack.`;
+}
+
+function sellRarity(rarity, foil) {
+  const bucket = foil ? state.stockFoil : state.stock;
+  const price  = foil ? foilPrice(rarity) : SELL_PRICE[rarity];
+  const qty    = bucket[rarity];
+  if (qty === 0) return;
+  const proceeds = qty * price;
+  state.coins += proceeds;
+  bucket[rarity] = 0;
+  renderAll(); save();
+  const label = `${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()}${qty > 1 ? "s" : ""}`;
+  $("hint").textContent = `Sold ${qty} ${label} for ${fmt(proceeds)} coins.`;
+}
+
+function sellAll() {
+  let total = 0, count = 0;
+  RARITIES.forEach(r => {
+    total += state.stock[r]     * SELL_PRICE[r];
+    total += state.stockFoil[r] * foilPrice(r);
+    count += state.stock[r] + state.stockFoil[r];
+    state.stock[r] = 0;
+    state.stockFoil[r] = 0;
+  });
+  if (count === 0) return;
+  state.coins += total;
+  renderAll(); save();
+  $("hint").textContent = `Sold complete collection — ${count} cards (foils included) for ${fmt(total)} coins.`;
+}
+
+function resetGame() {
+  if (!confirm("Wipe everything and start over?")) return;
+  state = defaultState();
+  save();
+  $("reveal").innerHTML = "";
+  renderAll();
+  $("hint").textContent = "Fresh start. A box on the house — start ripping!";
+}
+
+// ---- Boot ----------------------------------------------------------------
+$("pack").addEventListener("click", ripOne);
+$("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
+$("buy-box").addEventListener("click",  () => buyPacks(BOX_SIZE,  boxCost(),  "a box (36 packs)"));
+$("buy-case").addEventListener("click", () => buyPacks(CASE_SIZE, caseCost(), "a case (216 packs)"));
+$("rip-x10").addEventListener("click", () => ripBatch(10));
+$("sell-all").addEventListener("click", sellAll);
+$("stock-rows").addEventListener("click", (e) => {
+  const btn = e.target.closest(".sell-btn");
+  if (btn && btn.dataset.rarity) sellRarity(btn.dataset.rarity, btn.dataset.foil === "1");
+});
+$("reset-btn").addEventListener("click", resetGame);
+setInterval(save, 5000);
+window.addEventListener("beforeunload", save);
+renderAll();
+</script>
+
+</body>
+</html>
