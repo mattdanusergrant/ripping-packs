@@ -269,6 +269,7 @@ const defaultState = () => ({
   stockFoil:  { common: 0, uncommon: 0, rare: 0, mythic: 0 },
   opened:     { common: 0, uncommon: 0, rare: 0, mythic: 0 },
   openedFoil: { common: 0, uncommon: 0, rare: 0, mythic: 0 },
+  pile: [], // [colIndex] = array of rarity strings, bottom-up
 });
 let state = load() || defaultState();
 
@@ -278,6 +279,7 @@ function load() {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (typeof parsed.coins !== "number" || !parsed.stock || !parsed.stockFoil) return null;
+    if (!Array.isArray(parsed.pile)) parsed.pile = [];
     return parsed;
   } catch { return null; }
 }
@@ -464,35 +466,137 @@ function renderCollectionCards() {
   }
 }
 
-function renderSandPile() {
-  const canvas = $("sand-canvas");
-  canvas.width  = canvas.clientWidth  || 300;
-  canvas.height = canvas.clientHeight || 90;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const commons   = state.stock.common;
-  const uncommons = state.stock.uncommon;
-  const rares     = state.stock.rare;
-  const total = commons + uncommons + rares;
-  if (total === 0) return;
-  const MAX_GRAINS = 600;
-  const count = Math.min(total, MAX_GRAINS);
-  const GRAIN = 5, CELL = 7;
-  const cols = Math.floor(canvas.width / CELL);
-  const ratioC = commons / total;
-  const ratioU = uncommons / total;
-  for (let i = 0; i < count; i++) {
-    const jitter = ((i * 1664525 + 1013904223) >>> 0) % 3;
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = col * CELL + jitter;
-    const y = canvas.height - (row + 1) * CELL - jitter;
-    const t = i / count;
-    ctx.fillStyle = t < ratioC ? "#b8b8c8" : (t < ratioC + ratioU ? "#5ad06a" : "#5aa8ff");
-    ctx.beginPath();
-    ctx.arc(x + GRAIN / 2, y + GRAIN / 2, GRAIN / 2, 0, Math.PI * 2);
-    ctx.fill();
+// ---- Sand simulation -----------------------------------------------------
+const SAND_GRAIN = 5;
+const SAND_CELL  = 7;
+const SAND_COLOR = { common: "#b8b8c8", uncommon: "#5ad06a", rare: "#5aa8ff" };
+const SAND_BULK_RARITIES = ["common", "uncommon", "rare"];
+let fallingGrains = []; // {col, y, vy, rarity}
+let sandAnimRunning = false;
+
+function sandColCount() {
+  const c = $("sand-canvas");
+  return Math.max(1, Math.floor((c.clientWidth || 300) / SAND_CELL));
+}
+
+function ensurePileBuckets() {
+  const cols = sandColCount();
+  while (state.pile.length < cols) state.pile.push([]);
+}
+
+function totalPileGrains() {
+  return state.pile.reduce((s, col) => s + col.length, 0);
+}
+
+function rebuildPileFromStock() {
+  state.pile = [];
+  ensurePileBuckets();
+  const cols = sandColCount();
+  SAND_BULK_RARITIES.forEach(r => {
+    for (let i = 0; i < state.stock[r]; i++) {
+      const c = Math.floor(Math.random() * cols);
+      state.pile[c].push(r);
+    }
+  });
+}
+
+function syncPileWithStock() {
+  // If the pile and bulk stock have drifted (eg. migration), rebuild.
+  const stockBulk = SAND_BULK_RARITIES.reduce((s, r) => s + state.stock[r], 0);
+  if (totalPileGrains() + fallingGrains.length !== stockBulk) {
+    rebuildPileFromStock();
   }
+}
+
+function removeGrainsByRarity(rarity) {
+  if (!SAND_BULK_RARITIES.includes(rarity)) return;
+  state.pile = state.pile.map(col => col.filter(r => r !== rarity));
+}
+
+function removeAllBulkGrains() {
+  state.pile = state.pile.map(() => []);
+}
+
+function spawnSandFromPulls(pulls) {
+  const bulk = pulls.filter(c => !c.foil && SAND_BULK_RARITIES.includes(c.rarity));
+  ensurePileBuckets();
+  const cols = sandColCount();
+  // Spawn all grains synchronously into fallingGrains, but stagger their
+  // starting Y so they enter the canvas one-by-one — creates a sandfall stream.
+  bulk.forEach((card, i) => {
+    fallingGrains.push({
+      col: Math.floor(Math.random() * cols),
+      y: -SAND_CELL - i * (SAND_CELL * 1.6) - Math.random() * 5,
+      vy: 0,
+      rarity: card.rarity,
+    });
+  });
+  startSandAnim();
+}
+
+function drawSand() {
+  const canvas = $("sand-canvas");
+  const w = canvas.clientWidth  || 300;
+  const h = canvas.clientHeight || 90;
+  if (canvas.width  !== w) canvas.width  = w;
+  if (canvas.height !== h) canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, w, h);
+  const cols = sandColCount();
+  for (let c = 0; c < state.pile.length && c < cols; c++) {
+    const stack = state.pile[c];
+    for (let r = 0; r < stack.length; r++) {
+      const x = c * SAND_CELL + 1;
+      const y = h - (r + 1) * SAND_CELL + 1;
+      ctx.fillStyle = SAND_COLOR[stack[r]] || "#b8b8c8";
+      ctx.beginPath();
+      ctx.arc(x + SAND_GRAIN / 2, y + SAND_GRAIN / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  fallingGrains.forEach(g => {
+    const x = g.col * SAND_CELL + 1;
+    ctx.fillStyle = SAND_COLOR[g.rarity] || "#b8b8c8";
+    ctx.beginPath();
+    ctx.arc(x + SAND_GRAIN / 2, g.y + SAND_GRAIN / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function stepSandAnim() {
+  const canvas = $("sand-canvas");
+  const h = canvas.clientHeight || 90;
+  ensurePileBuckets();
+  fallingGrains = fallingGrains.filter(g => {
+    g.vy = Math.min(g.vy + 0.55, 11);
+    g.y += g.vy;
+    const stackH = (state.pile[g.col] || []).length;
+    const landY = h - (stackH + 1) * SAND_CELL;
+    if (g.y >= landY) {
+      g.y = landY;
+      state.pile[g.col].push(g.rarity);
+      return false;
+    }
+    return true;
+  });
+  drawSand();
+  if (fallingGrains.length > 0) {
+    requestAnimationFrame(stepSandAnim);
+  } else {
+    sandAnimRunning = false;
+  }
+}
+
+function startSandAnim() {
+  if (sandAnimRunning) return;
+  sandAnimRunning = true;
+  requestAnimationFrame(stepSandAnim);
+}
+
+function renderSandPile() {
+  syncPileWithStock();
+  ensurePileBuckets();
+  drawSand();
 }
 
 function renderAll() { renderHeader(); renderVault(); renderCollectionCards(); renderSandPile(); }
@@ -518,6 +622,7 @@ function ripOne() {
   state.packsOpened += 1;
   const pulls = rollPack();
   pulls.forEach(addPull);
+  spawnSandFromPulls(pulls);
   spawnParticles(pulls);
   showHits(pulls);
   renderAll(); save();
@@ -534,6 +639,7 @@ function sellRarity(rarity, foil) {
   const proceeds = qty * price;
   state.coins += proceeds;
   bucket[rarity] = 0;
+  if (!foil) removeGrainsByRarity(rarity);
   renderAll(); save();
   const label = `${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()}${qty > 1 ? "s" : ""}`;
   $("hint").textContent = `Sold ${qty} ${label} for ${usd(proceeds)}.`;
@@ -550,6 +656,7 @@ function sellAll() {
   });
   if (count === 0) return;
   state.coins += total;
+  removeAllBulkGrains();
   renderAll(); save();
   $("hint").textContent = `Sold complete collection — ${count} cards (foils included) for ${usd(total)}.`;
 }
@@ -575,7 +682,7 @@ $("stock-rows").addEventListener("click", (e) => {
 $("reset-btn").addEventListener("click", resetGame);
 setInterval(save, 5000);
 window.addEventListener("beforeunload", save);
-window.addEventListener("resize", renderSandPile);
+window.addEventListener("resize", drawSand);
 renderAll();
 </script>
 
