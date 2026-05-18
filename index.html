@@ -286,7 +286,7 @@
   <div>
     <div id="sort-pile-header">
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
-      <span class="sort-hint">click to sort 3</span>
+      <span class="sort-hint" id="sort-hint">click to sort <span id="sort-range-label"></span></span>
     </div>
     <canvas id="sand-canvas"></canvas>
   </div>
@@ -306,6 +306,13 @@ const RARITY_LABELS  = { common: "COMMON",   uncommon: "UNCOMMON", rare: "RARE",
 const RARITY_COLOURS = { common: "#b8b8c8",  uncommon: "#5ad06a",  rare: "#5aa8ff", mythic: "#ff7a3d" };
 const RARITY_GLYPHS  = { common: "●",        uncommon: "◆",        rare: "★",      mythic: "✦" };
 const SELL_PRICE     = { common: 0.01,       uncommon: 0.25,       rare: 1,        mythic: 10      };
+
+// ---- Sorting -------------------------------------------------------------
+// Tweak these to tune the sorting loop.
+const SORT_MIN            = 1;    // min cards per click
+const SORT_MAX            = 3;    // max cards per click (inclusive)
+const SORT_CRIT_CHANCE    = 0.10; // 10% chance to crit
+const SORT_CRIT_MULTIPLIER = 3;   // crit multiplies sorted count by this
 
 const FOIL_MULTIPLIER = 3;
 // Special slot: 15% chance the slot becomes a foil; foil rarity weighted toward common
@@ -837,10 +844,17 @@ function removeOneGrainByRarity(rarity) {
   }
 }
 
-function sortCards(n = 3) {
+function rollSortAmount() {
+  const base = SORT_MIN + Math.floor(Math.random() * (SORT_MAX - SORT_MIN + 1));
+  const crit = Math.random() < SORT_CRIT_CHANCE;
+  return { amount: crit ? Math.floor(base * SORT_CRIT_MULTIPLIER) : base, crit };
+}
+
+function sortCards() {
   const total = SAND_BULK_RARITIES.reduce((s, r) => s + state.unsorted[r], 0);
   if (total === 0) return;
-  const actual = Math.min(n, total);
+  const { amount, crit } = rollSortAmount();
+  const actual = Math.min(amount, total);
   for (let i = 0; i < actual; i++) {
     const roll = Math.floor(Math.random() * (state.unsorted.common + state.unsorted.uncommon + state.unsorted.rare));
     const rarity = roll < state.unsorted.common ? "common"
@@ -851,7 +865,8 @@ function sortCards(n = 3) {
     removeOneGrainByRarity(rarity);
   }
   renderAll(); save();
-  $("hint").textContent = `Sorted ${actual} card${actual > 1 ? "s" : ""}.`;
+  const tag = crit ? " ✨ CRIT!" : "";
+  $("hint").textContent = `Sorted ${actual} card${actual > 1 ? "s" : ""}.${tag}`;
 }
 
 function removeGrainsByRarity(rarity) {
@@ -1066,7 +1081,8 @@ $("collection-cards").addEventListener("click", (e) => {
   const card = e.target.closest(".mini-card");
   if (card && card.dataset.index !== undefined) sellOne(parseInt(card.dataset.index, 10));
 });
-$("sand-canvas").addEventListener("click", () => sortCards(3));
+$("sand-canvas").addEventListener("click", () => sortCards());
+$("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
 $("reset-btn").addEventListener("click", resetGame);
 setInterval(save, 5000);
 setInterval(tickMarket, MARKET_TICK_MS);
