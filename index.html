@@ -293,7 +293,7 @@ const RARITIES = ["common", "uncommon", "rare", "mythic"];
 const RARITY_LABELS  = { common: "COMMON",   uncommon: "UNCOMMON", rare: "RARE",  mythic: "MYTHIC" };
 const RARITY_COLOURS = { common: "#b8b8c8",  uncommon: "#5ad06a",  rare: "#5aa8ff", mythic: "#ff7a3d" };
 const RARITY_GLYPHS  = { common: "●",        uncommon: "◆",        rare: "★",      mythic: "✦" };
-const SELL_PRICE     = { common: 1,          uncommon: 2,          rare: 4,        mythic: 30      };
+const SELL_PRICE     = { common: 0.01,       uncommon: 0.25,       rare: 1,        mythic: 10      };
 
 const FOIL_MULTIPLIER = 3;
 // Special slot: 15% chance the slot becomes a foil; foil rarity weighted toward common
@@ -306,13 +306,13 @@ const SET_SIZE = 100; // unique cards per rarity
 // Mythics and all foils have per-ID live prices that drift over time.
 // Commons, uncommons, and non-foil rares stay bulk-priced (SELL_PRICE).
 const MARKET_KEYS = ["mythic", "foilCommon", "foilUncommon", "foilRare", "foilMythic"];
-const MARKET_VERSION = 2; // bump to force regeneration when baselines change
+const MARKET_VERSION = 3; // bump to force regeneration when baselines change
 const BASELINE = {
-  mythic:       30,
-  foilCommon:   1,
-  foilUncommon: 3,
-  foilRare:     9,
-  foilMythic:   90,
+  mythic:       10,
+  foilCommon:   0.03,
+  foilUncommon: 0.75,
+  foilRare:     3,
+  foilMythic:   30,
 };
 const FUND_MIN_MULT = 0.4;       // per-card fundamental: 0.4× to 2.6× baseline
 const FUND_RANGE    = 2.2;
@@ -513,9 +513,13 @@ function load() {
   } catch { return null; }
 }
 function save() { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
-function fmt(n) { return Math.floor(n).toLocaleString(); }
+function fmt(n) {
+  if (n < 1) return n.toFixed(2);
+  return Math.floor(n).toLocaleString();
+}
 function usd(n) { return "$" + fmt(n); }
 function compactUsd(n) {
+  if (n < 1) return "$" + n.toFixed(2);
   n = Math.floor(n);
   if (n >= 10000) return "$" + Math.round(n / 1000) + "k";
   if (n >= 1000)  return "$" + (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
@@ -738,7 +742,7 @@ function sellOne(collectionIndex) {
   if (!card) return;
   const mk = marketKey(card.rarity, card.foil);
   if (!mk) return;
-  const price = Math.max(1, Math.floor(state.market[mk][card.id]));
+  const price = Math.max(0.01, Math.round(state.market[mk][card.id] * 100) / 100);
   state.coins += price;
   state.invById[mk][card.id] -= 1;
   if (state.invById[mk][card.id] <= 0) delete state.invById[mk][card.id];
@@ -965,7 +969,7 @@ function sellRarity(rarity, foil) {
   const bucket = foil ? state.stockFoil : state.stock;
   const qty    = bucket[rarity];
   if (qty === 0) return;
-  const proceeds = Math.floor(inventoryValue(rarity, foil));
+  const proceeds = Math.round(inventoryValue(rarity, foil) * 100) / 100;
   state.coins += proceeds;
   bucket[rarity] = 0;
   const mk = marketKey(rarity, foil);
