@@ -101,17 +101,32 @@
   }
 
   #collection-cards {
-    display: flex; flex-wrap: wrap; gap: 3px; align-content: flex-start;
-    max-height: 70px; overflow-y: auto;
-    background: rgba(0,0,0,0.18); border-radius: 6px; padding: 4px;
+    display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start;
+    max-height: 140px; overflow-y: auto;
+    background: rgba(0,0,0,0.18); border-radius: 6px; padding: 5px;
   }
   #collection-cards:empty::before {
     content: "No mythics or foils yet.";
     color: var(--muted); font-size: 0.75rem; font-style: italic;
   }
   .mini-card {
-    width: 13px; height: 19px; border-radius: 2px; border: 1.5px solid;
+    width: 26px; height: 38px; border-radius: 3px; border: 1.5px solid;
     background: var(--panel-light); flex-shrink: 0;
+    position: relative; cursor: pointer;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding: 1px;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .mini-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.55);
+    z-index: 5;
+  }
+  .mini-card .card-price {
+    font-size: 8px; font-weight: bold; color: #fff;
+    background: rgba(0,0,0,0.78);
+    padding: 1px 2px; border-radius: 2px; line-height: 1;
+    width: 100%; text-align: center;
   }
   .mini-card.foil-card {
     background: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3);
@@ -125,7 +140,10 @@
   .mini-card.foil-mythic   {
     border-color: var(--mythic);
     box-shadow: 0 0 9px rgba(255,122,61,0.9);
-    width: 16px; height: 22px;
+    width: 32px; height: 44px;
+  }
+  .collection-overflow {
+    font-size: 0.7rem; color: var(--muted); align-self: center; padding: 0 6px;
   }
   @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
 
@@ -191,6 +209,7 @@
   .counts .foil-line { background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 4px; }
   .counts .sell-price { font-size: 0.65rem; color: var(--gold); }
   .sell-stack { display: flex; flex-direction: column; gap: 6px; }
+  .sell-stack-note { color: var(--muted); font-size: 0.7rem; font-style: italic; text-align: right; }
   .sell-btn {
     background: transparent; color: var(--gold); border: 1px solid var(--gold);
     border-radius: 6px; padding: 7px 12px; cursor: pointer; font-family: inherit;
@@ -348,6 +367,7 @@ const defaultState = () => ({
   setsCelebrated:     { common: false, uncommon: false, rare: false, mythic: false },
   setsCelebratedFoil: { common: false, uncommon: false, rare: false, mythic: false },
   invById:     emptyInvById(),
+  collection:  [],     // ordered list of {rarity, foil, id} for priced cards
   market:      null, // {key: [101-entry array of live prices]}, populated by initMarket
   marketFund:  null, // same shape, fundamental values
 });
@@ -393,6 +413,7 @@ function tickMarket() {
     }
   });
   renderVault();
+  renderCollectionCards();
 }
 
 function inventoryValue(rarity, foil) {
@@ -478,12 +499,39 @@ function load() {
       });
       parsed.invById = inv;
     }
+    if (!Array.isArray(parsed.collection)) {
+      // Rebuild ordered collection from invById (order is arbitrary for legacy saves)
+      parsed.collection = [];
+      MARKET_KEYS.forEach(mk => {
+        const meta = rarityFromMarketKey(mk);
+        if (!meta) return;
+        Object.entries(parsed.invById[mk] || {}).forEach(([id, count]) => {
+          for (let i = 0; i < count; i++) {
+            parsed.collection.push({ rarity: meta.rarity, foil: meta.foil, id: parseInt(id, 10) });
+          }
+        });
+      });
+    }
     return parsed;
   } catch { return null; }
 }
 function save() { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
 function fmt(n) { return Math.floor(n).toLocaleString(); }
 function usd(n) { return "$" + fmt(n); }
+function compactUsd(n) {
+  n = Math.floor(n);
+  if (n >= 10000) return "$" + Math.round(n / 1000) + "k";
+  if (n >= 1000)  return "$" + (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  return "$" + n;
+}
+function rarityFromMarketKey(k) {
+  if (k === "mythic")       return { rarity: "mythic",   foil: false };
+  if (k === "foilCommon")   return { rarity: "common",   foil: true  };
+  if (k === "foilUncommon") return { rarity: "uncommon", foil: true  };
+  if (k === "foilRare")     return { rarity: "rare",     foil: true  };
+  if (k === "foilMythic")   return { rarity: "mythic",   foil: true  };
+  return null;
+}
 
 // ---- Pulls ---------------------------------------------------------------
 function rollRareMythicSlot() {
@@ -522,6 +570,7 @@ function addPull(card) {
   const mk = marketKey(card.rarity, card.foil);
   if (mk) {
     state.invById[mk][card.id] = (state.invById[mk][card.id] || 0) + 1;
+    state.collection.push({ rarity: card.rarity, foil: card.foil, id: card.id });
   }
   const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
   if (!ownedList.includes(card.id)) {
@@ -571,7 +620,6 @@ function renderVault() {
     const opened    = state.opened[rarity];
     const openedF   = state.openedFoil[rarity];
     const normalProceeds = inventoryValue(rarity, false);
-    const foilProceeds   = inventoryValue(rarity, true);
     const isPriced     = !!marketKey(rarity, false);
     const isPricedFoil = !!marketKey(rarity, true);
     const priceLabel     = isPriced
@@ -580,6 +628,11 @@ function renderVault() {
     const priceLabelFoil = isPricedFoil
       ? (stockF > 0 ? `~${usd(inventoryAvgPrice(rarity, true))} avg`  : "market")
       : `@ ${usd(foilPrice(rarity))}`;
+    const sellStack = isPriced
+      ? `<span class="sell-stack-note">sold via strip ↑</span>`
+      : `<button class="sell-btn" data-rarity="${rarity}" data-foil="0" ${stock === 0 ? "disabled" : ""}>
+           ${stock === 0 ? "—" : `SELL ${stock} → ${usd(normalProceeds)}`}
+         </button>`;
     const row = document.createElement("div");
     row.className = `stock-row ${rarity}`;
     row.innerHTML = `
@@ -590,14 +643,7 @@ function renderVault() {
           ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">${priceLabelFoil}</span></span>`
           : ""}
       </div>
-      <div class="sell-stack">
-        <button class="sell-btn" data-rarity="${rarity}" data-foil="0" ${stock === 0 ? "disabled" : ""}>
-          ${stock === 0 ? "—" : `SELL ${stock} → ${usd(normalProceeds)}`}
-        </button>
-        ${stockF > 0
-          ? `<button class="sell-btn foil" data-rarity="${rarity}" data-foil="1">SELL ✨${stockF} → ${usd(foilProceeds)}</button>`
-          : ""}
-      </div>`;
+      <div class="sell-stack">${sellStack}</div>`;
     grid.appendChild(row);
   });
   let totalCount = 0, totalValue = 0;
@@ -675,26 +721,44 @@ function showHits(pulls, meta = {}) {
 function renderCollectionCards() {
   const container = $("collection-cards");
   container.innerHTML = "";
-  const items = [
-    ...Array(state.stock.mythic).fill({ rarity: "mythic", foil: false }),
-    ...Array(state.stockFoil.common).fill({ rarity: "common",   foil: true }),
-    ...Array(state.stockFoil.uncommon).fill({ rarity: "uncommon", foil: true }),
-    ...Array(state.stockFoil.rare).fill({ rarity: "rare",     foil: true }),
-    ...Array(state.stockFoil.mythic).fill({ rarity: "mythic",  foil: true }),
-  ];
+  const total = state.collection.length;
   const MAX = 250;
-  items.slice(0, MAX).forEach(item => {
-    const el = document.createElement("div");
-    el.className = item.foil ? `mini-card foil-card foil-${item.rarity}` : "mini-card";
-    if (!item.foil) el.style.borderColor = RARITY_COLOURS[item.rarity];
-    container.appendChild(el);
-  });
-  if (items.length > MAX) {
+  const visible = total > MAX ? state.collection.slice(-MAX) : state.collection;
+  const offset = total - visible.length;
+  if (offset > 0) {
     const more = document.createElement("span");
-    more.style.cssText = "font-size:0.7rem;color:var(--muted);align-self:center;";
-    more.textContent = `+${items.length - MAX} more`;
+    more.className = "collection-overflow";
+    more.textContent = `+${offset} older`;
     container.appendChild(more);
   }
+  visible.forEach((card, i) => {
+    const realIndex = offset + i;
+    const mk = marketKey(card.rarity, card.foil);
+    const price = mk ? state.market[mk][card.id] : 0;
+    const el = document.createElement("div");
+    el.className = "mini-card" + (card.foil ? ` foil-card foil-${card.rarity}` : "");
+    if (!card.foil) el.style.borderColor = RARITY_COLOURS[card.rarity];
+    el.dataset.index = realIndex;
+    el.title = `${card.foil ? "Foil " : ""}${RARITY_LABELS[card.rarity]} #${card.id} — ${usd(price)}\nClick to sell`;
+    el.innerHTML = `<span class="card-price">${compactUsd(price)}</span>`;
+    container.appendChild(el);
+  });
+}
+
+function sellOne(collectionIndex) {
+  const card = state.collection[collectionIndex];
+  if (!card) return;
+  const mk = marketKey(card.rarity, card.foil);
+  if (!mk) return;
+  const price = Math.floor(state.market[mk][card.id]);
+  state.coins += price;
+  state.invById[mk][card.id] -= 1;
+  if (state.invById[mk][card.id] <= 0) delete state.invById[mk][card.id];
+  if (card.foil) state.stockFoil[card.rarity] -= 1;
+  else           state.stock[card.rarity]     -= 1;
+  state.collection.splice(collectionIndex, 1);
+  renderAll(); save();
+  $("hint").textContent = `Sold ${card.foil ? "foil " : ""}${RARITY_LABELS[card.rarity].toLowerCase()} #${card.id} for ${usd(price)}.`;
 }
 
 // ---- Sand simulation -----------------------------------------------------
@@ -917,7 +981,10 @@ function sellRarity(rarity, foil) {
   state.coins += proceeds;
   bucket[rarity] = 0;
   const mk = marketKey(rarity, foil);
-  if (mk) state.invById[mk] = {};
+  if (mk) {
+    state.invById[mk] = {};
+    state.collection = state.collection.filter(c => !(c.rarity === rarity && c.foil === foil));
+  }
   if (!foil) removeGrainsByRarity(rarity);
   renderAll(); save();
   const label = `${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()}${qty > 1 ? "s" : ""}`;
@@ -935,6 +1002,7 @@ function sellAll() {
   if (count === 0) return;
   state.coins += Math.floor(total);
   state.invById = emptyInvById();
+  state.collection = [];
   removeAllBulkGrains();
   renderAll(); save();
   $("hint").textContent = `Sold complete collection — ${count} cards (foils included) for ${usd(total)}.`;
@@ -957,6 +1025,10 @@ $("sell-all").addEventListener("click", sellAll);
 $("stock-rows").addEventListener("click", (e) => {
   const btn = e.target.closest(".sell-btn");
   if (btn && btn.dataset.rarity) sellRarity(btn.dataset.rarity, btn.dataset.foil === "1");
+});
+$("collection-cards").addEventListener("click", (e) => {
+  const card = e.target.closest(".mini-card");
+  if (card && card.dataset.index !== undefined) sellOne(parseInt(card.dataset.index, 10));
 });
 $("reset-btn").addEventListener("click", resetGame);
 setInterval(save, 5000);
