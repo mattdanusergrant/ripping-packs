@@ -225,15 +225,6 @@
   }
   .sell-btn.foil:hover:not(:disabled) { filter: brightness(1.1); }
 
-  .sell-all-btn {
-    background: var(--gold); color: #111; border: none;
-    border-radius: 8px; padding: 14px; cursor: pointer; font-family: inherit;
-    font-weight: bold; letter-spacing: 1px; font-size: 0.95rem;
-    transition: all 0.15s;
-  }
-  .sell-all-btn:hover:not(:disabled) { background: #fcd968; transform: translateY(-1px); }
-  .sell-all-btn:disabled { opacity: 0.35; cursor: not-allowed; background: var(--panel-light); color: var(--muted); }
-
   footer { grid-column: 1 / 3; text-align: center; color: var(--muted); font-size: 0.75rem; padding: 4px; }
   button.reset { background: transparent; color: var(--muted); border: 1px solid var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.75rem; }
   button.reset:hover { color: var(--ink); border-color: var(--ink); }
@@ -292,7 +283,6 @@
 <section id="vault">
   <h2>VAULT</h2>
   <div id="stock-rows"></div>
-  <button id="sell-all" class="sell-all-btn" disabled>SELL COMPLETE COLLECTION</button>
 </section>
 
 <footer>15 cards/pack — 10C · 3U · 1R/M · 1 special (85% common, 15% foil). Foil 3× sell value.</footer>
@@ -646,15 +636,6 @@ function renderVault() {
       <div class="sell-stack">${sellStack}</div>`;
     grid.appendChild(row);
   });
-  let totalCount = 0, totalValue = 0;
-  RARITIES.forEach(r => {
-    totalCount += state.stock[r] + state.stockFoil[r];
-    totalValue += inventoryValue(r, false) + inventoryValue(r, true);
-  });
-  $("sell-all").disabled = totalCount === 0;
-  $("sell-all").textContent = totalCount === 0
-    ? "SELL COMPLETE COLLECTION"
-    : `SELL COMPLETE COLLECTION  ·  ${totalCount} cards → ${usd(totalValue)}`;
 }
 
 function spawnParticles(pulls) {
@@ -991,23 +972,6 @@ function sellRarity(rarity, foil) {
   $("hint").textContent = `Sold ${qty} ${label} for ${usd(proceeds)}.`;
 }
 
-function sellAll() {
-  let total = 0, count = 0;
-  RARITIES.forEach(r => {
-    total += inventoryValue(r, false) + inventoryValue(r, true);
-    count += state.stock[r] + state.stockFoil[r];
-    state.stock[r] = 0;
-    state.stockFoil[r] = 0;
-  });
-  if (count === 0) return;
-  state.coins += Math.floor(total);
-  state.invById = emptyInvById();
-  state.collection = [];
-  removeAllBulkGrains();
-  renderAll(); save();
-  $("hint").textContent = `Sold complete collection — ${count} cards (foils included) for ${usd(total)}.`;
-}
-
 function resetGame() {
   if (!confirm("Wipe everything and start over?")) return;
   state = defaultState();
@@ -1021,7 +985,6 @@ $("pack").addEventListener("click", ripOne);
 $("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
 $("buy-box").addEventListener("click",  () => buyPacks(BOX_SIZE,  boxCost(),  "a box (36 packs)"));
 $("buy-case").addEventListener("click", () => buyPacks(CASE_SIZE, caseCost(), "a case (216 packs)"));
-$("sell-all").addEventListener("click", sellAll);
 $("stock-rows").addEventListener("click", (e) => {
   const btn = e.target.closest(".sell-btn");
   if (btn && btn.dataset.rarity) sellRarity(btn.dataset.rarity, btn.dataset.foil === "1");
