@@ -313,6 +313,7 @@ const SORT_MIN            = 1;    // min cards per click
 const SORT_MAX            = 3;    // max cards per click (inclusive)
 const SORT_CRIT_CHANCE    = 0.10; // 10% chance to crit
 const SORT_CRIT_MULTIPLIER = 3;   // crit multiplies sorted count by this
+const UNSORTED_CAPACITY    = 500; // hard cap on unsorted bulk cards
 
 const FOIL_MULTIPLIER = 3;
 // Special slot: 15% chance the slot becomes a foil; foil rarity weighted toward common
@@ -643,7 +644,7 @@ function renderHeader() {
   $("buy-box").disabled  = state.coins < boxCost();
   $("buy-case").disabled = state.coins < caseCost();
   const pack = $("pack");
-  if (state.packSupply < 1) pack.classList.add("disabled");
+  if (!canRip()) pack.classList.add("disabled");
   else pack.classList.remove("disabled");
 }
 
@@ -967,9 +968,12 @@ function startSandAnim() {
 
 function renderSandPile() {
   syncPileWithStock();
-  const unsortedCount = SAND_BULK_RARITIES.reduce((s, r) => s + state.unsorted[r], 0);
+  const unsortedCount = unsortedTotal();
   const el = $("unsorted-total");
-  if (el) el.textContent = unsortedCount + (unsortedCount === 1 ? " card" : " cards");
+  if (el) {
+    el.textContent = `${unsortedCount} / ${UNSORTED_CAPACITY}`;
+    el.style.color = unsortedCount >= UNSORTED_CAPACITY ? "#ff7a3d" : "";
+  }
   ensurePileBuckets();
   drawSand();
 }
@@ -1029,9 +1033,20 @@ function buyPacks(qty, totalCost, label) {
   $("hint").textContent = `Bought ${label}. Supply: ${state.packSupply}.`;
 }
 
+function unsortedTotal() {
+  return SAND_BULK_RARITIES.reduce((s, r) => s + state.unsorted[r], 0);
+}
+function canRip() {
+  return state.packSupply > 0 && unsortedTotal() < UNSORTED_CAPACITY;
+}
+
 function ripOne() {
   if (state.packSupply < 1) {
     $("hint").textContent = "No packs in supply. Buy one above.";
+    return;
+  }
+  if (unsortedTotal() >= UNSORTED_CAPACITY) {
+    $("hint").textContent = `Unsorted pile full (${UNSORTED_CAPACITY}). Sort some cards first.`;
     return;
   }
   state.packSupply -= 1;
