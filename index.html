@@ -293,6 +293,37 @@ const FOIL_RARITY_WEIGHTS = { common: 0.60, uncommon: 0.25, rare: 0.12, mythic: 
 
 const SET_SIZE = 100; // unique cards per rarity
 
+// ---- Market -------------------------------------------------------------
+// Mythics and all foils have per-ID live prices that drift over time.
+// Commons, uncommons, and non-foil rares stay bulk-priced (SELL_PRICE).
+const MARKET_KEYS = ["mythic", "foilCommon", "foilUncommon", "foilRare", "foilMythic"];
+const BASELINE = {
+  mythic:       500,
+  foilCommon:   3,
+  foilUncommon: 15,
+  foilRare:     150,
+  foilMythic:   1500,
+};
+const FUND_MIN_MULT = 0.4;       // per-card fundamental: 0.4× to 2.6× baseline
+const FUND_RANGE    = 2.2;
+const TICK_VOLATILITY = 0.05;    // ± 5% per tick noise
+const TICK_REVERT     = 0.07;    // pull 7% toward fundamental per tick
+const TICK_FUND_DRIFT = 0.005;   // fundamental itself wanders ± 0.5% per tick
+const PRICE_FLOOR_RATIO = 0.12;  // never below 12% of fundamental
+const PRICE_CEIL_RATIO  = 7;     // cap at 7× fundamental
+const MARKET_TICK_MS = 7000;
+
+function marketKey(rarity, foil) {
+  if (!foil && rarity === "mythic") return "mythic";
+  if (foil) {
+    if (rarity === "common")   return "foilCommon";
+    if (rarity === "uncommon") return "foilUncommon";
+    if (rarity === "rare")     return "foilRare";
+    if (rarity === "mythic")   return "foilMythic";
+  }
+  return null;
+}
+
 const PACK_COST = 4;
 const BOX_COST  = 125;
 const CASE_COST = 700;
@@ -316,7 +347,82 @@ const defaultState = () => ({
   ownedFoil: { common: [], uncommon: [], rare: [], mythic: [] },
   setsCelebrated:     { common: false, uncommon: false, rare: false, mythic: false },
   setsCelebratedFoil: { common: false, uncommon: false, rare: false, mythic: false },
+  invById:     emptyInvById(),
+  market:      null, // {key: [101-entry array of live prices]}, populated by initMarket
+  marketFund:  null, // same shape, fundamental values
 });
+
+function emptyInvById() {
+  const o = {};
+  MARKET_KEYS.forEach(k => { o[k] = {}; });
+  return o;
+}
+
+function initMarket() {
+  state.market     = {};
+  state.marketFund = {};
+  MARKET_KEYS.forEach(k => {
+    const baseline = BASELINE[k];
+    const fund = [0]; // index 0 unused
+    const live = [0];
+    for (let i = 1; i <= SET_SIZE; i++) {
+      const f = baseline * (FUND_MIN_MULT + Math.random() * FUND_RANGE);
+      fund.push(f);
+      live.push(f);
+    }
+    state.marketFund[k] = fund;
+    state.market[k]     = live;
+  });
+}
+
+function tickMarket() {
+  if (!state.market) return;
+  MARKET_KEYS.forEach(k => {
+    const live = state.market[k];
+    const fund = state.marketFund[k];
+    for (let i = 1; i <= SET_SIZE; i++) {
+      // Slowly drift the fundamental too
+      fund[i] *= 1 + (Math.random() - 0.5) * 2 * TICK_FUND_DRIFT;
+      const f = fund[i];
+      const noise = (Math.random() - 0.5) * 2 * TICK_VOLATILITY;
+      const revert = ((f - live[i]) / f) * TICK_REVERT;
+      let p = live[i] * (1 + noise + revert);
+      p = Math.max(p, f * PRICE_FLOOR_RATIO);
+      p = Math.min(p, f * PRICE_CEIL_RATIO);
+      live[i] = p;
+    }
+  });
+  renderVault();
+}
+
+function inventoryValue(rarity, foil) {
+  const mk = marketKey(rarity, foil);
+  if (!mk) {
+    const bucket = foil ? state.stockFoil : state.stock;
+    const price = foil ? foilPrice(rarity) : SELL_PRICE[rarity];
+    return bucket[rarity] * price;
+  }
+  const inv = state.invById[mk];
+  const prices = state.market[mk];
+  let total = 0;
+  for (const id in inv) {
+    total += inv[id] * prices[id];
+  }
+  return total;
+}
+
+function inventoryAvgPrice(rarity, foil) {
+  const mk = marketKey(rarity, foil);
+  if (!mk) return foil ? foilPrice(rarity) : SELL_PRICE[rarity];
+  const inv = state.invById[mk];
+  const prices = state.market[mk];
+  let total = 0, count = 0;
+  for (const id in inv) {
+    total += inv[id] * prices[id];
+    count += inv[id];
+  }
+  return count === 0 ? 0 : total / count;
+}
 
 function pickRandomIds(n) {
   const all = [];
@@ -328,6 +434,7 @@ function pickRandomIds(n) {
   return all.slice(0, Math.min(n, SET_SIZE)).sort((a, b) => a - b);
 }
 let state = load() || defaultState();
+if (!state.market) initMarket();
 
 function load() {
   try {
@@ -352,6 +459,24 @@ function load() {
         if (parsed.owned[r].length     >= SET_SIZE) parsed.setsCelebrated[r]     = true;
         if (parsed.ownedFoil[r].length >= SET_SIZE) parsed.setsCelebratedFoil[r] = true;
       });
+    }
+    if (!parsed.invById) {
+      // Legacy: distribute existing stock counts randomly across IDs.
+      const inv = {};
+      MARKET_KEYS.forEach(k => { inv[k] = {}; });
+      for (let i = 0; i < (parsed.stock.mythic || 0); i++) {
+        const id = Math.floor(Math.random() * SET_SIZE) + 1;
+        inv.mythic[id] = (inv.mythic[id] || 0) + 1;
+      }
+      ["common", "uncommon", "rare", "mythic"].forEach(r => {
+        const mk = marketKey(r, true);
+        if (!mk) return;
+        for (let i = 0; i < (parsed.stockFoil[r] || 0); i++) {
+          const id = Math.floor(Math.random() * SET_SIZE) + 1;
+          inv[mk][id] = (inv[mk][id] || 0) + 1;
+        }
+      });
+      parsed.invById = inv;
     }
     return parsed;
   } catch { return null; }
@@ -393,6 +518,10 @@ function addPull(card) {
   } else {
     state.stock[card.rarity]  += 1;
     state.opened[card.rarity] += 1;
+  }
+  const mk = marketKey(card.rarity, card.foil);
+  if (mk) {
+    state.invById[mk][card.id] = (state.invById[mk][card.id] || 0) + 1;
   }
   const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
   if (!ownedList.includes(card.id)) {
@@ -441,16 +570,24 @@ function renderVault() {
     const stockF    = state.stockFoil[rarity];
     const opened    = state.opened[rarity];
     const openedF   = state.openedFoil[rarity];
-    const normalProceeds = stock  * SELL_PRICE[rarity];
-    const foilProceeds   = stockF * foilPrice(rarity);
+    const normalProceeds = inventoryValue(rarity, false);
+    const foilProceeds   = inventoryValue(rarity, true);
+    const isPriced     = !!marketKey(rarity, false);
+    const isPricedFoil = !!marketKey(rarity, true);
+    const priceLabel     = isPriced
+      ? (stock  > 0 ? `~${usd(inventoryAvgPrice(rarity, false))} avg` : "market")
+      : `@ ${usd(SELL_PRICE[rarity])}`;
+    const priceLabelFoil = isPricedFoil
+      ? (stockF > 0 ? `~${usd(inventoryAvgPrice(rarity, true))} avg`  : "market")
+      : `@ ${usd(foilPrice(rarity))}`;
     const row = document.createElement("div");
     row.className = `stock-row ${rarity}`;
     row.innerHTML = `
       <div class="rarity-name" style="color:${RARITY_COLOURS[rarity]}">${RARITY_GLYPHS[rarity]} ${RARITY_LABELS[rarity]}</div>
       <div class="counts">
-        <span>Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">@ ${usd(SELL_PRICE[rarity])}</span></span>
+        <span>Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span></span>
         ${(stockF + openedF) > 0
-          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">@ ${usd(foilPrice(rarity))}</span></span>`
+          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">${priceLabelFoil}</span></span>`
           : ""}
       </div>
       <div class="sell-stack">
@@ -466,7 +603,7 @@ function renderVault() {
   let totalCount = 0, totalValue = 0;
   RARITIES.forEach(r => {
     totalCount += state.stock[r] + state.stockFoil[r];
-    totalValue += state.stock[r] * SELL_PRICE[r] + state.stockFoil[r] * foilPrice(r);
+    totalValue += inventoryValue(r, false) + inventoryValue(r, true);
   });
   $("sell-all").disabled = totalCount === 0;
   $("sell-all").textContent = totalCount === 0
@@ -774,12 +911,13 @@ function ripOne() {
 
 function sellRarity(rarity, foil) {
   const bucket = foil ? state.stockFoil : state.stock;
-  const price  = foil ? foilPrice(rarity) : SELL_PRICE[rarity];
   const qty    = bucket[rarity];
   if (qty === 0) return;
-  const proceeds = qty * price;
+  const proceeds = Math.floor(inventoryValue(rarity, foil));
   state.coins += proceeds;
   bucket[rarity] = 0;
+  const mk = marketKey(rarity, foil);
+  if (mk) state.invById[mk] = {};
   if (!foil) removeGrainsByRarity(rarity);
   renderAll(); save();
   const label = `${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()}${qty > 1 ? "s" : ""}`;
@@ -789,14 +927,14 @@ function sellRarity(rarity, foil) {
 function sellAll() {
   let total = 0, count = 0;
   RARITIES.forEach(r => {
-    total += state.stock[r]     * SELL_PRICE[r];
-    total += state.stockFoil[r] * foilPrice(r);
+    total += inventoryValue(r, false) + inventoryValue(r, true);
     count += state.stock[r] + state.stockFoil[r];
     state.stock[r] = 0;
     state.stockFoil[r] = 0;
   });
   if (count === 0) return;
-  state.coins += total;
+  state.coins += Math.floor(total);
+  state.invById = emptyInvById();
   removeAllBulkGrains();
   renderAll(); save();
   $("hint").textContent = `Sold complete collection — ${count} cards (foils included) for ${usd(total)}.`;
@@ -822,6 +960,7 @@ $("stock-rows").addEventListener("click", (e) => {
 });
 $("reset-btn").addEventListener("click", resetGame);
 setInterval(save, 5000);
+setInterval(tickMarket, MARKET_TICK_MS);
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", drawSand);
 renderAll();
