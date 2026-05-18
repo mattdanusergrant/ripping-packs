@@ -835,8 +835,19 @@ function removeOneGrainByRarity(rarity) {
   // Prefer removing a still-falling grain so settled pile stays intact longer
   const fi = fallingGrains.findIndex(g => g.rarity === rarity);
   if (fi !== -1) { fallingGrains.splice(fi, 1); return; }
-  // Fall back to removing the topmost settled grain of this rarity
-  for (let c = state.pile.length - 1; c >= 0; c--) {
+  // Walk columns tallest-first; pluck from the top of the first column
+  // whose top grain matches. Falls back to digging the tallest column.
+  const ordered = state.pile
+    .map((col, c) => ({ c, h: col.length }))
+    .sort((a, b) => b.h - a.h);
+  for (const { c } of ordered) {
+    const col = state.pile[c];
+    if (col.length > 0 && col[col.length - 1] === rarity) {
+      col.pop();
+      return;
+    }
+  }
+  for (const { c } of ordered) {
     const col = state.pile[c];
     for (let r = col.length - 1; r >= 0; r--) {
       if (col[r] === rarity) { col.splice(r, 1); return; }
