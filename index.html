@@ -297,7 +297,7 @@
   <div id="stock-rows"></div>
 </section>
 
-<footer>15 cards/pack — 10C · 3U · 1R/M · 1 special (85% common, 15% foil). Foil 3× sell value.</footer>
+<footer>10 cards/pack — 5C · 3U · 1R/M · 1 special (85% common, 15% foil). Foil 3× sell value.</footer>
 
 <script>
 // ---- Config --------------------------------------------------------------
@@ -584,9 +584,9 @@ function rollSpecialSlot() {
 }
 function randomCardId() { return Math.floor(Math.random() * SET_SIZE) + 1; }
 function rollPack() {
-  // 10 commons, 3 uncommons, 1 rare/mythic, 1 special (common or foil)
+  // 5 commons, 3 uncommons, 1 rare/mythic, 1 special (common or foil)
   const cards = [];
-  for (let i = 0; i < 10; i++) cards.push({ rarity: "common",   foil: false });
+  for (let i = 0; i < 5; i++) cards.push({ rarity: "common",   foil: false });
   for (let i = 0; i <  3; i++) cards.push({ rarity: "uncommon", foil: false });
   cards.push({ rarity: rollRareMythicSlot(), foil: false });
   cards.push(rollSpecialSlot());
