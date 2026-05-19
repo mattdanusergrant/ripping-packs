@@ -760,7 +760,7 @@ function renderHeader() {
 function renderVault() {
   const grid = $("stock-rows");
   grid.innerHTML = "";
-  RARITIES.forEach(rarity => {
+  [...RARITIES].reverse().forEach(rarity => {
     const stock     = state.stock[rarity];
     const unsorted  = state.unsorted ? (state.unsorted[rarity] || 0) : 0;
     const stockF    = state.stockFoil[rarity];
@@ -870,8 +870,8 @@ function renderVaultGrid() {
   title.textContent = "COLLECTION · SERIES I";
   wrap.appendChild(title);
 
-  // For each rarity, render a regular row then a foil row.
-  RARITIES.forEach(rarity => {
+  // For each rarity (highest first), render a regular row then a foil row.
+  [...RARITIES].reverse().forEach(rarity => {
     [false, true].forEach(foil => {
       const setSize = SET_SIZES[rarity];
       const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
