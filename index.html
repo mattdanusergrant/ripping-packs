@@ -785,10 +785,10 @@ function renderVault() {
     row.innerHTML = `
       <div class="rarity-name" style="color:${RARITY_COLOURS[rarity]}">${RARITY_GLYPHS[rarity]} ${RARITY_LABELS[rarity]}</div>
       <div class="counts">
-        <span>${SAND_BULK_RARITIES.includes(rarity) ? `Sorted: <b>${stock}</b> · Unsorted: <b>${unsorted}</b>` : `Stock: <b>${stock}</b>`} · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span></span>
         ${(stockF + openedF) > 0
           ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">${priceLabelFoil}</span></span>`
           : ""}
+        <span>${SAND_BULK_RARITIES.includes(rarity) ? `Sorted: <b>${stock}</b> · Unsorted: <b>${unsorted}</b>` : `Stock: <b>${stock}</b>`} · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span></span>
       </div>
       <div class="sell-stack">${sellStack}</div>`;
     grid.appendChild(row);
@@ -870,9 +870,9 @@ function renderVaultGrid() {
   title.textContent = "COLLECTION · SERIES I";
   wrap.appendChild(title);
 
-  // For each rarity (highest first), render a regular row then a foil row.
+  // For each rarity (highest first), render the foil row then the regular row.
   [...RARITIES].reverse().forEach(rarity => {
-    [false, true].forEach(foil => {
+    [true, false].forEach(foil => {
       const setSize = SET_SIZES[rarity];
       const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
       const ownedSet = new Set(ownedList);
