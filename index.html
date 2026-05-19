@@ -318,7 +318,7 @@
   <div id="stock-rows"></div>
 </section>
 
-<footer>10 cards/pack — 5C · 3U · 1R/M · 1 special (85% common, 15% foil). Foil 3× sell value.</footer>
+<footer>10 cards/pack — 5C · 3U · 1R/M · 1 special (85% common, 15% foil). Foil 10× sell value.</footer>
 
 <script>
 // ---- Config --------------------------------------------------------------
@@ -326,7 +326,7 @@ const RARITIES = ["common", "uncommon", "rare", "mythic"];
 const RARITY_LABELS  = { common: "COMMON",   uncommon: "UNCOMMON", rare: "RARE",  mythic: "MYTHIC" };
 const RARITY_COLOURS = { common: "#b8b8c8",  uncommon: "#5ad06a",  rare: "#5aa8ff", mythic: "#ff7a3d" };
 const RARITY_GLYPHS  = { common: "●",        uncommon: "◆",        rare: "★",      mythic: "✦" };
-const SELL_PRICE     = { common: 0.01,       uncommon: 0.25,       rare: 1,        mythic: 10      };
+const SELL_PRICE     = { common: 0.10,       uncommon: 0.30,       rare: 1,        mythic: 10      };
 
 // ---- Sorting -------------------------------------------------------------
 // Tweak these to tune the sorting loop.
@@ -336,24 +336,40 @@ const SORT_CRIT_CHANCE    = 0.10; // 10% chance to crit
 const SORT_CRIT_MULTIPLIER = 3;   // crit multiplies sorted count by this
 const UNSORTED_CAPACITY    = 500; // hard cap on unsorted bulk cards
 
-const FOIL_MULTIPLIER = 3;
+const FOIL_MULTIPLIER = 10;
 // Special slot: 15% chance the slot becomes a foil; foil rarity weighted toward common
 const FOIL_SLOT_CHANCE = 0.15;
 const FOIL_RARITY_WEIGHTS = { common: 0.60, uncommon: 0.25, rare: 0.12, mythic: 0.03 };
 
-const SET_SIZE = 100; // unique cards per rarity
+// ---- Set / identity -----------------------------------------------------
+// Composite card IDs bake in GAME, SET, and CARD numbers so additional games
+// and sets can be added without colliding with existing data.
+const GAME_ID = 1;
+const SET_ID  = 1;
+const SET_SIZES = { common: 100, uncommon: 80, rare: 50, mythic: 20 };
+// Card numbers are globally unique within a set, across rarities.
+const CARD_NUMBER_OFFSETS = { common: 0, uncommon: 100, rare: 180, mythic: 230 };
+const TOTAL_SET_CARDS = 250;
+const SET_VERSION = 2; // bump when SET_SIZES change so old saves get migrated
+
+function cardFullId(rarity, idx, game, set) {
+  const g = game ?? GAME_ID;
+  const s = set  ?? SET_ID;
+  const n = CARD_NUMBER_OFFSETS[rarity] + idx;
+  return `G${g}-S${s}-C${String(n).padStart(3, "0")}`;
+}
 
 // ---- Market -------------------------------------------------------------
 // Mythics and all foils have per-ID live prices that drift over time.
 // Commons, uncommons, and non-foil rares stay bulk-priced (SELL_PRICE).
 const MARKET_KEYS = ["mythic", "foilCommon", "foilUncommon", "foilRare", "foilMythic"];
-const MARKET_VERSION = 3; // bump to force regeneration when baselines change
+const MARKET_VERSION = 5; // bump to force regeneration when baselines change
 const BASELINE = {
   mythic:       10,
-  foilCommon:   0.03,
-  foilUncommon: 0.75,
-  foilRare:     3,
-  foilMythic:   30,
+  foilCommon:   1,
+  foilUncommon: 3,
+  foilRare:     10,
+  foilMythic:   100,
 };
 const FUND_MIN_MULT = 0.4;       // per-card fundamental: 0.4× to 2.6× baseline
 const FUND_RANGE    = 2.2;
@@ -404,6 +420,7 @@ const defaultState = () => ({
   market:      null, // {key: [101-entry array of live prices]}, populated by initMarket
   marketFund:  null, // same shape, fundamental values
   marketVersion: MARKET_VERSION,
+  setVersion: SET_VERSION,
 });
 
 function emptyInvById() {
@@ -412,14 +429,20 @@ function emptyInvById() {
   return o;
 }
 
+function marketKeySize(k) {
+  const meta = rarityFromMarketKey(k);
+  return meta ? SET_SIZES[meta.rarity] : 0;
+}
+
 function initMarket() {
   state.market     = {};
   state.marketFund = {};
   MARKET_KEYS.forEach(k => {
     const baseline = BASELINE[k];
+    const size = marketKeySize(k);
     const fund = [0]; // index 0 unused
     const live = [0];
-    for (let i = 1; i <= SET_SIZE; i++) {
+    for (let i = 1; i <= size; i++) {
       const f = baseline * (FUND_MIN_MULT + Math.random() * FUND_RANGE);
       fund.push(f);
       live.push(f);
@@ -434,7 +457,8 @@ function tickMarket() {
   MARKET_KEYS.forEach(k => {
     const live = state.market[k];
     const fund = state.marketFund[k];
-    for (let i = 1; i <= SET_SIZE; i++) {
+    const size = marketKeySize(k);
+    for (let i = 1; i <= size; i++) {
       // Slowly drift the fundamental too
       fund[i] *= 1 + (Math.random() - 0.5) * 2 * TICK_FUND_DRIFT;
       const f = fund[i];
@@ -479,14 +503,15 @@ function inventoryAvgPrice(rarity, foil) {
   return count === 0 ? 0 : total / count;
 }
 
-function pickRandomIds(n) {
+function pickRandomIds(rarity, n) {
+  const size = SET_SIZES[rarity];
   const all = [];
-  for (let i = 1; i <= SET_SIZE; i++) all.push(i);
+  for (let i = 1; i <= size; i++) all.push(i);
   for (let i = all.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [all[i], all[j]] = [all[j], all[i]];
   }
-  return all.slice(0, Math.min(n, SET_SIZE)).sort((a, b) => a - b);
+  return all.slice(0, Math.min(n, size)).sort((a, b) => a - b);
 }
 let state = load() || defaultState();
 if (!state.market) initMarket();
@@ -503,35 +528,73 @@ function load() {
       parsed.owned     = { common: [], uncommon: [], rare: [], mythic: [] };
       parsed.ownedFoil = { common: [], uncommon: [], rare: [], mythic: [] };
       RARITIES.forEach(r => {
-        parsed.owned[r]     = pickRandomIds(parsed.opened[r]     || 0);
-        parsed.ownedFoil[r] = pickRandomIds(parsed.openedFoil[r] || 0);
+        parsed.owned[r]     = pickRandomIds(r, parsed.opened[r]     || 0);
+        parsed.ownedFoil[r] = pickRandomIds(r, parsed.openedFoil[r] || 0);
       });
     }
     if (!parsed.setsCelebrated) {
       parsed.setsCelebrated     = { common: false, uncommon: false, rare: false, mythic: false };
       parsed.setsCelebratedFoil = { common: false, uncommon: false, rare: false, mythic: false };
       RARITIES.forEach(r => {
-        if (parsed.owned[r].length     >= SET_SIZE) parsed.setsCelebrated[r]     = true;
-        if (parsed.ownedFoil[r].length >= SET_SIZE) parsed.setsCelebratedFoil[r] = true;
+        if (parsed.owned[r].length     >= SET_SIZES[r]) parsed.setsCelebrated[r]     = true;
+        if (parsed.ownedFoil[r].length >= SET_SIZES[r]) parsed.setsCelebratedFoil[r] = true;
       });
     }
     if (!parsed.invById) {
       // Legacy: distribute existing stock counts randomly across IDs.
       const inv = {};
       MARKET_KEYS.forEach(k => { inv[k] = {}; });
+      const mythicSize = SET_SIZES.mythic;
       for (let i = 0; i < (parsed.stock.mythic || 0); i++) {
-        const id = Math.floor(Math.random() * SET_SIZE) + 1;
+        const id = Math.floor(Math.random() * mythicSize) + 1;
         inv.mythic[id] = (inv.mythic[id] || 0) + 1;
       }
       ["common", "uncommon", "rare", "mythic"].forEach(r => {
         const mk = marketKey(r, true);
         if (!mk) return;
+        const size = SET_SIZES[r];
         for (let i = 0; i < (parsed.stockFoil[r] || 0); i++) {
-          const id = Math.floor(Math.random() * SET_SIZE) + 1;
+          const id = Math.floor(Math.random() * size) + 1;
           inv[mk][id] = (inv[mk][id] || 0) + 1;
         }
       });
       parsed.invById = inv;
+    }
+    if (parsed.setVersion !== SET_VERSION) {
+      // Migrate: IDs that exceeded the new per-rarity cap get remapped.
+      RARITIES.forEach(r => {
+        const max = SET_SIZES[r];
+        if (Array.isArray(parsed.owned[r]))     parsed.owned[r]     = parsed.owned[r].filter(id => id >= 1 && id <= max);
+        if (Array.isArray(parsed.ownedFoil[r])) parsed.ownedFoil[r] = parsed.ownedFoil[r].filter(id => id >= 1 && id <= max);
+      });
+      if (parsed.invById) {
+        MARKET_KEYS.forEach(mk => {
+          const meta = rarityFromMarketKey(mk);
+          if (!meta) return;
+          const max = SET_SIZES[meta.rarity];
+          const oldBucket = parsed.invById[mk] || {};
+          const newBucket = {};
+          Object.entries(oldBucket).forEach(([id, count]) => {
+            const i = parseInt(id, 10);
+            const target = (i >= 1 && i <= max) ? i : (Math.floor(Math.random() * max) + 1);
+            newBucket[target] = (newBucket[target] || 0) + count;
+          });
+          parsed.invById[mk] = newBucket;
+        });
+      }
+      if (Array.isArray(parsed.collection)) {
+        parsed.collection.forEach(c => {
+          const max = SET_SIZES[c.rarity];
+          if (!(c.id >= 1 && c.id <= max)) c.id = Math.floor(Math.random() * max) + 1;
+        });
+      }
+      if (parsed.setsCelebrated) {
+        RARITIES.forEach(r => {
+          parsed.setsCelebrated[r]     = (parsed.owned[r]     || []).length >= SET_SIZES[r];
+          parsed.setsCelebratedFoil[r] = (parsed.ownedFoil[r] || []).length >= SET_SIZES[r];
+        });
+      }
+      parsed.setVersion = SET_VERSION;
     }
     if (parsed.marketVersion !== MARKET_VERSION) {
       parsed.market = null;
@@ -603,7 +666,7 @@ function rollSpecialSlot() {
   if (Math.random() < FOIL_SLOT_CHANCE) return { rarity: rollFoilRarity(), foil: true };
   return { rarity: "common", foil: false };
 }
-function randomCardId() { return Math.floor(Math.random() * SET_SIZE) + 1; }
+function randomCardId(rarity) { return Math.floor(Math.random() * SET_SIZES[rarity]) + 1; }
 function rollPack() {
   // 5 commons, 3 uncommons, 1 rare/mythic, 1 special (common or foil)
   const cards = [];
@@ -611,7 +674,7 @@ function rollPack() {
   for (let i = 0; i <  3; i++) cards.push({ rarity: "uncommon", foil: false });
   cards.push({ rarity: rollRareMythicSlot(), foil: false });
   cards.push(rollSpecialSlot());
-  return cards.map(c => ({ ...c, id: randomCardId() }));
+  return cards.map(c => ({ ...c, id: randomCardId(c.rarity) }));
 }
 function addPull(card) {
   if (card.foil) {
@@ -633,7 +696,7 @@ function addPull(card) {
   const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
   if (!ownedList.includes(card.id)) {
     ownedList.push(card.id);
-    const completed = ownedList.length >= SET_SIZE;
+    const completed = ownedList.length >= SET_SIZES[card.rarity];
     const celebratedFlag = card.foil ? state.setsCelebratedFoil : state.setsCelebrated;
     const firstCompletion = completed && !celebratedFlag[card.rarity];
     if (firstCompletion) celebratedFlag[card.rarity] = true;
@@ -789,7 +852,7 @@ function renderCollectionCards() {
     el.className = "mini-card" + (card.foil ? ` foil-card foil-${card.rarity}` : "");
     if (!card.foil) el.style.borderColor = RARITY_COLOURS[card.rarity];
     el.dataset.index = realIndex;
-    el.title = `${card.foil ? "Foil " : ""}${RARITY_LABELS[card.rarity]} #${card.id} — ${usd(price)}\nClick to sell`;
+    el.title = `${card.foil ? "Foil " : ""}${RARITY_LABELS[card.rarity]} ${cardFullId(card.rarity, card.id)} — ${usd(price)}\nClick to sell`;
     el.innerHTML = `<span class="card-price">${compactUsd(price)}</span>`;
     container.appendChild(el);
   });
@@ -808,7 +871,7 @@ function sellOne(collectionIndex) {
   else           state.stock[card.rarity]     -= 1;
   state.collection.splice(collectionIndex, 1);
   renderAll(); save();
-  $("hint").textContent = `Sold ${card.foil ? "foil " : ""}${RARITY_LABELS[card.rarity].toLowerCase()} #${card.id} for ${usd(price)}.`;
+  $("hint").textContent = `Sold ${card.foil ? "foil " : ""}${RARITY_LABELS[card.rarity].toLowerCase()} ${cardFullId(card.rarity, card.id)} for ${usd(price)}.`;
 }
 
 // ---- Sand simulation -----------------------------------------------------
@@ -1002,14 +1065,15 @@ function renderSandPile() {
 function buildSetBar(rarity, foil) {
   const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
   const owned = ownedList.length;
-  const pct = Math.min(100, (owned / SET_SIZE) * 100);
-  const complete = owned >= SET_SIZE;
+  const setSize = SET_SIZES[rarity];
+  const pct = Math.min(100, (owned / setSize) * 100);
+  const complete = owned >= setSize;
   const el = document.createElement("div");
   el.className = "set-bar" + (foil ? " foil" : "") + (complete ? " complete" : "");
   el.innerHTML = `
     <div class="set-bar-label" style="color:${RARITY_COLOURS[rarity]}">
       ${RARITY_LABELS[rarity]}
-      <span class="set-bar-count">${owned}/${SET_SIZE}</span>
+      <span class="set-bar-count">${owned}/${setSize}</span>
     </div>
     <div class="set-bar-track">
       <div class="set-bar-fill" style="width:${pct}%;background-color:${RARITY_COLOURS[rarity]}"></div>
