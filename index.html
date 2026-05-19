@@ -236,9 +236,30 @@
   button.reset:hover { color: var(--ink); border-color: var(--ink); }
 
   @media (max-width: 900px) {
-    body { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; height: auto; }
-    header { grid-column: 1; }
-    footer { grid-column: 1; }
+    body {
+      grid-template-columns: 1fr; grid-template-rows: auto auto auto auto;
+      height: auto; padding: 6px; gap: 6px;
+    }
+    header { grid-column: 1; padding: 6px 10px; }
+    header h1 { font-size: 1rem; }
+    header .stats { gap: 10px; font-size: 0.75rem; }
+    footer { grid-column: 1; padding: 0; font-size: 0.65rem; }
+    #shop, #vault { padding: 10px; gap: 8px; }
+    #pack-area { gap: 8px; flex: 0 0 auto; }
+    .pack { width: 150px; height: 215px; }
+    .pack .label { font-size: 0.9rem; }
+    .pack .label small { margin-top: 4px; }
+    #sand-canvas { height: 220px; }
+    .buy-btn { padding: 6px 4px; }
+    .buy-btn .lbl { font-size: 0.85rem; }
+    .buy-btn .qty { font-size: 0.6rem; }
+    .buy-btn .cost { font-size: 0.8rem; margin-top: 2px; }
+    .buy-btn .save { font-size: 0.55rem; }
+    #collection-cards { max-height: 90px; padding: 4px; gap: 3px; }
+    .mini-card { width: 22px; height: 32px; }
+    .mini-card.foil-mythic { width: 26px; height: 36px; }
+    .stock-row { padding: 8px 10px; gap: 8px; }
+    #hint { font-size: 0.8rem; }
   }
 </style>
 </head>
