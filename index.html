@@ -100,52 +100,97 @@
     to { background-position: 200% center; }
   }
 
-  #collection-cards {
-    display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start;
-    max-height: 140px; overflow-y: auto;
-    background: rgba(0,0,0,0.18); border-radius: 6px; padding: 5px;
+  @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
+
+  /* ---- Vault collection grid -------------------------------------------- */
+  #vault-grid {
+    margin-top: 14px;
+    display: flex; flex-direction: column; gap: 10px;
   }
-  #collection-cards:empty::before {
-    content: "No mythics or foils yet.";
-    color: var(--muted); font-size: 0.75rem; font-style: italic;
+  .vault-grid-title {
+    font-size: 0.7rem; letter-spacing: 3px; color: var(--muted);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding-bottom: 4px; margin-bottom: 2px;
   }
-  .mini-card {
-    width: 26px; height: 38px; border-radius: 3px; border: 1.5px solid;
-    background: var(--panel-light); flex-shrink: 0;
-    position: relative; cursor: pointer;
-    display: flex; align-items: flex-end; justify-content: center;
-    padding: 1px;
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  .collection-row { display: flex; flex-direction: column; gap: 4px; }
+  .collection-row-label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 0.7rem; font-weight: bold; letter-spacing: 1.5px;
   }
-  .mini-card:hover {
+  .collection-row-label .row-count {
+    color: var(--muted); font-weight: normal; font-size: 0.65rem;
+  }
+  .collection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+    gap: 4px;
+    background: rgba(0,0,0,0.22); border-radius: 6px; padding: 6px;
+  }
+  .collection-cell {
+    position: relative;
+    aspect-ratio: 5 / 7;
+    border-radius: 3px;
+    border: 1.5px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.02);
+    color: rgba(255,255,255,0.18);
+    font-size: 9px; font-weight: bold;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+  }
+  .collection-cell.owned {
+    background: color-mix(in srgb, var(--cell-color, #fff) 24%, var(--panel-light));
+    border-color: var(--cell-color, #fff);
+    color: #fff;
+    box-shadow: 0 0 4px color-mix(in srgb, var(--cell-color, #fff) 50%, transparent);
+  }
+  .collection-cell.priced.owned { cursor: pointer; }
+  .collection-cell.priced.owned:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.55);
-    z-index: 5;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.55),
+                0 0 10px color-mix(in srgb, var(--cell-color, #fff) 70%, transparent);
+    z-index: 4;
   }
-  .mini-card .card-price {
-    font-size: 8px; font-weight: bold; color: #fff;
-    background: rgba(0,0,0,0.78);
-    padding: 1px 2px; border-radius: 2px; line-height: 1;
-    width: 100%; text-align: center;
-  }
-  .mini-card.foil-card {
+  .collection-cell.foil.owned {
     background: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3);
     background-size: 250% 250%;
     animation: shimmer 2.5s linear infinite;
-    border-color: #fff;
+    color: #111;
+    text-shadow: 0 0 2px rgba(255,255,255,0.7);
   }
-  .mini-card.foil-common   { border-color: #d8d8e6; }
-  .mini-card.foil-uncommon { border-color: var(--uncommon); box-shadow: 0 0 4px rgba(90,208,106,0.7); }
-  .mini-card.foil-rare     { border-color: var(--rare);     box-shadow: 0 0 5px rgba(90,168,255,0.8); }
-  .mini-card.foil-mythic   {
-    border-color: var(--mythic);
-    box-shadow: 0 0 9px rgba(255,122,61,0.9);
-    width: 32px; height: 44px;
+  .collection-cell .cell-count {
+    position: absolute; top: -3px; right: -3px;
+    background: #111; color: #fff;
+    border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 8px;
+    font-size: 8px; font-weight: bold;
+    padding: 0 3px; line-height: 1.2;
+    min-width: 12px; text-align: center;
   }
-  .collection-overflow {
-    font-size: 0.7rem; color: var(--muted); align-self: center; padding: 0 6px;
+  .collection-cell .cell-price {
+    position: absolute; left: 1px; right: 1px; bottom: 1px;
+    background: rgba(0,0,0,0.75); color: #fff;
+    font-size: 7px; font-weight: bold;
+    padding: 0 1px; border-radius: 2px; line-height: 1.25;
+    text-align: center; pointer-events: none;
   }
-  @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
+  .collection-cell.flash {
+    animation: card-pop 0.7s ease-out;
+  }
+  .collection-cell.flash-fresh {
+    animation: card-pop-fresh 1.2s ease-out;
+  }
+  @keyframes card-pop {
+    0%   { transform: scale(1);   box-shadow: 0 0 0 rgba(255,255,255,0); }
+    25%  { transform: scale(1.5); box-shadow: 0 0 16px 6px rgba(255,255,255,0.75); filter: brightness(1.6); }
+    100% { transform: scale(1);   box-shadow: 0 0 0 rgba(255,255,255,0); filter: brightness(1); }
+  }
+  @keyframes card-pop-fresh {
+    0%   { transform: scale(1) rotate(0);     box-shadow: 0 0 0 rgba(255,255,255,0); }
+    20%  { transform: scale(1.9) rotate(-4deg); box-shadow: 0 0 22px 9px rgba(255,255,255,0.95); filter: brightness(1.9) saturate(1.4); }
+    60%  { transform: scale(1.2) rotate(2deg); box-shadow: 0 0 14px 4px rgba(255,255,255,0.5); }
+    100% { transform: scale(1)   rotate(0);     box-shadow: 0 0 0 rgba(255,255,255,0); filter: brightness(1); }
+  }
 
   #set-progress {
     display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
@@ -255,9 +300,8 @@
     .buy-btn .qty { font-size: 0.6rem; }
     .buy-btn .cost { font-size: 0.8rem; margin-top: 2px; }
     .buy-btn .save { font-size: 0.55rem; }
-    #collection-cards { max-height: 90px; padding: 4px; gap: 3px; }
-    .mini-card { width: 22px; height: 32px; }
-    .mini-card.foil-mythic { width: 26px; height: 36px; }
+    .collection-grid { grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); gap: 3px; padding: 4px; }
+    .collection-cell { font-size: 8px; }
     .stock-row { padding: 8px 10px; gap: 8px; }
     #hint { font-size: 0.8rem; }
   }
@@ -296,7 +340,6 @@
       <div class="save">save 17%</div>
     </button>
   </div>
-  <div id="collection-cards"></div>
   <div id="set-progress"></div>
   <div id="pack-area">
     <div class="pack" id="pack">
@@ -316,6 +359,7 @@
 <section id="vault">
   <h2>VAULT</h2>
   <div id="stock-rows"></div>
+  <div id="vault-grid"></div>
 </section>
 
 <footer>10 cards/pack — 5C · 3U · 1R/M · 1 special (85% common, 15% foil). Foil 10× sell value.</footer>
@@ -416,8 +460,7 @@ const defaultState = () => ({
   setsCelebrated:     { common: false, uncommon: false, rare: false, mythic: false },
   setsCelebratedFoil: { common: false, uncommon: false, rare: false, mythic: false },
   invById:     emptyInvById(),
-  collection:  [],     // ordered list of {rarity, foil, id} for priced cards
-  market:      null, // {key: [101-entry array of live prices]}, populated by initMarket
+  market:      null, // {key: per-card live prices}, populated by initMarket
   marketFund:  null, // same shape, fundamental values
   marketVersion: MARKET_VERSION,
   setVersion: SET_VERSION,
@@ -471,7 +514,7 @@ function tickMarket() {
     }
   });
   renderVault();
-  renderCollectionCards();
+  renderVaultGrid();
 }
 
 function inventoryValue(rarity, foil) {
@@ -582,12 +625,6 @@ function load() {
           parsed.invById[mk] = newBucket;
         });
       }
-      if (Array.isArray(parsed.collection)) {
-        parsed.collection.forEach(c => {
-          const max = SET_SIZES[c.rarity];
-          if (!(c.id >= 1 && c.id <= max)) c.id = Math.floor(Math.random() * max) + 1;
-        });
-      }
       if (parsed.setsCelebrated) {
         RARITIES.forEach(r => {
           parsed.setsCelebrated[r]     = (parsed.owned[r]     || []).length >= SET_SIZES[r];
@@ -600,19 +637,6 @@ function load() {
       parsed.market = null;
       parsed.marketFund = null;
       parsed.marketVersion = MARKET_VERSION;
-    }
-    if (!Array.isArray(parsed.collection)) {
-      // Rebuild ordered collection from invById (order is arbitrary for legacy saves)
-      parsed.collection = [];
-      MARKET_KEYS.forEach(mk => {
-        const meta = rarityFromMarketKey(mk);
-        if (!meta) return;
-        Object.entries(parsed.invById[mk] || {}).forEach(([id, count]) => {
-          for (let i = 0; i < count; i++) {
-            parsed.collection.push({ rarity: meta.rarity, foil: meta.foil, id: parseInt(id, 10) });
-          }
-        });
-      });
     }
     if (!parsed.unsorted) {
       // Treat existing bulk stock as unsorted so the pile stays intact
@@ -691,10 +715,11 @@ function addPull(card) {
   const mk = marketKey(card.rarity, card.foil);
   if (mk) {
     state.invById[mk][card.id] = (state.invById[mk][card.id] || 0) + 1;
-    state.collection.push({ rarity: card.rarity, foil: card.foil, id: card.id });
   }
   const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
-  if (!ownedList.includes(card.id)) {
+  const wasNew = !ownedList.includes(card.id);
+  flashQueue.push({ rarity: card.rarity, id: card.id, foil: card.foil, fresh: wasNew });
+  if (wasNew) {
     ownedList.push(card.id);
     const completed = ownedList.length >= SET_SIZES[card.rarity];
     const celebratedFlag = card.foil ? state.setsCelebratedFoil : state.setsCelebrated;
@@ -831,47 +856,108 @@ function showHits(pulls, meta = {}) {
   });
 }
 
-function renderCollectionCards() {
-  const container = $("collection-cards");
-  container.innerHTML = "";
-  const total = state.collection.length;
-  const MAX = 250;
-  const visible = total > MAX ? state.collection.slice(-MAX) : state.collection;
-  const offset = total - visible.length;
-  if (offset > 0) {
-    const more = document.createElement("span");
-    more.className = "collection-overflow";
-    more.textContent = `+${offset} older`;
-    container.appendChild(more);
-  }
-  visible.forEach((card, i) => {
-    const realIndex = offset + i;
-    const mk = marketKey(card.rarity, card.foil);
-    const price = mk ? state.market[mk][card.id] : 0;
-    const el = document.createElement("div");
-    el.className = "mini-card" + (card.foil ? ` foil-card foil-${card.rarity}` : "");
-    if (!card.foil) el.style.borderColor = RARITY_COLOURS[card.rarity];
-    el.dataset.index = realIndex;
-    el.title = `${card.foil ? "Foil " : ""}${RARITY_LABELS[card.rarity]} ${cardFullId(card.rarity, card.id)} — ${usd(price)}\nClick to sell`;
-    el.innerHTML = `<span class="card-price">${compactUsd(price)}</span>`;
-    container.appendChild(el);
+// ---- Vault collection grid ----------------------------------------------
+// Cards just acquired in the latest rip are tagged here for one-shot VFX.
+let flashQueue = []; // [{rarity, id, foil, fresh}]
+
+function renderVaultGrid() {
+  const wrap = $("vault-grid");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+
+  const title = document.createElement("div");
+  title.className = "vault-grid-title";
+  title.textContent = "COLLECTION · SERIES I";
+  wrap.appendChild(title);
+
+  // For each rarity, render a regular row then a foil row.
+  RARITIES.forEach(rarity => {
+    [false, true].forEach(foil => {
+      const setSize = SET_SIZES[rarity];
+      const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
+      const ownedSet = new Set(ownedList);
+      const mk = marketKey(rarity, foil);
+      const inv = mk ? (state.invById[mk] || {}) : null;
+      const prices = mk ? state.market[mk] : null;
+
+      const row = document.createElement("div");
+      row.className = "collection-row";
+      const label = document.createElement("div");
+      label.className = "collection-row-label";
+      label.style.color = RARITY_COLOURS[rarity];
+      label.innerHTML = `
+        <span>${foil ? "✨ FOIL " : ""}${RARITY_LABELS[rarity].toUpperCase()}</span>
+        <span class="row-count">${ownedList.length} / ${setSize}</span>`;
+      row.appendChild(label);
+
+      const grid = document.createElement("div");
+      grid.className = "collection-grid";
+      for (let i = 1; i <= setSize; i++) {
+        const cell = document.createElement("div");
+        const owned = ownedSet.has(i);
+        const priced = !!mk;
+        cell.className = "collection-cell"
+          + (owned  ? " owned"  : "")
+          + (foil   ? " foil"   : "")
+          + (priced ? " priced" : "");
+        cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
+        cell.dataset.rarity = rarity;
+        cell.dataset.id     = i;
+        cell.dataset.foil   = foil ? "1" : "0";
+        const fullId = cardFullId(rarity, i);
+        const cardNum = CARD_NUMBER_OFFSETS[rarity] + i;
+        cell.textContent = String(cardNum).padStart(3, "0");
+
+        if (owned && priced) {
+          const count = inv[i] || 0;
+          if (count > 1) {
+            const badge = document.createElement("span");
+            badge.className = "cell-count";
+            badge.textContent = "×" + count;
+            cell.appendChild(badge);
+          }
+          const price = prices ? prices[i] : 0;
+          if (count > 0) {
+            const priceLabel = document.createElement("span");
+            priceLabel.className = "cell-price";
+            priceLabel.textContent = compactUsd(price);
+            cell.appendChild(priceLabel);
+          }
+          cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — ${usd(price)} · own ${count}\nClick to sell one`;
+        } else if (owned) {
+          cell.title = `${RARITY_LABELS[rarity]} ${fullId} — owned (sold in bulk via row above)`;
+        } else {
+          cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — unowned`;
+        }
+
+        const flashed = flashQueue.find(f =>
+          f.rarity === rarity && f.id === i && f.foil === foil
+        );
+        if (flashed) cell.classList.add(flashed.fresh ? "flash-fresh" : "flash");
+
+        grid.appendChild(cell);
+      }
+      row.appendChild(grid);
+      wrap.appendChild(row);
+    });
   });
+
+  flashQueue = [];
 }
 
-function sellOne(collectionIndex) {
-  const card = state.collection[collectionIndex];
-  if (!card) return;
-  const mk = marketKey(card.rarity, card.foil);
+function sellCard(rarity, id, foil) {
+  const mk = marketKey(rarity, foil);
   if (!mk) return;
-  const price = Math.max(0.01, Math.round(state.market[mk][card.id] * 100) / 100);
+  const inv = state.invById[mk];
+  if (!inv || !inv[id]) return;
+  const price = Math.max(0.01, Math.round(state.market[mk][id] * 100) / 100);
   state.coins += price;
-  state.invById[mk][card.id] -= 1;
-  if (state.invById[mk][card.id] <= 0) delete state.invById[mk][card.id];
-  if (card.foil) state.stockFoil[card.rarity] -= 1;
-  else           state.stock[card.rarity]     -= 1;
-  state.collection.splice(collectionIndex, 1);
+  inv[id] -= 1;
+  if (inv[id] <= 0) delete inv[id];
+  if (foil) state.stockFoil[rarity] -= 1;
+  else      state.stock[rarity]     -= 1;
   renderAll(); save();
-  $("hint").textContent = `Sold ${card.foil ? "foil " : ""}${RARITY_LABELS[card.rarity].toLowerCase()} ${cardFullId(card.rarity, card.id)} for ${usd(price)}.`;
+  $("hint").textContent = `Sold ${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()} ${cardFullId(rarity, id)} for ${usd(price)}.`;
 }
 
 // ---- Sand simulation -----------------------------------------------------
@@ -1104,7 +1190,7 @@ function renderSetProgress() {
   wrap.appendChild(colFoil);
 }
 
-function renderAll() { renderHeader(); renderVault(); renderCollectionCards(); renderSetProgress(); renderSandPile(); }
+function renderAll() { renderHeader(); renderVault(); renderVaultGrid(); renderSetProgress(); renderSandPile(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -1163,7 +1249,6 @@ function sellRarity(rarity, foil) {
   const mk = marketKey(rarity, foil);
   if (mk) {
     state.invById[mk] = {};
-    state.collection = state.collection.filter(c => !(c.rarity === rarity && c.foil === foil));
   }
   // grains track unsorted pile; selling sorted stock doesn't touch them
   renderAll(); save();
@@ -1188,9 +1273,13 @@ $("stock-rows").addEventListener("click", (e) => {
   const btn = e.target.closest(".sell-btn");
   if (btn && btn.dataset.rarity) sellRarity(btn.dataset.rarity, btn.dataset.foil === "1");
 });
-$("collection-cards").addEventListener("click", (e) => {
-  const card = e.target.closest(".mini-card");
-  if (card && card.dataset.index !== undefined) sellOne(parseInt(card.dataset.index, 10));
+$("vault-grid").addEventListener("click", (e) => {
+  const cell = e.target.closest(".collection-cell.priced.owned");
+  if (!cell) return;
+  const rarity = cell.dataset.rarity;
+  const id     = parseInt(cell.dataset.id, 10);
+  const foil   = cell.dataset.foil === "1";
+  sellCard(rarity, id, foil);
 });
 $("sand-canvas").addEventListener("click", () => sortCards());
 $("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
