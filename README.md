@@ -10,7 +10,7 @@ Open `index.html` in any modern browser. No build step, no dependencies.
 
 ## Mechanics
 
-- Buy packs (1), boxes (36, save 11%), or cases (216, save 17%) — bulk locks in today's price
+- Buy packs (1), boxes (36, save 7%), or cases (216, save 23%) — bulk locks in today's price
 - Each pack: 3 commons + 1 uncommon + 1 rare slot (80% uncommon / 18% rare / 2% mythic)
 - Foils — 5% per card, 3× sell value, rainbow shimmer
 - Sell by rarity (foils protected by default) or dump the whole collection
