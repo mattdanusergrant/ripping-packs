@@ -353,29 +353,81 @@
     text-align: center; padding: 8px 0;
   }
   .listings-grid {
-    display: flex; flex-wrap: wrap; gap: 4px;
-    max-height: 160px; overflow-y: auto;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 4px 2px;
   }
-  .listing-pill {
-    display: inline-flex; align-items: center; gap: 5px;
-    background: var(--panel-light); color: var(--ink);
-    border: 1.5px solid; border-radius: 12px;
-    padding: 3px 9px;
-    font-family: inherit; font-size: 0.7rem; cursor: pointer;
-    transition: filter 0.12s ease, transform 0.08s ease;
+  /* Listings render as miniature cards, matching the collection-cell look. */
+  .listing-card {
+    position: relative;
+    width: 52px;
+    aspect-ratio: 5 / 7;
+    border-radius: 4px;
+    border: 1.5px solid var(--cell-color, #fff);
+    background: color-mix(in srgb, var(--cell-color, #fff) 28%, var(--panel-light));
+    color: #fff;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-weight: bold; font-family: inherit;
+    cursor: pointer; user-select: none;
+    padding: 0; gap: 2px;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--cell-color, #fff) 45%, transparent);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
   }
-  .listing-pill:hover { filter: brightness(1.3); }
-  .listing-pill:active { transform: translateY(1px); }
-  .listing-pill.foil {
+  .listing-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.55),
+                0 0 12px color-mix(in srgb, var(--cell-color, #fff) 70%, transparent);
+    filter: brightness(1.1);
+  }
+  .listing-card:active { transform: translateY(-1px); }
+  .listing-card.foil {
     background: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3);
     background-size: 250% 250%;
     animation: shimmer 2.5s linear infinite;
     color: #111; border-color: #fff;
+    text-shadow: 0 0 2px rgba(255,255,255,0.7);
   }
-  .listing-pill .lst-glyph { font-size: 0.85rem; line-height: 1; }
-  .listing-pill .lst-id    { letter-spacing: 0.5px; }
-  .listing-pill .lst-price { font-weight: bold; }
-  .listing-pill[title]::after { content: ""; } /* no-op, just to suppress lint */
+  /* Set-listing cards get a "stacked" silhouette via offset shadows. */
+  .listing-card.set {
+    box-shadow:
+      -3px -3px 0 -1px color-mix(in srgb, var(--cell-color, #fff) 38%, var(--panel-light)),
+      -3px -3px 0 0.5px var(--cell-color, #fff),
+      0 0 6px color-mix(in srgb, var(--cell-color, #fff) 45%, transparent);
+  }
+  .listing-card.set:hover {
+    box-shadow:
+      -3px -3px 0 -1px color-mix(in srgb, var(--cell-color, #fff) 50%, var(--panel-light)),
+      -3px -3px 0 0.5px var(--cell-color, #fff),
+      0 6px 12px rgba(0,0,0,0.55),
+      0 0 12px color-mix(in srgb, var(--cell-color, #fff) 70%, transparent);
+  }
+  .listing-card .lst-glyph { font-size: 1.15rem; line-height: 1; }
+  .listing-card .lst-id    { font-size: 0.55rem; letter-spacing: 0.5px; opacity: 0.95; }
+  .listing-card .lst-price {
+    position: absolute; left: 1px; right: 1px; bottom: 1px;
+    background: rgba(0,0,0,0.78); color: #fff;
+    font-size: 0.55rem; font-weight: bold;
+    padding: 1px 2px; border-radius: 2px; line-height: 1.2;
+    text-align: center;
+  }
+  .listing-card .lst-cd {
+    position: absolute; top: -5px; right: -5px;
+    background: var(--gold); color: #111;
+    border-radius: 8px; font-size: 0.5rem; font-weight: bold;
+    padding: 1px 4px; line-height: 1.2;
+    box-shadow: 0 0 4px rgba(0,0,0,0.45);
+  }
+  /* Empty-slot placeholders make the cap visible at a glance. */
+  .listing-slot-empty {
+    width: 52px;
+    aspect-ratio: 5 / 7;
+    border-radius: 4px;
+    border: 1.5px dashed rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.025);
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.22);
+    font-size: 1.1rem;
+  }
 
   .collection-cell.listed {
     box-shadow: 0 0 0 2px rgba(245,197,66,0.55) inset;
@@ -850,6 +902,7 @@ let LISTING_COOLDOWN_AT_MAX   = def("LISTING_COOLDOWN_AT_MAX",   40);
 let LISTING_COOLDOWN_HIGH_MIN = def("LISTING_COOLDOWN_HIGH_MIN", 40);
 let LISTING_COOLDOWN_HIGH_MAX = def("LISTING_COOLDOWN_HIGH_MAX", 80);
 let LISTING_HIGH_SELL_ODDS    = def("LISTING_HIGH_SELL_ODDS",    0.5);
+let LISTING_SLOTS             = def("LISTING_SLOTS", 3);
 const LISTING_TICK_MS = 2000;
 
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
@@ -1366,13 +1419,17 @@ function setActionsBlock(key) {
   const setPrice = (state.market && state.market[sk]) ? state.market[sk][1] : BASELINE[sk];
   const setName = (isFoil ? "FOIL " : "") + RARITY_LABELS[baseRarity];
   const craftLabel = ready ? `CRAFT ${setName} SET` : `${setName} ${uniqueOwned}/${size}`;
-  const listLabel = setsOwned > 0 ? `LIST 1 (~${usd(setPrice)})` : "—";
+  const slotsFull = listingSlotsFull();
+  const canList = setsOwned > 0 && !slotsFull;
+  const listLabel = setsOwned === 0
+    ? "—"
+    : (slotsFull ? "SLOTS FULL" : `LIST 1 (~${usd(setPrice)})`);
   const craftCls = "set-craft-btn" + (isFoil ? " foil" : "");
   const listCls  = "set-list-btn"  + (isFoil ? " foil" : "");
   return `
     <div class="set-actions">
       <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"}>${craftLabel}</button>
-      <button class="${listCls}" data-list-set="${key}" ${setsOwned > 0 ? "" : "disabled"}>${setName} SETS: <b>${setsOwned}</b> · ${listLabel}</button>
+      <button class="${listCls}" data-list-set="${key}" ${canList ? "" : "disabled"}>${setName} SETS: <b>${setsOwned}</b> · ${listLabel}</button>
     </div>`;
 }
 
@@ -1647,9 +1704,23 @@ function makeListing(rarity, cardId, foil) {
   };
 }
 
+function activeListingCount() {
+  return Array.isArray(state.listings) ? state.listings.length : 0;
+}
+function listingSlotsFree() {
+  return Math.max(0, LISTING_SLOTS - activeListingCount());
+}
+function listingSlotsFull() {
+  return activeListingCount() >= LISTING_SLOTS;
+}
+
 function listCard(rarity, cardId, foil) {
   const mk = marketKey(rarity, foil);
   if (!mk) return; // priced-only entry point
+  if (listingSlotsFull()) {
+    $("hint").textContent = `All ${LISTING_SLOTS} listing slots full — cancel one first.`;
+    return;
+  }
   const inv = state.invById[mk];
   if (!inv || !inv[cardId]) return;
   inv[cardId] -= 1;
@@ -1732,6 +1803,10 @@ function craftSet(key) {
 function listSetItem(key) {
   const itemKey = setItemKey(key);
   if (!itemKey) return;
+  if (listingSlotsFull()) {
+    $("hint").textContent = `All ${LISTING_SLOTS} listing slots full — cancel one first.`;
+    return;
+  }
   const inv = state.invById[itemKey];
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
@@ -1850,11 +1925,22 @@ function setListingAim(aim) {
   renderAll(); save();
 }
 
+function listingCountdownLabel(l) {
+  const ms = (l.resolveAt || 0) - Date.now();
+  if (ms <= 0) return "…";
+  const s = Math.ceil(ms / 1000);
+  if (s >= 60) return `${Math.ceil(s/60)}m`;
+  return `${s}s`;
+}
+
 function renderListings() {
   const wrap = $("listings-panel");
   if (!wrap) return;
   const aim = state.listingAim || "at";
   const listings = Array.isArray(state.listings) ? state.listings : [];
+  const used = listings.length;
+  const slots = LISTING_SLOTS;
+  const empties = Math.max(0, slots - used);
   const aimChip = (id, label, sub) =>
     `<button type="button" class="aim-btn ${id === aim ? "active" : ""}" data-aim="${id}">
        <span class="aim-lbl">${label}</span>
@@ -1863,42 +1949,43 @@ function renderListings() {
   let html = `
     <div class="listings-header">
       <span>MARKETPLACE</span>
-      <span class="listings-count">${listings.length} listed</span>
+      <span class="listings-count">${used} / ${slots} slots</span>
     </div>
     <div class="aim-row">
       ${aimChip("fast", "FAST",      `${Math.round(LISTING_AIM_FAST_MULT*100)}% · sure`)}
       ${aimChip("at",   "AT MARKET", `${Math.round(LISTING_AIM_AT_MULT*100)}% · sure`)}
       ${aimChip("high", "HIGH",      `${Math.round(LISTING_AIM_HIGH_MULT*100)}% · risky`)}
-    </div>`;
-  if (listings.length === 0) {
-    html += `<div class="listings-empty">Nothing listed. Click a mythic/foil cell in the collection to list, or craft a Standard / Rare / Foil-Standard set.</div>`;
-  } else {
-    html += `<div class="listings-grid">`;
-    listings.forEach(l => {
-      if (isSetListing(l)) {
-        const isFoilSet = l.rarity === "foilStandardSet";
-        const setRarity = l.rarity === "rareSet" ? "rare" : "standard";
-        const color = RARITY_COLOURS[setRarity];
-        const pillCls = "listing-pill set" + (isFoilSet ? " foil" : "");
-        const label = (isFoilSet ? "✨ FOIL " : "") + RARITY_LABELS[setRarity] + " SET";
-        html += `<button type="button" class="${pillCls}" data-uid="${l.uid}" style="border-color:${color}" title="Click to cancel and return the set to inventory">`
-              + `<span class="lst-glyph">📦</span>`
-              + `<span class="lst-id"${isFoilSet ? "" : ` style="color:${color}"`}>${label}</span>`
-              + `<span class="lst-price">${usd(l.askPrice)}</span>`
-              + `</button>`;
-      } else {
-        const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId) : RARITY_LABELS[l.rarity].toLowerCase();
-        const color = RARITY_COLOURS[l.rarity];
-        const cls = `listing-pill${l.foil ? " foil" : ""}`;
-        html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="border-color:${color}" title="Click to cancel and return to inventory">`
-              + `<span class="lst-glyph" style="${l.foil ? "" : `color:${color}`}">${RARITY_GLYPHS[l.rarity]}</span>`
-              + `<span class="lst-id">${idLabel}</span>`
-              + `<span class="lst-price">${usd(l.askPrice)}</span>`
-              + `</button>`;
-      }
-    });
-    html += `</div>`;
+    </div>
+    <div class="listings-grid">`;
+  listings.forEach(l => {
+    if (isSetListing(l)) {
+      const isFoilSet = l.rarity === "foilStandardSet";
+      const setRarity = l.rarity === "rareSet" ? "rare" : "standard";
+      const color = RARITY_COLOURS[setRarity];
+      const cls = "listing-card set" + (isFoilSet ? " foil" : "");
+      const glyph = isFoilSet ? "✨" : RARITY_GLYPHS[setRarity];
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="Click to cancel and return the set to inventory">`
+            + `<span class="lst-glyph">${glyph}</span>`
+            + `<span class="lst-id">SET</span>`
+            + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
+            + `<span class="lst-price">${usd(l.askPrice)}</span>`
+            + `</button>`;
+    } else {
+      const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId) : RARITY_LABELS[l.rarity].slice(0,1);
+      const color = RARITY_COLOURS[l.rarity];
+      const cls = "listing-card" + (l.foil ? " foil" : "");
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="Click to cancel and return to inventory">`
+            + `<span class="lst-glyph">${RARITY_GLYPHS[l.rarity]}</span>`
+            + `<span class="lst-id">${idLabel}</span>`
+            + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
+            + `<span class="lst-price">${usd(l.askPrice)}</span>`
+            + `</button>`;
+    }
+  });
+  for (let i = 0; i < empties; i++) {
+    html += `<div class="listing-slot-empty" title="Empty listing slot">+</div>`;
   }
+  html += `</div>`;
   wrap.innerHTML = html;
 }
 
@@ -2241,6 +2328,7 @@ const DESIGN_FIELDS = [
   { group: "Marketplace",      key: "LISTING_COOLDOWN_HIGH_MIN",       path: "LISTING_COOLDOWN_HIGH_MIN", label: "High cooldown min (sec)",     step: 1, min: 1 },
   { group: "Marketplace",      key: "LISTING_COOLDOWN_HIGH_MAX",       path: "LISTING_COOLDOWN_HIGH_MAX", label: "High cooldown max (sec)",     step: 1, min: 1 },
   { group: "Marketplace",      key: "LISTING_HIGH_SELL_ODDS",          path: "LISTING_HIGH_SELL_ODDS",    label: "High sell odds (0–1)",        step: 0.05, min: 0, max: 1 },
+  { group: "Marketplace",      key: "LISTING_SLOTS",                   path: "LISTING_SLOTS",             label: "Listing slots",                step: 1, min: 1, int: true },
 ];
 
 function _resolvePath(root, path) {
@@ -2271,7 +2359,7 @@ function _liveDesignSnapshot() {
     LISTING_COOLDOWN_FAST_MIN, LISTING_COOLDOWN_FAST_MAX,
     LISTING_COOLDOWN_AT_MIN, LISTING_COOLDOWN_AT_MAX,
     LISTING_COOLDOWN_HIGH_MIN, LISTING_COOLDOWN_HIGH_MAX,
-    LISTING_HIGH_SELL_ODDS,
+    LISTING_HIGH_SELL_ODDS, LISTING_SLOTS,
   };
 }
 function _readCurrent(path) {
@@ -2575,6 +2663,10 @@ setInterval(save, 5000);
 setInterval(tickMarket, MARKET_TICK_MS);
 setInterval(tickFriends, FRIEND_TICK_MS);
 setInterval(resolveListings, LISTING_TICK_MS);
+// Tick the listing countdown displays each second so timers visibly count down.
+setInterval(() => {
+  if (Array.isArray(state.listings) && state.listings.length > 0) renderListings();
+}, 1000);
 resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", drawSand);
