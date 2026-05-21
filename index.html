@@ -115,6 +115,16 @@
     padding-bottom: 4px; margin-bottom: 2px;
   }
   .collection-row { display: flex; flex-direction: column; gap: 4px; }
+  .collection-supercol-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+  .collection-supercol { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  @media (max-width: 900px) {
+    .collection-supercol-row { grid-template-columns: 1fr; }
+  }
   .collection-row-label {
     display: flex; justify-content: space-between; align-items: baseline;
     font-size: 0.7rem; font-weight: bold; letter-spacing: 1.5px;
@@ -1304,6 +1314,86 @@ function showHits(pulls, meta = {}) {
 // Cards just acquired in the latest rip are tagged here for one-shot VFX.
 let flashQueue = []; // [{rarity, id, foil, fresh}]
 
+function buildCollectionRow(rarity, foil) {
+  const setSize = SET_SIZES[rarity];
+  const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
+  const ownedSet = new Set(ownedList);
+  const mk = marketKey(rarity, foil);
+  const inv = mk ? (state.invById[mk] || {}) : null;
+  const prices = mk ? state.market[mk] : null;
+
+  const row = document.createElement("div");
+  row.className = "collection-row";
+  const label = document.createElement("div");
+  label.className = "collection-row-label";
+  label.style.color = RARITY_COLOURS[rarity];
+  label.innerHTML = `
+    <span>${foil ? "✨ FOIL " : ""}${RARITY_LABELS[rarity].toUpperCase()}</span>
+    <span class="row-count">${ownedList.length} / ${setSize}</span>`;
+  row.appendChild(label);
+
+  const grid = document.createElement("div");
+  grid.className = "collection-grid";
+  for (let i = 1; i <= setSize; i++) {
+    const cell = document.createElement("div");
+    const owned = ownedSet.has(i);
+    const priced = !!mk;
+    cell.className = "collection-cell"
+      + (owned  ? " owned"  : "")
+      + (foil   ? " foil"   : "")
+      + (priced ? " priced" : "");
+    cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
+    cell.dataset.rarity = rarity;
+    cell.dataset.id     = i;
+    cell.dataset.foil   = foil ? "1" : "0";
+    const fullId = cardFullId(rarity, i);
+    const cardNum = CARD_NUMBER_OFFSETS[rarity] + i;
+    cell.textContent = String(cardNum).padStart(3, "0");
+
+    const listedCount = listedCountFor(rarity, i, foil);
+    if (listedCount > 0) {
+      cell.classList.add("listed");
+      const listedBadge = document.createElement("span");
+      listedBadge.className = "cell-listed";
+      listedBadge.textContent = listedCount > 1 ? "★" + listedCount : "★";
+      cell.appendChild(listedBadge);
+    }
+
+    if (owned && priced) {
+      const count = inv[i] || 0;
+      if (count > 1) {
+        const badge = document.createElement("span");
+        badge.className = "cell-count";
+        badge.textContent = "×" + count;
+        cell.appendChild(badge);
+      }
+      const price = prices ? prices[i] : 0;
+      if (count > 0) {
+        const priceLabel = document.createElement("span");
+        priceLabel.className = "cell-price";
+        priceLabel.textContent = compactUsd(price);
+        cell.appendChild(priceLabel);
+      }
+      const owns = count;
+      cell.title = owns > 0
+        ? `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — ${usd(price)} · own ${owns}${listedCount > 0 ? ` · ${listedCount} listed` : ""}\nClick to list one`
+        : `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — owned (set), 0 in stock${listedCount > 0 ? ` · ${listedCount} listed` : ""}`;
+    } else if (owned) {
+      cell.title = `${RARITY_LABELS[rarity]} ${fullId} — collected (bulk; sort to list, or dump unsorted pile)`;
+    } else {
+      cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — unowned`;
+    }
+
+    const flashed = flashQueue.find(f =>
+      f.rarity === rarity && f.id === i && f.foil === foil
+    );
+    if (flashed) cell.classList.add(flashed.fresh ? "flash-fresh" : "flash");
+    grid.appendChild(cell);
+  }
+  row.appendChild(grid);
+  return row;
+}
+
 function renderVaultGrid() {
   const wrap = $("vault-grid");
   if (!wrap) return;
@@ -1314,88 +1404,22 @@ function renderVaultGrid() {
   title.textContent = "COLLECTION · SERIES I";
   wrap.appendChild(title);
 
-  // For each rarity (highest first), render the foil row then the regular row.
-  [...RARITIES].reverse().forEach(rarity => {
-    [true, false].forEach(foil => {
-      const setSize = SET_SIZES[rarity];
-      const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
-      const ownedSet = new Set(ownedList);
-      const mk = marketKey(rarity, foil);
-      const inv = mk ? (state.invById[mk] || {}) : null;
-      const prices = mk ? state.market[mk] : null;
+  // Top tiers (mythic / legendary / epic) share one horizontal strip so the
+  // small sets don't waste vertical room. Rare and standard get full width.
+  const topRow = document.createElement("div");
+  topRow.className = "collection-supercol-row";
+  ["mythic", "legendary", "epic"].forEach(rarity => {
+    const col = document.createElement("div");
+    col.className = "collection-supercol";
+    col.appendChild(buildCollectionRow(rarity, true));
+    col.appendChild(buildCollectionRow(rarity, false));
+    topRow.appendChild(col);
+  });
+  wrap.appendChild(topRow);
 
-      const row = document.createElement("div");
-      row.className = "collection-row";
-      const label = document.createElement("div");
-      label.className = "collection-row-label";
-      label.style.color = RARITY_COLOURS[rarity];
-      label.innerHTML = `
-        <span>${foil ? "✨ FOIL " : ""}${RARITY_LABELS[rarity].toUpperCase()}</span>
-        <span class="row-count">${ownedList.length} / ${setSize}</span>`;
-      row.appendChild(label);
-
-      const grid = document.createElement("div");
-      grid.className = "collection-grid";
-      for (let i = 1; i <= setSize; i++) {
-        const cell = document.createElement("div");
-        const owned = ownedSet.has(i);
-        const priced = !!mk;
-        cell.className = "collection-cell"
-          + (owned  ? " owned"  : "")
-          + (foil   ? " foil"   : "")
-          + (priced ? " priced" : "");
-        cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
-        cell.dataset.rarity = rarity;
-        cell.dataset.id     = i;
-        cell.dataset.foil   = foil ? "1" : "0";
-        const fullId = cardFullId(rarity, i);
-        const cardNum = CARD_NUMBER_OFFSETS[rarity] + i;
-        cell.textContent = String(cardNum).padStart(3, "0");
-
-        const listedCount = listedCountFor(rarity, i, foil);
-        if (listedCount > 0) {
-          cell.classList.add("listed");
-          const listedBadge = document.createElement("span");
-          listedBadge.className = "cell-listed";
-          listedBadge.textContent = listedCount > 1 ? "★" + listedCount : "★";
-          cell.appendChild(listedBadge);
-        }
-
-        if (owned && priced) {
-          const count = inv[i] || 0;
-          if (count > 1) {
-            const badge = document.createElement("span");
-            badge.className = "cell-count";
-            badge.textContent = "×" + count;
-            cell.appendChild(badge);
-          }
-          const price = prices ? prices[i] : 0;
-          if (count > 0) {
-            const priceLabel = document.createElement("span");
-            priceLabel.className = "cell-price";
-            priceLabel.textContent = compactUsd(price);
-            cell.appendChild(priceLabel);
-          }
-          const owns = count;
-          cell.title = owns > 0
-            ? `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — ${usd(price)} · own ${owns}${listedCount > 0 ? ` · ${listedCount} listed` : ""}\nClick to list one`
-            : `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — owned (set), 0 in stock${listedCount > 0 ? ` · ${listedCount} listed` : ""}`;
-        } else if (owned) {
-          cell.title = `${RARITY_LABELS[rarity]} ${fullId} — collected (bulk; sort to list, or dump unsorted pile)`;
-        } else {
-          cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — unowned`;
-        }
-
-        const flashed = flashQueue.find(f =>
-          f.rarity === rarity && f.id === i && f.foil === foil
-        );
-        if (flashed) cell.classList.add(flashed.fresh ? "flash-fresh" : "flash");
-
-        grid.appendChild(cell);
-      }
-      row.appendChild(grid);
-      wrap.appendChild(row);
-    });
+  ["rare", "standard"].forEach(rarity => {
+    wrap.appendChild(buildCollectionRow(rarity, true));
+    wrap.appendChild(buildCollectionRow(rarity, false));
   });
 
   flashQueue = [];
