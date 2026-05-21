@@ -74,6 +74,46 @@
     from { transform: translateY(0); }
     to   { transform: translateY(-6px); }
   }
+  #typing-zone {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px; user-select: none;
+  }
+  .typing-hint {
+    font-size: 0.6rem; color: var(--muted);
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  #typing-word {
+    display: flex; gap: 5px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 1.5rem; font-weight: bold; line-height: 1;
+  }
+  .typ-letter {
+    display: inline-block;
+    min-width: 0.7em;
+    text-align: center;
+    color: rgba(255,255,255,0.32);
+    border-bottom: 2px solid transparent;
+    padding: 1px 2px;
+    transition: color 0.12s ease, transform 0.08s ease;
+  }
+  .typ-letter.done { color: var(--gold); }
+  .typ-letter.next {
+    color: #fff;
+    border-bottom-color: var(--gold);
+    animation: typ-pulse 0.7s ease-in-out infinite alternate;
+  }
+  .typ-letter.hit { animation: typ-hit 0.5s ease-out; }
+  @keyframes typ-pulse {
+    from { opacity: 0.65; }
+    to   { opacity: 1; }
+  }
+  @keyframes typ-hit {
+    0%   { transform: scale(1); color: var(--gold); }
+    30%  { transform: scale(1.7); color: #fff;
+           text-shadow: 0 0 12px rgba(245,197,66,0.95),
+                        0 0 18px rgba(255,255,255,0.6); }
+    100% { transform: scale(1); color: var(--gold); text-shadow: none; }
+  }
   .pack {
     width: 200px; height: 290px; border-radius: 14px;
     background: linear-gradient(135deg, #3a2562, #5a2d8a 50%, #2d4a8a);
@@ -795,6 +835,10 @@
   <div id="pack-area">
     <div class="pack" id="pack">
       <div class="label">SERIES I<br>BOOSTER<small id="supply-label">Supply: 0</small></div>
+    </div>
+    <div id="typing-zone">
+      <div class="typing-hint">type to rip</div>
+      <div id="typing-word"></div>
     </div>
 <div id="hint">A box on the house — start ripping!</div>
   </div>
@@ -2895,6 +2939,73 @@ function canRip() {
   return (state.packSupply > 0 || (state.boxesOwned || 0) > 0) && unsortedTotal() < UNSORTED_CAPACITY;
 }
 
+// ---- Typing mini-game ----------------------------------------------------
+const TYPING_WORDS = [
+  "rip", "tear", "pack", "open", "more", "another",
+  "cards", "rare", "epic", "legendary", "mythic",
+  "foil", "sealed", "booster", "holo", "shiny", "gem",
+  "hit", "chase", "pull", "bust", "crack", "slab",
+  "mint", "vault", "set", "collect", "score", "pile",
+  "drop", "stack", "deck", "binder", "graded", "case",
+  "box", "spread", "lucky", "hot", "fresh", "shred",
+  "sort", "homie", "sorter", "rip", "go",
+];
+let typingState = { word: "", index: 0 };
+function pickTypingWord() {
+  let next;
+  do { next = TYPING_WORDS[Math.floor(Math.random() * TYPING_WORDS.length)]; }
+  while (next === typingState.word && TYPING_WORDS.length > 1);
+  return next;
+}
+function ensureTypingWord() {
+  if (!typingState.word) { typingState.word = pickTypingWord(); typingState.index = 0; }
+}
+function renderTypingZone() {
+  const el = $("typing-word");
+  if (!el) return;
+  ensureTypingWord();
+  el.innerHTML = "";
+  for (let i = 0; i < typingState.word.length; i++) {
+    const span = document.createElement("span");
+    let cls = "typ-letter";
+    if (i < typingState.index)      cls += " done";
+    else if (i === typingState.index) cls += " next";
+    span.className = cls;
+    span.textContent = typingState.word[i].toUpperCase();
+    el.appendChild(span);
+  }
+}
+function handleTypingKey(rawKey) {
+  if (!rawKey || rawKey.length !== 1) return;
+  ensureTypingWord();
+  const key = rawKey.toLowerCase();
+  const want = typingState.word[typingState.index];
+  if (key !== want) return; // wrong key — ignore silently
+  const before = state.packsOpened;
+  ripOne();
+  if (state.packsOpened === before) return; // rip refused (no supply / full pile)
+  const el = $("typing-word");
+  if (el) {
+    const span = el.children[typingState.index];
+    if (span) {
+      span.classList.remove("next");
+      span.classList.add("done", "hit");
+      setTimeout(() => { if (span) span.classList.remove("hit"); }, 600);
+    }
+  }
+  typingState.index += 1;
+  if (typingState.index >= typingState.word.length) {
+    setTimeout(() => {
+      typingState.word = pickTypingWord();
+      typingState.index = 0;
+      renderTypingZone();
+    }, 280);
+  } else if (el) {
+    const next = el.children[typingState.index];
+    if (next) next.classList.add("next");
+  }
+}
+
 function ripOne() {
   if (state.packSupply < 1) maybeCrackBox();
   if (state.packSupply < 1) {
@@ -2996,7 +3107,17 @@ setInterval(() => {
 resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", drawSand);
+window.addEventListener("keydown", (e) => {
+  // Don't hijack keys when the user is in an input/textarea or a modifier is held.
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  if (!e.key || e.key.length !== 1) return;
+  if (!/^[a-zA-Z]$/.test(e.key)) return;
+  handleTypingKey(e.key);
+});
 renderAll();
+renderTypingZone();
 </script>
 
 </body>
