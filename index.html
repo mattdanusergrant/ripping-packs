@@ -997,7 +997,7 @@ let SORTER_COST          = def("SORTER_COST", 1000);
 let SORTER_MAX           = def("SORTER_MAX", 3);
 let SORTER_UPGRADE_BASE  = def("SORTER_UPGRADE_BASE", 500);
 let SORTER_BASE_MS       = def("SORTER_BASE_MS", 2000); // L1: 1 card / 2s
-let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 20);
+let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 500);
 let SORTER_LEVEL_MAX     = def("SORTER_LEVEL_MAX", 5);
 const SORTER_TICK_MS     = 250;
 function sorterInterval(level) { return Math.max(250, SORTER_BASE_MS / Math.max(1, level)); }
@@ -3008,36 +3008,78 @@ function tickSorters() {
   else       { renderSorters(); }
 }
 
+function buildSorterCard(uid) {
+  const card = document.createElement("div");
+  card.className = "sorter-card";
+  card.dataset.uid = uid;
+  card.innerHTML = `
+    <span class="sorter-icon">⚙️</span>
+    <div class="sorter-info">
+      <span class="sorter-lvl"></span>
+      <span class="sorter-buffer"></span>
+    </div>
+    <button class="sorter-collect" data-collect="${uid}"></button>
+    <button class="sorter-upgrade" data-upgrade="${uid}"></button>`;
+  return card;
+}
+
 function renderSorters() {
   const wrap = $("sorters-area");
   if (!wrap) return;
   const sorters = state.sorters || [];
-  // Update the BUY SORTER button label + state.
+
+  // BUY SORTER label + disabled state.
   const buyBtn = $("buy-sorter");
   const costEl = $("sorter-cost");
   const owned = sorters.length;
   if (costEl) costEl.textContent = owned >= SORTER_MAX ? `MAX (${SORTER_MAX})` : usd(SORTER_COST);
   if (buyBtn) buyBtn.disabled = owned >= SORTER_MAX || state.coins < SORTER_COST;
 
-  wrap.innerHTML = "";
+  // Incremental update — preserve DOM nodes (and thus :hover) across renders.
+  // Drop cards for sorters that no longer exist, then ensure one card per
+  // sorter exists, then patch text + disabled state in place.
+  const wanted = new Set(sorters.map(s => String(s.uid)));
+  Array.from(wrap.querySelectorAll(".sorter-card")).forEach(el => {
+    if (!wanted.has(el.dataset.uid)) el.remove();
+  });
+
   sorters.forEach((s, i) => {
+    let card = wrap.querySelector(`.sorter-card[data-uid="${s.uid}"]`);
+    if (!card) {
+      card = buildSorterCard(s.uid);
+      wrap.appendChild(card);
+    }
     const cap = sorterCapacity(s.level);
     const buf = sorterBufferTotal(s);
     const atMax = s.level >= SORTER_LEVEL_MAX;
     const upCost = sorterUpgradeCost(s.level);
     const canCollect = buf > 0;
     const canUpgrade = !atMax && state.coins >= upCost;
-    const card = document.createElement("div");
-    card.className = "sorter-card" + (canCollect ? " has-buffer" : "");
-    card.innerHTML = `
-      <span class="sorter-icon">⚙️</span>
-      <div class="sorter-info">
-        <span class="sorter-lvl">SORTER ${i + 1} · LV ${s.level}</span>
-        <span class="sorter-buffer ${buf >= cap ? "full" : ""}">Buffer: <b>${buf}</b> / ${cap}${buf >= cap ? " — FULL" : ""}</span>
-      </div>
-      <button class="sorter-collect" data-collect="${s.uid}" ${canCollect ? "" : "disabled"}>COLLECT ${buf > 0 ? buf : ""}</button>
-      <button class="sorter-upgrade" data-upgrade="${s.uid}" ${canUpgrade ? "" : "disabled"} title="${atMax ? "Max level" : "Upgrade to Lv " + (s.level + 1)}">${atMax ? "MAX" : "⬆ " + usd(upCost)}</button>`;
-    wrap.appendChild(card);
+
+    card.classList.toggle("has-buffer", canCollect);
+
+    const lvlEl = card.querySelector(".sorter-lvl");
+    const lvlText = `SORTER ${i + 1} · LV ${s.level}`;
+    if (lvlEl.textContent !== lvlText) lvlEl.textContent = lvlText;
+
+    const bufEl = card.querySelector(".sorter-buffer");
+    bufEl.classList.toggle("full", buf >= cap);
+    const bufHtml = `Buffer: <b>${buf}</b> / ${cap}${buf >= cap ? " — FULL" : ""}`;
+    if (bufEl.innerHTML !== bufHtml) bufEl.innerHTML = bufHtml;
+
+    const collectBtn = card.querySelector(".sorter-collect");
+    const collectText = `COLLECT${buf > 0 ? " " + buf : ""}`;
+    if (collectBtn.textContent !== collectText) collectBtn.textContent = collectText;
+    // Only touch `disabled` if it actually changes — flipping it on a hovered
+    // button resets pointer-events and can cause the visual to skip a frame.
+    if (collectBtn.disabled !== !canCollect) collectBtn.disabled = !canCollect;
+
+    const upBtn = card.querySelector(".sorter-upgrade");
+    const upText = atMax ? "MAX" : "⬆ " + usd(upCost);
+    if (upBtn.textContent !== upText) upBtn.textContent = upText;
+    const upTitle = atMax ? "Max level" : "Upgrade to Lv " + (s.level + 1);
+    if (upBtn.title !== upTitle) upBtn.title = upTitle;
+    if (upBtn.disabled !== !canUpgrade) upBtn.disabled = !canUpgrade;
   });
 }
 
