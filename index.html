@@ -658,7 +658,7 @@ function def(key, fallback) {
 // Bulk SELL_PRICE only applies to non-market rarities (common, uncommon, rare).
 // Higher rarities go through the market; the entries are kept for the foil
 // fallback path and the dump-discount calculation.
-let SELL_PRICE = def("SELL_PRICE", { standard: 0.30, rare: 1, epic: 5, legendary: 25, mythic: 100 });
+let SELL_PRICE = def("SELL_PRICE", { standard: 0.01, rare: 0.05, epic: 5, legendary: 25, mythic: 100 });
 
 // ---- Sorting -------------------------------------------------------------
 // Tweak these to tune the sorting loop.
@@ -713,13 +713,13 @@ const MARKET_KEYS = [
   "epic", "legendary", "mythic",
   "foilStandard", "foilRare", "foilEpic", "foilLegendary", "foilMythic",
 ];
-const MARKET_VERSION = 7; // bump to force regeneration when baselines change
+const MARKET_VERSION = 8; // bump to force regeneration when baselines change
 let BASELINE = def("BASELINE", {
   epic:           5,
   legendary:      25,
   mythic:         100,
-  foilStandard:   3,
-  foilRare:       10,
+  foilStandard:   0.25,
+  foilRare:       1.5,
   foilEpic:       50,
   foilLegendary:  250,
   foilMythic:     1000,
