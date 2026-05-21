@@ -288,21 +288,62 @@
 
   /* ---- Staff ------------------------------------------------------------ */
   #staff { display: flex; flex-direction: column; gap: 6px; }
+  .staff-buttons { display: flex; gap: 6px; }
+  .staff-buttons .hire-btn { flex: 1; min-width: 0; }
   .hire-btn {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 10px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px;
     background: var(--panel-light); color: var(--ink);
     border: 1px solid #3a3260; border-radius: 8px;
     padding: 8px 12px; cursor: pointer;
-    font-family: inherit; font-size: 0.85rem;
+    font-family: inherit; font-size: 0.78rem;
     transition: background 0.12s ease, transform 0.08s ease;
+    text-align: center;
   }
   .hire-btn:hover:not(:disabled) { background: #2e2752; }
   .hire-btn:active:not(:disabled) { transform: translateY(1px); }
   .hire-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .hire-btn .hire-lbl  { font-weight: bold; letter-spacing: 2px; }
-  .hire-btn .hire-meta { color: var(--muted); font-size: 0.7rem; flex: 1; text-align: center; }
-  .hire-btn .hire-cost { color: var(--gold); font-weight: bold; }
+  .hire-btn .hire-lbl  { font-weight: bold; letter-spacing: 1.5px; }
+  .hire-btn .hire-meta { color: var(--muted); font-size: 0.65rem; }
+  .hire-btn .hire-cost { color: var(--gold); font-weight: bold; font-size: 0.75rem; }
+
+  #sorters-area { display: flex; flex-direction: column; gap: 5px; }
+  #sorters-area:empty { display: none; }
+  .sorter-card {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.28);
+    border: 1.5px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    font-size: 0.72rem;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .sorter-card.has-buffer {
+    border-color: var(--gold);
+    box-shadow: 0 0 8px rgba(245,197,66,0.35);
+  }
+  .sorter-icon { font-size: 1.1rem; line-height: 1; }
+  .sorter-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .sorter-info .sorter-lvl { color: var(--gold); font-weight: bold; font-size: 0.65rem; letter-spacing: 1px; }
+  .sorter-info .sorter-buffer { color: var(--muted); font-size: 0.68rem; }
+  .sorter-info .sorter-buffer.full { color: #ff7a3d; font-weight: bold; }
+  .sorter-collect, .sorter-upgrade {
+    background: transparent; border: 1px solid rgba(255,255,255,0.22);
+    color: var(--ink); padding: 4px 8px; cursor: pointer;
+    font-family: inherit; font-size: 0.65rem; border-radius: 4px;
+    letter-spacing: 1px;
+    transition: all 0.12s;
+  }
+  .sorter-collect:not(:disabled) {
+    color: var(--gold); border-color: var(--gold); font-weight: bold;
+    box-shadow: 0 0 6px rgba(245,197,66,0.3);
+  }
+  .sorter-collect:not(:disabled):hover { background: var(--gold); color: #111; }
+  .sorter-upgrade:not(:disabled):hover { background: rgba(255,255,255,0.06); }
+  .sorter-collect:disabled, .sorter-upgrade:disabled { opacity: 0.4; cursor: not-allowed; }
   #staff-status {
     display: flex; flex-wrap: wrap; gap: 4px;
   }
@@ -735,12 +776,20 @@
     </button>
   </div>
   <div id="staff">
-    <button class="hire-btn" id="hire-homie" type="button">
-      <span class="hire-lbl">HIRE HOMIE</span>
-      <span class="hire-meta">opens 1 box automatically</span>
-      <span class="hire-cost" id="hire-cost">$20 + 📦</span>
-    </button>
+    <div class="staff-buttons">
+      <button class="hire-btn" id="hire-homie" type="button">
+        <span class="hire-lbl">HIRE HOMIE</span>
+        <span class="hire-meta">opens 1 box automatically</span>
+        <span class="hire-cost" id="hire-cost">$20 + 📦</span>
+      </button>
+      <button class="hire-btn" id="buy-sorter" type="button">
+        <span class="hire-lbl">BUY SORTER</span>
+        <span class="hire-meta">permanent · sorts on its own</span>
+        <span class="hire-cost" id="sorter-cost">$1,000</span>
+      </button>
+    </div>
     <div id="staff-status"></div>
+    <div id="sorters-area"></div>
   </div>
   <div id="set-progress"></div>
   <div id="pack-area">
@@ -918,6 +967,21 @@ let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
 let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
 const HOMIE_TICK_MS = 250;
 
+let SORTER_COST          = def("SORTER_COST", 1000);
+let SORTER_MAX           = def("SORTER_MAX", 3);
+let SORTER_UPGRADE_BASE  = def("SORTER_UPGRADE_BASE", 500);
+let SORTER_BASE_MS       = def("SORTER_BASE_MS", 2000); // L1: 1 card / 2s
+let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 20);
+let SORTER_LEVEL_MAX     = def("SORTER_LEVEL_MAX", 5);
+const SORTER_TICK_MS     = 250;
+function sorterInterval(level) { return Math.max(250, SORTER_BASE_MS / Math.max(1, level)); }
+function sorterCapacity(level) { return SORTER_BASE_CAPACITY + (Math.max(1, level) - 1) * 10; }
+function sorterUpgradeCost(level) { return SORTER_UPGRADE_BASE * level * level; }
+function sorterBufferTotal(s) {
+  if (!s || !s.buffer) return 0;
+  return Object.values(s.buffer).reduce((a, b) => a + b, 0);
+}
+
 // ---- Marketplace --------------------------------------------------------
 let DUMP_DISCOUNT             = def("DUMP_DISCOUNT", 0.5);
 let LISTING_AIM_FAST_MULT     = def("LISTING_AIM_FAST_MULT", 0.80);
@@ -960,6 +1024,8 @@ const defaultState = () => ({
   boxesOwned: 1,  // sealed boxes, used to crack open or hire homies (1 free)
   homies: [],     // [{uid, startAt, packsRemaining, lastRipAt}] active homies
   homieUidCounter: 0,
+  sorters: [],    // [{uid, level, buffer:{standard,rare,foilStandard}, lastSortAt}]
+  sorterUidCounter: 0,
   listings: [],          // [{uid, rarity, cardId, foil, aim, askPrice, resolveAt, willResolve}]
   listingAim: "at",      // "fast" | "at" | "high"
   listingsUidCounter: 0,
@@ -1165,6 +1231,13 @@ function load() {
     if (typeof parsed.boxesOwned !== "number") parsed.boxesOwned = 0;
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
+    if (!Array.isArray(parsed.sorters)) parsed.sorters = [];
+    if (typeof parsed.sorterUidCounter !== "number") parsed.sorterUidCounter = 0;
+    parsed.sorters.forEach(s => {
+      if (!s.buffer) s.buffer = { standard: 0, rare: 0, foilStandard: 0 };
+      SAND_BULK_KEYS.forEach(k => { if (typeof s.buffer[k] !== "number") s.buffer[k] = 0; });
+      if (typeof s.level !== "number") s.level = 1;
+    });
     // Rarity rename: drop legacy "common" data outright, fold "uncommon" into
     // "standard". Listings carrying obsolete rarities are dropped (their
     // proceeds were already lost when the rarity went away).
@@ -2337,6 +2410,12 @@ const DESIGN_FIELDS = [
   // Staff
   { group: "Staff",            key: "HOMIE_COST",                      path: "HOMIE_COST",                label: "Hire homie ($, plus 1 box)",   step: 1,   min: 0 },
   { group: "Staff",            key: "HOMIE_PACK_MS",                   path: "HOMIE_PACK_MS",             label: "Homie pack interval (sec)",    step: 0.5, min: 0.5, scale: 1000 },
+  { group: "Staff",            key: "SORTER_COST",                     path: "SORTER_COST",               label: "Sorter base cost ($)",         step: 50,  min: 0 },
+  { group: "Staff",            key: "SORTER_MAX",                      path: "SORTER_MAX",                label: "Max sorters",                  step: 1,   min: 1, int: true },
+  { group: "Staff",            key: "SORTER_UPGRADE_BASE",             path: "SORTER_UPGRADE_BASE",       label: "Sorter upgrade base ($)",      step: 50,  min: 0 },
+  { group: "Staff",            key: "SORTER_BASE_MS",                  path: "SORTER_BASE_MS",            label: "Sorter base interval (sec)",   step: 0.25, min: 0.25, scale: 1000 },
+  { group: "Staff",            key: "SORTER_BASE_CAPACITY",            path: "SORTER_BASE_CAPACITY",      label: "Sorter base buffer capacity",  step: 5,   min: 1, int: true },
+  { group: "Staff",            key: "SORTER_LEVEL_MAX",                path: "SORTER_LEVEL_MAX",          label: "Sorter max level",             step: 1,   min: 1, int: true },
 
   // Market dynamics
   { group: "Market dynamics",  key: "FUND_MIN_MULT",                   path: "FUND_MIN_MULT",             label: "Fund. min mult",               step: 0.05, min: 0 },
@@ -2383,6 +2462,8 @@ function _liveDesignSnapshot() {
     SET_SIZES,
     SORT_MIN, SORT_MAX, SORT_CRIT_CHANCE, SORT_CRIT_MULTIPLIER, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
+    SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
+    SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
     FUND_MIN_MULT, FUND_RANGE,
     TICK_VOLATILITY, TICK_REVERT, TICK_FUND_DRIFT,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO, MARKET_TICK_MS,
@@ -2652,7 +2733,129 @@ function tickHomies() {
   else                { renderHomieSprites(); renderStaff(); }
 }
 
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderDumpButton(); }
+function buySorter() {
+  const owned = (state.sorters || []).length;
+  if (owned >= SORTER_MAX) {
+    $("hint").textContent = `Max sorters (${SORTER_MAX}) reached.`;
+    return;
+  }
+  if (state.coins < SORTER_COST) {
+    $("hint").textContent = `Need ${usd(SORTER_COST - state.coins)} more for a sorter.`;
+    return;
+  }
+  state.coins -= SORTER_COST;
+  state.sorterUidCounter = (state.sorterUidCounter || 0) + 1;
+  if (!Array.isArray(state.sorters)) state.sorters = [];
+  state.sorters.push({
+    uid: state.sorterUidCounter,
+    level: 1,
+    buffer: { standard: 0, rare: 0, foilStandard: 0 },
+    lastSortAt: 0,
+  });
+  renderAll(); save();
+  $("hint").textContent = `Sorter installed. It's already picking through your pile.`;
+}
+
+function upgradeSorter(uid) {
+  const s = (state.sorters || []).find(x => x.uid === uid);
+  if (!s) return;
+  if (s.level >= SORTER_LEVEL_MAX) {
+    $("hint").textContent = "Sorter already at max level.";
+    return;
+  }
+  const cost = sorterUpgradeCost(s.level);
+  if (state.coins < cost) {
+    $("hint").textContent = `Need ${usd(cost - state.coins)} more to upgrade.`;
+    return;
+  }
+  state.coins -= cost;
+  s.level += 1;
+  renderAll(); save();
+  $("hint").textContent = `Sorter upgraded to Lv ${s.level}.`;
+}
+
+function collectSorter(uid) {
+  const s = (state.sorters || []).find(x => x.uid === uid);
+  if (!s) return;
+  const total = sorterBufferTotal(s);
+  if (total === 0) return;
+  ensureBulkInv();
+  SAND_BULK_KEYS.forEach(key => {
+    const count = s.buffer[key] || 0;
+    const baseRarity = bulkBaseRarity(key);
+    for (let i = 0; i < count; i++) {
+      if (bulkIsFoil(key)) state.stockFoil[baseRarity] = (state.stockFoil[baseRarity] || 0) + 1;
+      else                 state.stock[baseRarity]     = (state.stock[baseRarity]     || 0) + 1;
+      trackBulkCard(key, randomCardId(baseRarity));
+    }
+    s.buffer[key] = 0;
+  });
+  renderAll(); save();
+  $("hint").textContent = `Collected ${total} card${total > 1 ? "s" : ""} from sorter.`;
+}
+
+function tickSorters() {
+  const sorters = state.sorters || [];
+  if (sorters.length === 0) return;
+  const now = Date.now();
+  let acted = false;
+  sorters.forEach(s => {
+    const cap = sorterCapacity(s.level);
+    if (sorterBufferTotal(s) >= cap) return;
+    if (now - (s.lastSortAt || 0) < sorterInterval(s.level)) return;
+    const totals = SAND_BULK_KEYS.map(k => state.unsorted[k] || 0);
+    const sum = totals.reduce((a, b) => a + b, 0);
+    if (sum === 0) return;
+    let roll = Math.floor(Math.random() * sum);
+    let key = SAND_BULK_KEYS[SAND_BULK_KEYS.length - 1];
+    for (let j = 0; j < SAND_BULK_KEYS.length; j++) {
+      roll -= totals[j];
+      if (roll < 0) { key = SAND_BULK_KEYS[j]; break; }
+    }
+    state.unsorted[key] -= 1;
+    s.buffer[key] = (s.buffer[key] || 0) + 1;
+    removeOneGrainByKey(key);
+    s.lastSortAt = now;
+    acted = true;
+  });
+  if (acted) { renderAll(); save(); }
+  else       { renderSorters(); }
+}
+
+function renderSorters() {
+  const wrap = $("sorters-area");
+  if (!wrap) return;
+  const sorters = state.sorters || [];
+  // Update the BUY SORTER button label + state.
+  const buyBtn = $("buy-sorter");
+  const costEl = $("sorter-cost");
+  const owned = sorters.length;
+  if (costEl) costEl.textContent = owned >= SORTER_MAX ? `MAX (${SORTER_MAX})` : usd(SORTER_COST);
+  if (buyBtn) buyBtn.disabled = owned >= SORTER_MAX || state.coins < SORTER_COST;
+
+  wrap.innerHTML = "";
+  sorters.forEach((s, i) => {
+    const cap = sorterCapacity(s.level);
+    const buf = sorterBufferTotal(s);
+    const atMax = s.level >= SORTER_LEVEL_MAX;
+    const upCost = sorterUpgradeCost(s.level);
+    const canCollect = buf > 0;
+    const canUpgrade = !atMax && state.coins >= upCost;
+    const card = document.createElement("div");
+    card.className = "sorter-card" + (canCollect ? " has-buffer" : "");
+    card.innerHTML = `
+      <span class="sorter-icon">⚙️</span>
+      <div class="sorter-info">
+        <span class="sorter-lvl">SORTER ${i + 1} · LV ${s.level}</span>
+        <span class="sorter-buffer ${buf >= cap ? "full" : ""}">Buffer: <b>${buf}</b> / ${cap}${buf >= cap ? " — FULL" : ""}</span>
+      </div>
+      <button class="sorter-collect" data-collect="${s.uid}" ${canCollect ? "" : "disabled"}>COLLECT ${buf > 0 ? buf : ""}</button>
+      <button class="sorter-upgrade" data-upgrade="${s.uid}" ${canUpgrade ? "" : "disabled"} title="${atMax ? "Max level" : "Upgrade to Lv " + (s.level + 1)}">${atMax ? "MAX" : "⬆ " + usd(upCost)}</button>`;
+    wrap.appendChild(card);
+  });
+}
+
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); renderDumpButton(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -2760,6 +2963,18 @@ $("sand-canvas").addEventListener("click", () => sortCards());
 $("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
 $("reset-btn").addEventListener("click", resetGame);
 $("hire-homie").addEventListener("click", hireHomie);
+$("buy-sorter").addEventListener("click", buySorter);
+$("sorters-area").addEventListener("click", (e) => {
+  const collect = e.target.closest(".sorter-collect");
+  if (collect && collect.dataset.collect && !collect.disabled) {
+    collectSorter(parseInt(collect.dataset.collect, 10));
+    return;
+  }
+  const upgrade = e.target.closest(".sorter-upgrade");
+  if (upgrade && upgrade.dataset.upgrade && !upgrade.disabled) {
+    upgradeSorter(parseInt(upgrade.dataset.upgrade, 10));
+  }
+});
 $("design-btn").addEventListener("click", openDesignPanel);
 $("design-close").addEventListener("click", closeDesignPanel);
 $("design-cancel").addEventListener("click", closeDesignPanel);
@@ -2772,6 +2987,7 @@ document.addEventListener("keydown", (e) => {
 setInterval(save, 5000);
 setInterval(tickMarket, MARKET_TICK_MS);
 setInterval(tickHomies, HOMIE_TICK_MS);
+setInterval(tickSorters, SORTER_TICK_MS);
 setInterval(resolveListings, LISTING_TICK_MS);
 // Tick the listing countdown displays each second so timers visibly count down.
 setInterval(() => {
