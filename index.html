@@ -135,17 +135,18 @@
     color: var(--muted); font-weight: normal; font-size: 0.65rem;
   }
   .collection-grid {
-    display: grid;
-    /* Cap cell width so a row with only one cell (e.g. the lone mythic) doesn't
-       stretch the cell huge. Cells stay between 34–38px regardless of row width. */
-    grid-template-columns: repeat(auto-fill, minmax(34px, 38px));
-    justify-content: start;
+    /* Flex (not grid) so cells stay at a fixed size regardless of how many
+       fit on a line — a row with one mythic doesn't stretch the cell huge. */
+    display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     background: rgba(0,0,0,0.22); border-radius: 6px; padding: 6px;
   }
   .collection-cell {
     position: relative;
+    width: 36px;
     aspect-ratio: 5 / 7;
+    flex: 0 0 auto;
     border-radius: 3px;
     border: 1.5px solid rgba(255,255,255,0.10);
     background: rgba(255,255,255,0.02);
@@ -529,8 +530,8 @@
     .buy-btn .qty { font-size: 0.6rem; }
     .buy-btn .cost { font-size: 0.8rem; margin-top: 2px; }
     .buy-btn .save { font-size: 0.55rem; }
-    .collection-grid { grid-template-columns: repeat(auto-fill, minmax(26px, 30px)); gap: 3px; padding: 4px; }
-    .collection-cell { font-size: 8px; }
+    .collection-grid { gap: 3px; padding: 4px; }
+    .collection-cell { width: 28px; font-size: 8px; }
     .stock-row { padding: 8px 10px; gap: 8px; }
     #hint { font-size: 0.8rem; }
   }
