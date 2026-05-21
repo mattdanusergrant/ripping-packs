@@ -320,6 +320,96 @@
   button.reset { background: transparent; color: var(--muted); border: 1px solid var(--muted); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.75rem; }
   button.reset:hover { color: var(--ink); border-color: var(--ink); }
 
+  /* ---- Game Design modal ------------------------------------------------ */
+  .design-modal {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .design-modal[hidden] { display: none; }
+  .design-modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(2px);
+  }
+  .design-modal-panel {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid #3a3260; border-radius: 12px;
+    width: min(720px, 94vw); max-height: 88vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.55);
+  }
+  .design-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .design-modal-header h2 {
+    margin: 0; font-size: 1.1rem; letter-spacing: 3px;
+  }
+  .design-close {
+    background: transparent; color: var(--muted);
+    border: none; font-size: 1.4rem; cursor: pointer; line-height: 1;
+    padding: 0 4px;
+  }
+  .design-close:hover { color: var(--ink); }
+  .design-modal-note {
+    padding: 8px 18px;
+    color: var(--muted); font-size: 0.75rem; line-height: 1.4;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .design-modal-note b { color: var(--ink); }
+  .design-form {
+    overflow-y: auto;
+    padding: 12px 18px;
+    flex: 1; min-height: 0;
+  }
+  .design-group { margin-bottom: 14px; }
+  .design-group h3 {
+    margin: 0 0 6px;
+    font-size: 0.72rem; letter-spacing: 3px;
+    color: var(--gold);
+    border-bottom: 1px dashed rgba(245,197,66,0.25);
+    padding-bottom: 4px;
+  }
+  .design-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+  .design-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; font-size: 0.78rem;
+  }
+  .design-row label { color: var(--ink); }
+  .design-row .design-hint { color: var(--muted); font-size: 0.65rem; }
+  .design-row input[type=number] {
+    width: 96px; text-align: right;
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 4px;
+    padding: 4px 6px;
+    font-family: inherit; font-size: 0.8rem;
+  }
+  .design-row input:focus { outline: none; border-color: var(--gold); }
+  .design-modal-footer {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 18px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .design-spacer { flex: 1; }
+  .design-modal-footer button {
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 6px;
+    padding: 6px 12px; cursor: pointer;
+    font-family: inherit; font-size: 0.8rem;
+  }
+  .design-modal-footer button:hover { background: #2e2752; }
+  .design-modal-footer .design-apply {
+    background: var(--gold); color: #1a1530;
+    border-color: var(--gold); font-weight: bold;
+  }
+  .design-modal-footer .design-apply:hover { filter: brightness(1.05); }
+  .design-modal-footer .design-reset { color: var(--muted); }
+  @media (max-width: 700px) {
+    .design-rows { grid-template-columns: 1fr; }
+  }
+
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr; grid-template-rows: auto auto auto auto;
@@ -355,9 +445,31 @@
     <span>Cash: <b id="coins">$0</b></span>
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
+    <button class="reset" id="design-btn">Game Design</button>
     <button class="reset" id="reset-btn">Reset</button>
   </div>
 </header>
+
+<div id="design-modal" class="design-modal" hidden>
+  <div class="design-modal-backdrop"></div>
+  <div class="design-modal-panel" role="dialog" aria-modal="true" aria-labelledby="design-title">
+    <div class="design-modal-header">
+      <h2 id="design-title">GAME DESIGN</h2>
+      <button class="design-close" id="design-close" aria-label="Close">×</button>
+    </div>
+    <div class="design-modal-note">
+      Edit any value, then <b>Apply &amp; Reload</b>. Overrides persist in this browser until reset.
+      Changing set sizes triggers a save migration that clamps out-of-range card IDs.
+    </div>
+    <form id="design-form" class="design-form"></form>
+    <div class="design-modal-footer">
+      <button type="button" class="design-reset" id="design-reset">Reset to defaults</button>
+      <span class="design-spacer"></span>
+      <button type="button" class="design-cancel" id="design-cancel">Cancel</button>
+      <button type="button" class="design-apply" id="design-apply">Apply &amp; Reload</button>
+    </div>
+  </div>
+</div>
 
 <section id="shop">
   <h2>SHOP</h2>
@@ -418,27 +530,51 @@ const RARITIES = ["common", "uncommon", "rare", "mythic"];
 const RARITY_LABELS  = { common: "COMMON",   uncommon: "UNCOMMON", rare: "RARE",  mythic: "MYTHIC" };
 const RARITY_COLOURS = { common: "#b8b8c8",  uncommon: "#5ad06a",  rare: "#5aa8ff", mythic: "#ff7a3d" };
 const RARITY_GLYPHS  = { common: "●",        uncommon: "◆",        rare: "★",      mythic: "✦" };
-const SELL_PRICE     = { common: 0.10,       uncommon: 0.30,       rare: 1,        mythic: 10      };
+
+// ---- Design overrides ---------------------------------------------------
+// All tunables flow through `def()`. The Game Design panel reads the
+// registered defaults, presents them as a form, and persists overrides to
+// localStorage; reloading the page applies them.
+const DESIGN_KEY = "ripping_packs_design_overrides";
+const _DESIGN_DEFAULTS = {};
+let _designOverrides = {};
+try { _designOverrides = JSON.parse(localStorage.getItem(DESIGN_KEY) || "{}"); } catch { _designOverrides = {}; }
+function def(key, fallback) {
+  _DESIGN_DEFAULTS[key] = fallback;
+  if (Object.prototype.hasOwnProperty.call(_designOverrides, key)) {
+    const v = _designOverrides[key];
+    if (fallback && typeof fallback === "object" && !Array.isArray(fallback)
+        && v && typeof v === "object" && !Array.isArray(v)) {
+      return { ...fallback, ...v };
+    }
+    return v;
+  }
+  return fallback;
+}
+
+let SELL_PRICE = def("SELL_PRICE", { common: 0.10, uncommon: 0.30, rare: 1, mythic: 10 });
 
 // ---- Sorting -------------------------------------------------------------
 // Tweak these to tune the sorting loop.
-const SORT_MIN            = 1;    // min cards per click
-const SORT_MAX            = 3;    // max cards per click (inclusive)
-const SORT_CRIT_CHANCE    = 0.10; // 10% chance to crit
-const SORT_CRIT_MULTIPLIER = 3;   // crit multiplies sorted count by this
-const UNSORTED_CAPACITY    = 500; // hard cap on unsorted bulk cards
+let SORT_MIN             = def("SORT_MIN", 1);
+let SORT_MAX             = def("SORT_MAX", 3);
+let SORT_CRIT_CHANCE     = def("SORT_CRIT_CHANCE", 0.10);
+let SORT_CRIT_MULTIPLIER = def("SORT_CRIT_MULTIPLIER", 3);
+let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 500);
 
-const FOIL_MULTIPLIER = 10;
-// Special slot: 15% chance the slot becomes a foil; foil rarity weighted toward common
-const FOIL_SLOT_CHANCE = 0.15;
-const FOIL_RARITY_WEIGHTS = { common: 0.60, uncommon: 0.25, rare: 0.12, mythic: 0.03 };
+let FOIL_MULTIPLIER      = def("FOIL_MULTIPLIER", 10);
+// Special slot: chance the slot becomes a foil; foil rarity weighted toward common
+let FOIL_SLOT_CHANCE     = def("FOIL_SLOT_CHANCE", 0.15);
+let FOIL_RARITY_WEIGHTS  = def("FOIL_RARITY_WEIGHTS", { common: 0.60, uncommon: 0.25, rare: 0.12, mythic: 0.03 });
+// Chance the regular rare/mythic slot resolves to mythic.
+let MYTHIC_SLOT_CHANCE   = def("MYTHIC_SLOT_CHANCE", 0.10);
 
 // ---- Set / identity -----------------------------------------------------
 // Composite card IDs bake in GAME, SET, and CARD numbers so additional games
 // and sets can be added without colliding with existing data.
 const GAME_ID = 1;
 const SET_ID  = 1;
-const SET_SIZES = { common: 80, uncommon: 60, rare: 40, mythic: 20 };
+let SET_SIZES = def("SET_SIZES", { common: 80, uncommon: 60, rare: 40, mythic: 20 });
 // Card numbers are globally unique within a set, across rarities.
 const CARD_NUMBER_OFFSETS = { common: 0, uncommon: 80, rare: 140, mythic: 180 };
 const TOTAL_SET_CARDS = 200;
@@ -456,21 +592,21 @@ function cardFullId(rarity, idx, game, set) {
 // Commons, uncommons, and non-foil rares stay bulk-priced (SELL_PRICE).
 const MARKET_KEYS = ["mythic", "foilCommon", "foilUncommon", "foilRare", "foilMythic"];
 const MARKET_VERSION = 5; // bump to force regeneration when baselines change
-const BASELINE = {
+let BASELINE = def("BASELINE", {
   mythic:       10,
   foilCommon:   1,
   foilUncommon: 3,
   foilRare:     10,
   foilMythic:   100,
-};
-const FUND_MIN_MULT = 0.4;       // per-card fundamental: 0.4× to 2.6× baseline
-const FUND_RANGE    = 2.2;
-const TICK_VOLATILITY = 0.05;    // ± 5% per tick noise
-const TICK_REVERT     = 0.07;    // pull 7% toward fundamental per tick
-const TICK_FUND_DRIFT = 0.005;   // fundamental itself wanders ± 0.5% per tick
-const PRICE_FLOOR_RATIO = 0.12;  // never below 12% of fundamental
-const PRICE_CEIL_RATIO  = 7;     // cap at 7× fundamental
-const MARKET_TICK_MS = 7000;
+});
+let FUND_MIN_MULT     = def("FUND_MIN_MULT", 0.4);
+let FUND_RANGE        = def("FUND_RANGE", 2.2);
+let TICK_VOLATILITY   = def("TICK_VOLATILITY", 0.05);
+let TICK_REVERT       = def("TICK_REVERT", 0.07);
+let TICK_FUND_DRIFT   = def("TICK_FUND_DRIFT", 0.005);
+let PRICE_FLOOR_RATIO = def("PRICE_FLOOR_RATIO", 0.12);
+let PRICE_CEIL_RATIO  = def("PRICE_CEIL_RATIO", 7);
+let MARKET_TICK_MS    = def("MARKET_TICK_MS", 7000);
 
 function marketKey(rarity, foil) {
   if (!foil && rarity === "mythic") return "mythic";
@@ -483,17 +619,17 @@ function marketKey(rarity, foil) {
   return null;
 }
 
-const PACK_COST = 3;
-const BOX_COST  = 100;
-const CASE_COST = 500;
-const BOX_SIZE  = 36;
-const CASE_SIZE = 216;
+let PACK_COST = def("PACK_COST", 3);
+let BOX_COST  = def("BOX_COST", 100);
+let CASE_COST = def("CASE_COST", 500);
+let BOX_SIZE  = def("BOX_SIZE", 36);
+let CASE_SIZE = def("CASE_SIZE", 216);
 
 // ---- Staff --------------------------------------------------------------
-const FRIEND_COST       = 50;
-const FRIEND_SHIFT_MS   = 8 * 60 * 1000; // 8 minutes IRL = 8 in-game hours
-const FRIEND_ACTION_MS  = 2000;          // one sort or one rip every 2s
-const FRIEND_TICK_MS    = 500;
+let FRIEND_COST      = def("FRIEND_COST", 50);
+let FRIEND_SHIFT_MS  = def("FRIEND_SHIFT_MS", 8 * 60 * 1000); // 8 IRL minutes
+let FRIEND_ACTION_MS = def("FRIEND_ACTION_MS", 2000);
+const FRIEND_TICK_MS = 500;
 
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 
@@ -736,7 +872,7 @@ function rarityFromMarketKey(k) {
 
 // ---- Pulls ---------------------------------------------------------------
 function rollRareMythicSlot() {
-  return Math.random() < 0.10 ? "mythic" : "rare";
+  return Math.random() < MYTHIC_SLOT_CHANCE ? "mythic" : "rare";
 }
 function rollFoilRarity() {
   const r = Math.random();
@@ -1250,6 +1386,222 @@ function renderSetProgress() {
   wrap.appendChild(colFoil);
 }
 
+// ---- Game Design panel --------------------------------------------------
+// Each entry binds a form input to a current variable. `path` may include a
+// dot to address nested object keys (e.g., "SELL_PRICE.common"); `key` is
+// the registered design key (so we read its default from _DESIGN_DEFAULTS
+// and write the merged result back into _designOverrides on apply).
+const DESIGN_FIELDS = [
+  // Economy
+  { group: "Economy",          key: "PACK_COST",                       path: "PACK_COST",                 label: "Pack cost ($)",                step: 0.01, min: 0 },
+  { group: "Economy",          key: "BOX_COST",                        path: "BOX_COST",                  label: "Box cost ($)",                 step: 0.01, min: 0 },
+  { group: "Economy",          key: "CASE_COST",                       path: "CASE_COST",                 label: "Case cost ($)",                step: 0.01, min: 0 },
+  { group: "Economy",          key: "BOX_SIZE",                        path: "BOX_SIZE",                  label: "Box pack count",               step: 1,    min: 1, int: true },
+  { group: "Economy",          key: "CASE_SIZE",                       path: "CASE_SIZE",                 label: "Case pack count",              step: 1,    min: 1, int: true },
+
+  // Sell prices (non-foil bulk)
+  { group: "Sell prices",      key: "SELL_PRICE.common",               path: "SELL_PRICE.common",         label: "Common ($)",                   step: 0.01, min: 0 },
+  { group: "Sell prices",      key: "SELL_PRICE.uncommon",             path: "SELL_PRICE.uncommon",       label: "Uncommon ($)",                 step: 0.01, min: 0 },
+  { group: "Sell prices",      key: "SELL_PRICE.rare",                 path: "SELL_PRICE.rare",           label: "Rare ($)",                     step: 0.01, min: 0 },
+  { group: "Sell prices",      key: "SELL_PRICE.mythic",               path: "SELL_PRICE.mythic",         label: "Mythic ($)",                   step: 0.01, min: 0 },
+
+  // Foils
+  { group: "Foils & rarity",   key: "FOIL_MULTIPLIER",                 path: "FOIL_MULTIPLIER",           label: "Foil sell multiplier",         step: 0.1,  min: 0 },
+  { group: "Foils & rarity",   key: "FOIL_SLOT_CHANCE",                path: "FOIL_SLOT_CHANCE",          label: "Foil-slot chance (0–1)",       step: 0.01, min: 0, max: 1 },
+  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.common",      path: "FOIL_RARITY_WEIGHTS.common",label: "Foil weight: common",          step: 0.01, min: 0 },
+  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.uncommon",    path: "FOIL_RARITY_WEIGHTS.uncommon", label: "Foil weight: uncommon",     step: 0.01, min: 0 },
+  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.rare",        path: "FOIL_RARITY_WEIGHTS.rare",  label: "Foil weight: rare",            step: 0.01, min: 0 },
+  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.mythic",      path: "FOIL_RARITY_WEIGHTS.mythic",label: "Foil weight: mythic",          step: 0.01, min: 0 },
+  { group: "Foils & rarity",   key: "MYTHIC_SLOT_CHANCE",              path: "MYTHIC_SLOT_CHANCE",        label: "Mythic odds in R/M slot",      step: 0.01, min: 0, max: 1 },
+
+  // Market baselines
+  { group: "Market baselines", key: "BASELINE.mythic",                 path: "BASELINE.mythic",           label: "Mythic baseline ($)",          step: 0.1,  min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilCommon",             path: "BASELINE.foilCommon",       label: "Foil common baseline ($)",     step: 0.01, min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilUncommon",           path: "BASELINE.foilUncommon",     label: "Foil uncommon baseline ($)",   step: 0.01, min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilRare",               path: "BASELINE.foilRare",         label: "Foil rare baseline ($)",       step: 0.1,  min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilMythic",             path: "BASELINE.foilMythic",       label: "Foil mythic baseline ($)",     step: 1,    min: 0 },
+
+  // Set sizes
+  { group: "Set sizes",        key: "SET_SIZES.common",                path: "SET_SIZES.common",          label: "Common card count",            step: 1, min: 1, int: true },
+  { group: "Set sizes",        key: "SET_SIZES.uncommon",              path: "SET_SIZES.uncommon",        label: "Uncommon card count",          step: 1, min: 1, int: true },
+  { group: "Set sizes",        key: "SET_SIZES.rare",                  path: "SET_SIZES.rare",            label: "Rare card count",              step: 1, min: 1, int: true },
+  { group: "Set sizes",        key: "SET_SIZES.mythic",                path: "SET_SIZES.mythic",          label: "Mythic card count",            step: 1, min: 1, int: true },
+
+  // Sorting
+  { group: "Sorting",          key: "SORT_MIN",                        path: "SORT_MIN",                  label: "Sort min / click",             step: 1, min: 1, int: true },
+  { group: "Sorting",          key: "SORT_MAX",                        path: "SORT_MAX",                  label: "Sort max / click",             step: 1, min: 1, int: true },
+  { group: "Sorting",          key: "SORT_CRIT_CHANCE",                path: "SORT_CRIT_CHANCE",          label: "Sort crit chance (0–1)",       step: 0.01, min: 0, max: 1 },
+  { group: "Sorting",          key: "SORT_CRIT_MULTIPLIER",            path: "SORT_CRIT_MULTIPLIER",      label: "Sort crit multiplier",         step: 0.1, min: 1 },
+  { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
+
+  // Staff (durations exposed in human units; converted on apply)
+  { group: "Staff",            key: "FRIEND_COST",                     path: "FRIEND_COST",               label: "Hire friend ($)",              step: 1,   min: 0 },
+  { group: "Staff",            key: "FRIEND_SHIFT_MS",                 path: "FRIEND_SHIFT_MS",           label: "Shift length (minutes)",       step: 1,   min: 1, scale: 60000 },
+  { group: "Staff",            key: "FRIEND_ACTION_MS",                path: "FRIEND_ACTION_MS",          label: "Action interval (seconds)",    step: 0.5, min: 0.1, scale: 1000 },
+
+  // Market dynamics
+  { group: "Market dynamics",  key: "FUND_MIN_MULT",                   path: "FUND_MIN_MULT",             label: "Fund. min mult",               step: 0.05, min: 0 },
+  { group: "Market dynamics",  key: "FUND_RANGE",                      path: "FUND_RANGE",                label: "Fund. range",                  step: 0.05, min: 0 },
+  { group: "Market dynamics",  key: "TICK_VOLATILITY",                 path: "TICK_VOLATILITY",           label: "Per-tick noise",               step: 0.005, min: 0 },
+  { group: "Market dynamics",  key: "TICK_REVERT",                     path: "TICK_REVERT",               label: "Mean-reversion pull",          step: 0.005, min: 0 },
+  { group: "Market dynamics",  key: "TICK_FUND_DRIFT",                 path: "TICK_FUND_DRIFT",           label: "Fundamental drift",            step: 0.001, min: 0 },
+  { group: "Market dynamics",  key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",         label: "Floor (× fund.)",              step: 0.01, min: 0 },
+  { group: "Market dynamics",  key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",          label: "Ceiling (× fund.)",            step: 0.1,  min: 1 },
+  { group: "Market dynamics",  key: "MARKET_TICK_MS",                  path: "MARKET_TICK_MS",            label: "Tick interval (seconds)",      step: 1,    min: 1, scale: 1000 },
+];
+
+function _resolvePath(root, path) {
+  const parts = path.split(".");
+  let v = root;
+  for (const p of parts) {
+    if (v == null) return undefined;
+    v = v[p];
+  }
+  return v;
+}
+// `let` bindings at script scope are not properties of `window`, so we
+// snapshot them explicitly when the panel opens.
+function _liveDesignSnapshot() {
+  return {
+    PACK_COST, BOX_COST, CASE_COST, BOX_SIZE, CASE_SIZE,
+    SELL_PRICE,
+    FOIL_MULTIPLIER, FOIL_SLOT_CHANCE, FOIL_RARITY_WEIGHTS, MYTHIC_SLOT_CHANCE,
+    BASELINE,
+    SET_SIZES,
+    SORT_MIN, SORT_MAX, SORT_CRIT_CHANCE, SORT_CRIT_MULTIPLIER, UNSORTED_CAPACITY,
+    FRIEND_COST, FRIEND_SHIFT_MS, FRIEND_ACTION_MS,
+    FUND_MIN_MULT, FUND_RANGE,
+    TICK_VOLATILITY, TICK_REVERT, TICK_FUND_DRIFT,
+    PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO, MARKET_TICK_MS,
+  };
+}
+function _readCurrent(path) {
+  return _resolvePath(_liveDesignSnapshot(), path);
+}
+
+function buildDesignForm() {
+  const form = $("design-form");
+  form.innerHTML = "";
+  const groups = new Map();
+  DESIGN_FIELDS.forEach(f => {
+    if (!groups.has(f.group)) groups.set(f.group, []);
+    groups.get(f.group).push(f);
+  });
+  groups.forEach((fields, name) => {
+    const section = document.createElement("div");
+    section.className = "design-group";
+    const h = document.createElement("h3");
+    h.textContent = name;
+    section.appendChild(h);
+    const rows = document.createElement("div");
+    rows.className = "design-rows";
+    fields.forEach(f => {
+      const row = document.createElement("div");
+      row.className = "design-row";
+      const lbl = document.createElement("label");
+      lbl.textContent = f.label;
+      lbl.htmlFor = `design-input-${f.key}`;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.id = `design-input-${f.key}`;
+      input.dataset.key = f.key;
+      input.dataset.path = f.path;
+      if (f.scale) input.dataset.scale = f.scale;
+      if (f.step != null) input.step = f.step;
+      if (f.min  != null) input.min  = f.min;
+      if (f.max  != null) input.max  = f.max;
+      const raw = _readCurrent(f.path);
+      const shown = f.scale ? (raw / f.scale) : raw;
+      input.value = (typeof shown === "number" && isFinite(shown))
+        ? (f.int ? String(Math.round(shown)) : String(shown))
+        : "";
+      row.appendChild(lbl);
+      row.appendChild(input);
+      rows.appendChild(row);
+    });
+    section.appendChild(rows);
+    form.appendChild(section);
+  });
+}
+
+function openDesignPanel() {
+  buildDesignForm();
+  $("design-modal").hidden = false;
+}
+function closeDesignPanel() {
+  $("design-modal").hidden = true;
+}
+
+function readFormOverrides() {
+  // Build a sparse overrides object containing only values that differ
+  // from their registered default.
+  const overrides = {};
+  const inputs = document.querySelectorAll("#design-form input[type=number]");
+  inputs.forEach(input => {
+    const key   = input.dataset.key;
+    const path  = input.dataset.path;
+    const scale = input.dataset.scale ? parseFloat(input.dataset.scale) : 1;
+    const raw   = input.value.trim();
+    if (raw === "") return;
+    const num = parseFloat(raw);
+    if (!isFinite(num)) return;
+    const value = num * scale;
+    // Compare against the default value (looking up via the key's path on defaults)
+    const parts = path.split(".");
+    const rootKey = parts[0];
+    const def = _DESIGN_DEFAULTS[rootKey];
+    let defaultVal;
+    if (parts.length === 1) defaultVal = def;
+    else {
+      let cur = def;
+      for (let i = 1; i < parts.length; i++) cur = cur && cur[parts[i]];
+      defaultVal = cur;
+    }
+    if (parts.length === 1) {
+      if (value !== defaultVal) overrides[rootKey] = value;
+    } else {
+      // Nested: build/extend the override object for the root key
+      if (value !== defaultVal) {
+        if (!overrides[rootKey] || typeof overrides[rootKey] !== "object") overrides[rootKey] = {};
+        let cur = overrides[rootKey];
+        for (let i = 1; i < parts.length - 1; i++) {
+          if (!cur[parts[i]] || typeof cur[parts[i]] !== "object") cur[parts[i]] = {};
+          cur = cur[parts[i]];
+        }
+        cur[parts[parts.length - 1]] = value;
+      }
+    }
+  });
+  return overrides;
+}
+
+function applyDesignAndReload() {
+  const overrides = readFormOverrides();
+  const sizesChanged  = !!(overrides.SET_SIZES && Object.keys(overrides.SET_SIZES).length);
+  const marketChanged = sizesChanged
+    || (overrides.BASELINE && Object.keys(overrides.BASELINE).length)
+    || "FUND_MIN_MULT" in overrides
+    || "FUND_RANGE" in overrides;
+  if (state && typeof state === "object") {
+    if (sizesChanged)  state.setVersion    = -1;
+    if (marketChanged) state.marketVersion = -1;
+    if (sizesChanged || marketChanged) save();
+  }
+  localStorage.setItem(DESIGN_KEY, JSON.stringify(overrides));
+  location.reload();
+}
+
+function resetDesignOverrides() {
+  if (!confirm("Reset all game design values to defaults? Your save (cards, cash, etc.) is kept.")) return;
+  localStorage.removeItem(DESIGN_KEY);
+  if (state && typeof state === "object") {
+    // Force set-size migration to re-clamp any IDs from prior overrides
+    state.setVersion = -1;
+    save();
+  }
+  location.reload();
+}
+
 function renderStaff() {
   const cost = $("hire-cost");
   if (cost) cost.textContent = usd(FRIEND_COST);
@@ -1418,6 +1770,15 @@ $("sand-canvas").addEventListener("click", () => sortCards());
 $("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
 $("reset-btn").addEventListener("click", resetGame);
 $("hire-friend").addEventListener("click", hireFriend);
+$("design-btn").addEventListener("click", openDesignPanel);
+$("design-close").addEventListener("click", closeDesignPanel);
+$("design-cancel").addEventListener("click", closeDesignPanel);
+$("design-apply").addEventListener("click", applyDesignAndReload);
+$("design-reset").addEventListener("click", resetDesignOverrides);
+document.querySelector("#design-modal .design-modal-backdrop").addEventListener("click", closeDesignPanel);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("design-modal").hidden) closeDesignPanel();
+});
 setInterval(save, 5000);
 setInterval(tickMarket, MARKET_TICK_MS);
 setInterval(tickFriends, FRIEND_TICK_MS);
