@@ -59,9 +59,19 @@ Newly pulled bulk cards drop into the sand canvas as **colored grains** — gree
 
 Clicking the canvas removes 3–7 grains and moves those cards into your collection (assigning random IDs against `SET_SIZES[rarity]`). The collection cell for each landed card flashes.
 
-### Click-position crit
+### Chain-crit (positional)
 
-The old random-crit roll was replaced with a positional system: **if any non-standard grain (rare or foil-standard) is within a 2-cell radius of your click, the sort crits and sorts ×3**. Pure standard fields stay non-crit. This rewards reading the pile and clicking into the colored specks.
+Crits aren't a multiplier — they're a local explosion event.
+
+1. Click → search a 2-cell (`SORT_CRIT_RADIUS_CELLS`) Manhattan diamond around the click for the nearest non-standard grain. If none, no crit.
+2. That **crit node** annihilates itself plus all 8 surrounding grains.
+3. Any non-standard grains caught in that 8-neighborhood **chain** — they detonate their own 8-neighborhood. Standards in the blast are consumed but don't propagate the chain.
+4. The cascade continues until no non-standard grain is in any active blast — typically 9 cards on a lone rare, often 20–40+ on a cluster.
+5. **Every destroyed grain is fully sorted** (set progress, collection flash, market-key tracking — same as a manual sort).
+6. After the chain: the **regular 3–7 sort** runs as usual.
+7. The pile gravity-settles via the falling-grain physics: every surviving grain above a destroyed cell becomes a falling grain at its previous visual Y and physics-falls down to fill the gap.
+
+So a good crit click into a dense rare/foil cluster can sort 30+ cards with one click and trigger a small chunk of the pile to physically tumble down.
 
 ### Unsorted cap
 

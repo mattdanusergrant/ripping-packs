@@ -880,8 +880,7 @@ let SELL_PRICE = def("SELL_PRICE", { standard: 0.01, rare: 0.05, epic: 5, legend
 // Tweak these to tune the sorting loop.
 let SORT_MIN             = def("SORT_MIN", 3);
 let SORT_MAX             = def("SORT_MAX", 7);
-let SORT_CRIT_MULTIPLIER = def("SORT_CRIT_MULTIPLIER", 3);
-let SORT_CRIT_RADIUS_CELLS = def("SORT_CRIT_RADIUS_CELLS", 2); // squares from the click
+let SORT_CRIT_RADIUS_CELLS = def("SORT_CRIT_RADIUS_CELLS", 2); // squares from the click to search for a crit-node seed
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 2000);
 
 let FOIL_MULTIPLIER       = def("FOIL_MULTIPLIER", 10);
@@ -2203,16 +2202,16 @@ function rollSortBase() {
   return SORT_MIN + Math.floor(Math.random() * (SORT_MAX - SORT_MIN + 1));
 }
 
-// Inspect the pile near the click — if any non-standard grain is within
-// SORT_CRIT_RADIUS_CELLS squares, the click crits.
-function isCritClick(clickX, clickY) {
+// Find the nearest non-standard grain in the pile within SORT_CRIT_RADIUS_CELLS
+// of the click. Returns {col, row} or null. Used as the seed for chain crits.
+function findCritNode(clickX, clickY) {
   const canvas = $("sand-canvas");
-  if (!canvas) return false;
+  if (!canvas) return null;
   const h = canvas.clientHeight || 90;
   const cx = Math.floor(clickX / SAND_CELL);
-  // Row index measured from the bottom of the canvas (where the pile sits).
   const cy = Math.floor((h - clickY) / SAND_CELL);
   const radius = SORT_CRIT_RADIUS_CELLS;
+  let bestCol = -1, bestRow = -1, bestDist = Infinity;
   for (let dc = -radius; dc <= radius; dc++) {
     const c = cx + dc;
     if (c < 0 || c >= state.pile.length) continue;
@@ -2221,24 +2220,110 @@ function isCritClick(clickX, clickY) {
     for (let dr = -radius; dr <= radius; dr++) {
       const r = cy + dr;
       if (r < 0 || r >= col.length) continue;
-      // Manhattan distance kept under radius for the diamond check.
-      if (Math.abs(dc) + Math.abs(dr) > radius) continue;
+      const dist = Math.abs(dc) + Math.abs(dr);
+      if (dist > radius) continue;
       const k = col[r];
-      if (k && k !== "standard") return true;
+      if (k && k !== "standard" && k !== "__" && dist < bestDist) {
+        bestDist = dist;
+        bestCol = c;
+        bestRow = r;
+      }
     }
   }
-  return false;
+  return bestCol < 0 ? null : { col: bestCol, row: bestRow };
+}
+
+// BFS chain explosion. Marks destroyed cells as "__" tombstones in state.pile
+// so callers can settle the pile afterward. Returns the destroyed grains in
+// destruction order so callers can sort each one.
+function chainCritExplode(startCol, startRow) {
+  const destroyed = [];
+  const queue = [];
+  const startKey = state.pile[startCol] && state.pile[startCol][startRow];
+  if (!startKey || startKey === "__") return destroyed;
+  destroyed.push({ col: startCol, row: startRow, key: startKey });
+  state.pile[startCol][startRow] = "__";
+  queue.push([startCol, startRow]);
+  while (queue.length) {
+    const [c, r] = queue.shift();
+    for (let dc = -1; dc <= 1; dc++) {
+      for (let dr = -1; dr <= 1; dr++) {
+        if (dc === 0 && dr === 0) continue;
+        const nc = c + dc, nr = r + dr;
+        if (nc < 0 || nc >= state.pile.length) continue;
+        const col = state.pile[nc];
+        if (!col || nr < 0 || nr >= col.length) continue;
+        const k = col[nr];
+        if (!k || k === "__") continue;
+        destroyed.push({ col: nc, row: nr, key: k });
+        col[nr] = "__";
+        // Non-standard grains chain — their own 8 neighbors also blow up.
+        if (k !== "standard") queue.push([nc, nr]);
+      }
+    }
+  }
+  return destroyed;
+}
+
+// Consume one card from state.unsorted[key]: bumps stock/stockFoil, runs
+// trackBulkCard (set progress + collection flash). Does NOT touch the pile —
+// the caller decides how to remove the grain.
+function sortOneOfKey(key) {
+  if ((state.unsorted[key] || 0) <= 0) return false;
+  state.unsorted[key] -= 1;
+  const baseRarity = bulkBaseRarity(key);
+  if (bulkIsFoil(key)) state.stockFoil[baseRarity] = (state.stockFoil[baseRarity] || 0) + 1;
+  else                 state.stock[baseRarity]     = (state.stock[baseRarity]     || 0) + 1;
+  trackBulkCard(key, randomCardId(baseRarity));
+  return true;
+}
+
+// After a chain explosion peppers tombstones through the pile, convert every
+// surviving grain in a touched column into a falling grain anchored at its
+// current visual Y. The existing physics loop then settles them straight down.
+function settlePileAfterChain() {
+  const canvas = $("sand-canvas");
+  if (!canvas) return;
+  const h = canvas.clientHeight || 90;
+  state.pile.forEach((col, c) => {
+    if (!col.some(k => k === "__")) return; // column untouched
+    const survivors = [];
+    for (let r = 0; r < col.length; r++) {
+      if (col[r] !== "__") survivors.push({ row: r, key: col[r] });
+    }
+    state.pile[c] = [];
+    survivors.forEach(s => {
+      fallingGrains.push({
+        col: c,
+        y: h - (s.row + 1) * SAND_CELL,
+        vy: 0,
+        key: s.key,
+      });
+    });
+  });
+  startSandAnim();
 }
 
 function sortCards(opts) {
   ensureBulkInv();
-  const total = SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
-  if (total === 0) return;
-  const crit = !!(opts && opts.crit);
-  const base = rollSortBase();
-  const amount = crit ? Math.floor(base * SORT_CRIT_MULTIPLIER) : base;
-  const actual = Math.min(amount, total);
-  for (let i = 0; i < actual; i++) {
+  if (SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0) === 0) return;
+
+  // 1. Chain crit from the click position, if a non-standard grain is nearby.
+  let critCount = 0;
+  if (opts && opts.click) {
+    const node = findCritNode(opts.click.x, opts.click.y);
+    if (node) {
+      const destroyed = chainCritExplode(node.col, node.row);
+      destroyed.forEach(d => sortOneOfKey(d.key));
+      settlePileAfterChain();
+      critCount = destroyed.length;
+    }
+  }
+
+  // 2. Regular sort always runs after the chain.
+  const baseAmount = rollSortBase();
+  let regular = 0;
+  for (let i = 0; i < baseAmount; i++) {
     const totals = SAND_BULK_KEYS.map(k => state.unsorted[k] || 0);
     const sum = totals.reduce((a, b) => a + b, 0);
     if (sum === 0) break;
@@ -2248,16 +2333,18 @@ function sortCards(opts) {
       roll -= totals[j];
       if (roll < 0) { key = SAND_BULK_KEYS[j]; break; }
     }
-    state.unsorted[key] -= 1;
-    const baseRarity = bulkBaseRarity(key);
-    if (bulkIsFoil(key)) state.stockFoil[baseRarity] = (state.stockFoil[baseRarity] || 0) + 1;
-    else                 state.stock[baseRarity]     = (state.stock[baseRarity]     || 0) + 1;
-    trackBulkCard(key, randomCardId(baseRarity));
-    removeOneGrainByKey(key);
+    if (sortOneOfKey(key)) {
+      removeOneGrainByKey(key);
+      regular += 1;
+    }
   }
+
   renderAll(); save();
-  const tag = crit ? " ✨ CRIT!" : "";
-  $("hint").textContent = `Sorted ${actual} card${actual > 1 ? "s" : ""}.${tag}`;
+  if (critCount > 0) {
+    $("hint").textContent = `✨ CRIT! Chain sorted ${critCount} + regular ${regular} = ${critCount + regular} cards.`;
+  } else {
+    $("hint").textContent = `Sorted ${regular} card${regular !== 1 ? "s" : ""}.`;
+  }
 }
 
 
@@ -2452,7 +2539,6 @@ const DESIGN_FIELDS = [
   // Sorting
   { group: "Sorting",          key: "SORT_MIN",                        path: "SORT_MIN",                  label: "Sort min / click",             step: 1, min: 1, int: true },
   { group: "Sorting",          key: "SORT_MAX",                        path: "SORT_MAX",                  label: "Sort max / click",             step: 1, min: 1, int: true },
-  { group: "Sorting",          key: "SORT_CRIT_MULTIPLIER",            path: "SORT_CRIT_MULTIPLIER",      label: "Sort crit multiplier",         step: 0.1, min: 1 },
   { group: "Sorting",          key: "SORT_CRIT_RADIUS_CELLS",          path: "SORT_CRIT_RADIUS_CELLS",    label: "Crit click radius (cells)",    step: 1, min: 0, int: true },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
 
@@ -2501,7 +2587,7 @@ function _liveDesignSnapshot() {
     FOIL_MULTIPLIER, PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
     BASELINE,
     SET_SIZES,
-    SORT_MIN, SORT_MAX, SORT_CRIT_MULTIPLIER, SORT_CRIT_RADIUS_CELLS, UNSORTED_CAPACITY,
+    SORT_MIN, SORT_MAX, SORT_CRIT_RADIUS_CELLS, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
     SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
@@ -3070,7 +3156,7 @@ $("sand-canvas").addEventListener("click", (e) => {
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
-  sortCards({ crit: isCritClick(x, y) });
+  sortCards({ click: { x, y } });
 });
 $("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
 $("reset-btn").addEventListener("click", resetGame);
