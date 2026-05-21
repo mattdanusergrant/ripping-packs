@@ -434,6 +434,25 @@
     0%, 100% { box-shadow: 0 0 8px rgba(245,197,66,0.35); }
     50%      { box-shadow: 0 0 14px rgba(245,197,66,0.7); }
   }
+  /* Foil-track variants: rainbow border + shimmery accent for the foil
+     standard set craft / list buttons. */
+  .set-craft-btn.foil:not(:disabled),
+  .set-list-btn.foil:not(:disabled) {
+    border-image: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3) 1;
+    color: #fff;
+  }
+  .set-craft-btn.foil:not(:disabled) {
+    animation: set-pulse-foil 1.6s ease-in-out infinite;
+    box-shadow: 0 0 10px rgba(101,214,255,0.4);
+  }
+  @keyframes set-pulse-foil {
+    0%, 100% { box-shadow: 0 0 8px rgba(101,214,255,0.4); }
+    50%      { box-shadow: 0 0 16px rgba(255,126,179,0.7); }
+  }
+  .set-craft-btn.foil:not(:disabled):hover,
+  .set-list-btn.foil:not(:disabled):hover {
+    background: linear-gradient(135deg, rgba(255,126,179,0.18), rgba(101,214,255,0.18));
+  }
   .sell-stack { display: flex; flex-direction: column; gap: 6px; }
   .sell-btn {
     background: transparent; color: var(--gold); border: 1px solid var(--gold);
@@ -747,28 +766,33 @@ function cardFullId(rarity, idx, game, set) {
 // market-priced like other priced inventory.
 const MARKET_KEYS = [
   "epic", "legendary", "mythic",
-  "foilStandard", "foilRare", "foilEpic", "foilLegendary", "foilMythic",
-  "standardSet", "rareSet",
+  "foilRare", "foilEpic", "foilLegendary", "foilMythic",
+  "standardSet", "rareSet", "foilStandardSet",
 ];
-const SET_ITEM_KEYS = ["standardSet", "rareSet"];
-function setItemKey(rarity) {
-  if (rarity === "standard") return "standardSet";
-  if (rarity === "rare")     return "rareSet";
+const SET_ITEM_KEYS = ["standardSet", "rareSet", "foilStandardSet"];
+// Bulk *keys* (not rarities) — three sortable buckets feed the unsorted pile.
+const SAND_BULK_KEYS = ["standard", "rare", "foilStandard"];
+function setItemKey(key) {
+  if (key === "standard")     return "standardSet";
+  if (key === "rare")         return "rareSet";
+  if (key === "foilStandard") return "foilStandardSet";
   return null;
 }
+function bulkBaseRarity(key) { return key === "foilStandard" ? "standard" : key; }
+function bulkIsFoil(key) { return key === "foilStandard"; }
 function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
-const MARKET_VERSION = 9; // bump to force regeneration when baselines change
+const MARKET_VERSION = 10; // bump to force regeneration when baselines change
 let BASELINE = def("BASELINE", {
-  epic:           5,
-  legendary:      25,
-  mythic:         100,
-  foilStandard:   0.25,
-  foilRare:       1.5,
-  foilEpic:       50,
-  foilLegendary:  250,
-  foilMythic:     1000,
-  standardSet:    30,
-  rareSet:        200,
+  epic:             5,
+  legendary:        25,
+  mythic:           100,
+  foilRare:         1.5,
+  foilEpic:         50,
+  foilLegendary:    250,
+  foilMythic:       1000,
+  standardSet:      30,
+  rareSet:          200,
+  foilStandardSet:  120,
 });
 let FUND_MIN_MULT     = def("FUND_MIN_MULT", 0.4);
 let FUND_RANGE        = def("FUND_RANGE", 2.2);
@@ -786,7 +810,8 @@ function marketKey(rarity, foil) {
     if (rarity === "mythic")    return "mythic";
     return null;
   }
-  if (rarity === "standard")  return "foilStandard";
+  // Foil standards are bulk (sort + craft a Foil Standard Set), not per-id priced.
+  if (rarity === "standard")  return null;
   if (rarity === "rare")      return "foilRare";
   if (rarity === "epic")      return "foilEpic";
   if (rarity === "legendary") return "foilLegendary";
@@ -828,7 +853,7 @@ const defaultState = () => ({
   coins: 50,
   packsOpened: 0,
   packSupply: BOX_SIZE, // start with a box on the house
-  unsorted:   { standard: 0, rare: 0 },
+  unsorted:   { standard: 0, rare: 0, foilStandard: 0 },
   stock:      { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
   stockFoil:  { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
   opened:     { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
@@ -839,7 +864,7 @@ const defaultState = () => ({
   setsCelebrated:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
   setsCelebratedFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
   invById:      emptyInvById(),
-  bulkInvById:  { standard: {}, rare: {} }, // per-id counts for sortable bulk
+  bulkInvById:  { standard: {}, rare: {}, foilStandard: {} }, // per-id counts for sortable bulk
   market:       null, // {key: per-card live prices}, populated by initMarket
   marketFund:   null, // same shape, fundamental values
   marketVersion: MARKET_VERSION,
@@ -1146,10 +1171,42 @@ function load() {
         (parsed.owned[r] || []).forEach(id => {
           parsed.bulkInvById[r][id] = (parsed.bulkInvById[r][id] || 0) + 1;
         });
-        // Re-sync stock total to match per-id counts.
         parsed.stock[r] = Object.values(parsed.bulkInvById[r]).reduce((s, n) => s + n, 0);
       }
     });
+    // Foil-standard migration: was per-id priced (state.invById.foilStandard),
+    // now bulk-tracked via bulkInvById.foilStandard.
+    if (typeof parsed.unsorted !== "object" || !parsed.unsorted) parsed.unsorted = {};
+    if (typeof parsed.unsorted.foilStandard !== "number") parsed.unsorted.foilStandard = 0;
+    if (!parsed.bulkInvById.foilStandard || typeof parsed.bulkInvById.foilStandard !== "object") {
+      parsed.bulkInvById.foilStandard = {};
+      // Old priced foil-standard inventory → new bulk inventory.
+      if (parsed.invById.foilStandard && typeof parsed.invById.foilStandard === "object") {
+        Object.entries(parsed.invById.foilStandard).forEach(([id, n]) => {
+          parsed.bulkInvById.foilStandard[id] = (parsed.bulkInvById.foilStandard[id] || 0) + (n || 0);
+        });
+      }
+      // Backfill from the foil ownership list too (covers older saves).
+      (parsed.ownedFoil.standard || []).forEach(id => {
+        if (!parsed.bulkInvById.foilStandard[id]) parsed.bulkInvById.foilStandard[id] = 1;
+      });
+      // stockFoil.standard becomes the sorted-foil-standard count.
+      parsed.stockFoil.standard = Object.values(parsed.bulkInvById.foilStandard).reduce((s, n) => s + n, 0);
+    }
+    delete parsed.invById.foilStandard;
+    // Any active per-id foil-standard listings get cancelled back to the
+    // unsorted pile — they no longer exist as a market item.
+    if (Array.isArray(parsed.listings)) {
+      const kept = [];
+      parsed.listings.forEach(l => {
+        if (l && l.rarity === "standard" && l.foil === true) {
+          parsed.unsorted.foilStandard = (parsed.unsorted.foilStandard || 0) + 1;
+        } else {
+          kept.push(l);
+        }
+      });
+      parsed.listings = kept;
+    }
     return parsed;
   } catch { return null; }
 }
@@ -1170,7 +1227,6 @@ function rarityFromMarketKey(k) {
   if (k === "epic")          return { rarity: "epic",      foil: false };
   if (k === "legendary")     return { rarity: "legendary", foil: false };
   if (k === "mythic")        return { rarity: "mythic",    foil: false };
-  if (k === "foilStandard")  return { rarity: "standard",  foil: true  };
   if (k === "foilRare")      return { rarity: "rare",      foil: true  };
   if (k === "foilEpic")      return { rarity: "epic",      foil: true  };
   if (k === "foilLegendary") return { rarity: "legendary", foil: true  };
@@ -1222,8 +1278,14 @@ function rollPack() {
   return cards;
 }
 function addPull(card) {
+  const foilStandardBulk = card.foil && card.rarity === "standard";
   if (card.foil) {
-    state.stockFoil[card.rarity]  += 1;
+    if (foilStandardBulk) {
+      // Foil standards are bulk: drop into the unsorted pile as a shiny grain.
+      state.unsorted.foilStandard = (state.unsorted.foilStandard || 0) + 1;
+    } else {
+      state.stockFoil[card.rarity]  += 1;
+    }
     state.openedFoil[card.rarity] += 1;
   } else {
     if (SAND_BULK_RARITIES.includes(card.rarity)) {
@@ -1236,6 +1298,14 @@ function addPull(card) {
   const mk = marketKey(card.rarity, card.foil);
   if (mk) {
     state.invById[mk][card.id] = (state.invById[mk][card.id] || 0) + 1;
+  }
+  // Bulk pulls (standards, rares, foil standards) don't update set
+  // completion at pull-time — that happens when they're sorted.
+  const bulkPull = (!card.foil && SAND_BULK_RARITIES.includes(card.rarity))
+                || (card.foil && card.rarity === "standard");
+  if (bulkPull) {
+    flashQueue.push({ rarity: card.rarity, id: card.id, foil: card.foil, fresh: false });
+    return { isNew: false, completed: false };
   }
   const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
   const wasNew = !ownedList.includes(card.id);
@@ -1278,12 +1348,37 @@ function renderHeader() {
   else pack.classList.remove("disabled");
 }
 
+function setActionsBlock(key) {
+  ensureBulkInv();
+  const baseRarity = bulkBaseRarity(key);
+  const isFoil = bulkIsFoil(key);
+  const size = SET_SIZES[baseRarity] || 0;
+  const inv = state.bulkInvById[key] || {};
+  let uniqueOwned = 0;
+  for (let i = 1; i <= size; i++) if ((inv[i] || 0) > 0) uniqueOwned += 1;
+  const ready = uniqueOwned >= size;
+  const sk = setItemKey(key);
+  const setsOwned = (state.invById[sk] && state.invById[sk][1]) || 0;
+  const setPrice = (state.market && state.market[sk]) ? state.market[sk][1] : BASELINE[sk];
+  const setName = (isFoil ? "FOIL " : "") + RARITY_LABELS[baseRarity];
+  const craftLabel = ready ? `CRAFT ${setName} SET` : `${setName} ${uniqueOwned}/${size}`;
+  const listLabel = setsOwned > 0 ? `LIST 1 (~${usd(setPrice)})` : "—";
+  const craftCls = "set-craft-btn" + (isFoil ? " foil" : "");
+  const listCls  = "set-list-btn"  + (isFoil ? " foil" : "");
+  return `
+    <div class="set-actions">
+      <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"}>${craftLabel}</button>
+      <button class="${listCls}" data-list-set="${key}" ${setsOwned > 0 ? "" : "disabled"}>${setName} SETS: <b>${setsOwned}</b> · ${listLabel}</button>
+    </div>`;
+}
+
 function renderVault() {
   const grid = $("stock-rows");
   grid.innerHTML = "";
   [...RARITIES].reverse().forEach(rarity => {
     const stock     = state.stock[rarity] || 0;
     const unsorted  = state.unsorted ? (state.unsorted[rarity] || 0) : 0;
+    const unsortedFoil = (rarity === "standard") ? (state.unsorted && state.unsorted.foilStandard || 0) : 0;
     const stockF    = state.stockFoil[rarity] || 0;
     const opened    = state.opened[rarity] || 0;
     const openedF   = state.openedFoil[rarity] || 0;
@@ -1294,43 +1389,29 @@ function renderVault() {
       : `@ ${usd(SELL_PRICE[rarity])}`;
     const priceLabelFoil = isPricedFoil
       ? (stockF > 0 ? `~${usd(inventoryAvgPrice(rarity, true))} avg`  : "market")
-      : `@ ${usd(foilPrice(rarity))}`;
+      : (rarity === "standard"
+          ? `bulk · craft set`
+          : `@ ${usd(foilPrice(rarity))}`);
     const isBulk = SAND_BULK_RARITIES.includes(rarity);
     const stockLine = isBulk
       ? `Unsorted: <b>${unsorted}</b> · Sorted: <b>${stock}</b> · lifetime <b>${opened}</b>`
       : `Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span>`;
+    const foilLineExtra = (rarity === "standard")
+      ? ` · Unsorted: <b>${unsortedFoil}</b>`
+      : "";
 
     let setBlock = "";
-    if (isBulk) {
-      ensureBulkInv();
-      const size = SET_SIZES[rarity] || 0;
-      const inv = state.bulkInvById[rarity] || {};
-      let uniqueOwned = 0;
-      for (let i = 1; i <= size; i++) if ((inv[i] || 0) > 0) uniqueOwned += 1;
-      const ready = uniqueOwned >= size;
-      const sk = setItemKey(rarity);
-      const setsOwned = (state.invById[sk] && state.invById[sk][1]) || 0;
-      const setPrice = (state.market && state.market[sk]) ? state.market[sk][1] : BASELINE[sk];
-      const craftLabel = ready
-        ? `CRAFT ${RARITY_LABELS[rarity]} SET`
-        : `Set ${uniqueOwned}/${size}`;
-      const listLabel = setsOwned > 0
-        ? `LIST 1 (~${usd(setPrice)})`
-        : "—";
-      setBlock = `
-        <div class="set-actions">
-          <button class="set-craft-btn" data-craft="${rarity}" ${ready ? "" : "disabled"}>${craftLabel}</button>
-          <button class="set-list-btn" data-list-set="${rarity}" ${setsOwned > 0 ? "" : "disabled"}>${RARITY_LABELS[rarity]} SETS: <b>${setsOwned}</b> · ${listLabel}</button>
-        </div>`;
-    }
+    if (isBulk) setBlock += setActionsBlock(rarity);
+    // Standard row also exposes the foil-standard set track.
+    if (rarity === "standard") setBlock += setActionsBlock("foilStandard");
 
     const row = document.createElement("div");
     row.className = `stock-row ${rarity}`;
     row.innerHTML = `
       <div class="rarity-name" style="color:${RARITY_COLOURS[rarity]}">${RARITY_GLYPHS[rarity]} ${RARITY_LABELS[rarity]}</div>
       <div class="counts">
-        ${(stockF + openedF) > 0
-          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">${priceLabelFoil}</span></span>`
+        ${(stockF + openedF + unsortedFoil) > 0
+          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b>${foilLineExtra} · lifetime <b>${openedF}</b> <span class="sell-price">${priceLabelFoil}</span></span>`
           : ""}
         <span>${stockLine}</span>
         ${setBlock}
@@ -1416,9 +1497,14 @@ function buildCollectionRow(rarity, foil) {
   const mk = marketKey(rarity, foil);
   const inv = mk ? (state.invById[mk] || {}) : null;
   const prices = mk ? state.market[mk] : null;
-  const bulkInv = (!foil && SAND_BULK_RARITIES.includes(rarity))
-    ? ((state.bulkInvById && state.bulkInvById[rarity]) || {})
-    : null;
+  // Cells for bulk tracks read counts from bulkInvById. Foil standards are
+  // bulk too, so they share this path.
+  let bulkInv = null;
+  if (!foil && SAND_BULK_RARITIES.includes(rarity)) {
+    bulkInv = (state.bulkInvById && state.bulkInvById[rarity]) || {};
+  } else if (foil && rarity === "standard") {
+    bulkInv = (state.bulkInvById && state.bulkInvById.foilStandard) || {};
+  }
 
   const row = document.createElement("div");
   row.className = "collection-row";
@@ -1595,74 +1681,88 @@ function listCard(rarity, cardId, foil) {
 
 function ensureBulkInv() {
   if (!state.bulkInvById) state.bulkInvById = {};
-  SAND_BULK_RARITIES.forEach(r => { if (!state.bulkInvById[r]) state.bulkInvById[r] = {}; });
+  SAND_BULK_KEYS.forEach(k => { if (!state.bulkInvById[k]) state.bulkInvById[k] = {}; });
+  if (!state.unsorted) state.unsorted = {};
+  SAND_BULK_KEYS.forEach(k => { if (typeof state.unsorted[k] !== "number") state.unsorted[k] = 0; });
 }
 
-function trackBulkCard(rarity, id) {
+function bulkOwnedList(key) {
+  const base = bulkBaseRarity(key);
+  return bulkIsFoil(key) ? state.ownedFoil[base] : state.owned[base];
+}
+
+function trackBulkCard(key, id) {
   ensureBulkInv();
-  state.bulkInvById[rarity][id] = (state.bulkInvById[rarity][id] || 0) + 1;
-  const ownedList = state.owned[rarity];
+  state.bulkInvById[key][id] = (state.bulkInvById[key][id] || 0) + 1;
+  const ownedList = bulkOwnedList(key);
   if (!ownedList.includes(id)) ownedList.push(id);
 }
 
-function isSetListing(l) { return l && (l.rarity === "standardSet" || l.rarity === "rareSet"); }
+function isSetListing(l) {
+  return l && (l.rarity === "standardSet" || l.rarity === "rareSet" || l.rarity === "foilStandardSet");
+}
 
-function canCraftSet(rarity) {
+function canCraftSet(key) {
   ensureBulkInv();
-  const size = SET_SIZES[rarity] || 0;
+  const size = SET_SIZES[bulkBaseRarity(key)] || 0;
   if (!size) return false;
-  const inv = state.bulkInvById[rarity];
+  const inv = state.bulkInvById[key];
   for (let i = 1; i <= size; i++) {
     if ((inv[i] || 0) < 1) return false;
   }
   return true;
 }
 
-function craftSet(rarity) {
-  if (!setItemKey(rarity)) return;
-  if (!canCraftSet(rarity)) return;
-  const size = SET_SIZES[rarity];
-  const inv = state.bulkInvById[rarity];
+function craftSet(key) {
+  if (!setItemKey(key)) return;
+  if (!canCraftSet(key)) return;
+  const baseRarity = bulkBaseRarity(key);
+  const isFoil = bulkIsFoil(key);
+  const size = SET_SIZES[baseRarity];
+  const inv = state.bulkInvById[key];
   for (let i = 1; i <= size; i++) {
     inv[i] -= 1;
     if (inv[i] <= 0) {
       delete inv[i];
-      const ownedList = state.owned[rarity];
+      const ownedList = bulkOwnedList(key);
       const idx = ownedList.indexOf(i);
       if (idx >= 0) ownedList.splice(idx, 1);
     }
   }
-  state.stock[rarity] = Math.max(0, (state.stock[rarity] || 0) - size);
-  const key = setItemKey(rarity);
-  if (!state.invById[key]) state.invById[key] = {};
-  state.invById[key][1] = (state.invById[key][1] || 0) + 1;
+  if (isFoil) state.stockFoil[baseRarity] = Math.max(0, (state.stockFoil[baseRarity] || 0) - size);
+  else        state.stock[baseRarity]     = Math.max(0, (state.stock[baseRarity]     || 0) - size);
+  const itemKey = setItemKey(key);
+  if (!state.invById[itemKey]) state.invById[itemKey] = {};
+  state.invById[itemKey][1] = (state.invById[itemKey][1] || 0) + 1;
   renderAll(); save();
-  $("hint").textContent = `Crafted a ${RARITY_LABELS[rarity]} SET. Ready to list.`;
+  $("hint").textContent = `Crafted a ${isFoil ? "FOIL " : ""}${RARITY_LABELS[baseRarity]} SET. Ready to list.`;
 }
 
-function listSetItem(rarity) {
-  const key = setItemKey(rarity);
-  if (!key) return;
-  const inv = state.invById[key];
+function listSetItem(key) {
+  const itemKey = setItemKey(key);
+  if (!itemKey) return;
+  const inv = state.invById[itemKey];
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
   const aim = state.listingAim || "at";
   const spec = listingAimSpec(aim);
-  const basePrice = (state.market && state.market[key]) ? (state.market[key][1] || BASELINE[key]) : BASELINE[key];
+  const basePrice = (state.market && state.market[itemKey]) ? (state.market[itemKey][1] || BASELINE[itemKey]) : BASELINE[itemKey];
   const ask = Math.max(0.01, Math.round(basePrice * spec.mult * 100) / 100);
   const cooldownSec = spec.min + Math.random() * (spec.max - spec.min);
   const uid = (state.listingsUidCounter || 0) + 1;
   state.listingsUidCounter = uid;
   if (!Array.isArray(state.listings)) state.listings = [];
   state.listings.push({
-    uid, rarity: key, cardId: 1, foil: false, aim,
+    uid, rarity: itemKey, cardId: 1, foil: false, aim,
     askPrice: ask,
     resolveAt: Date.now() + cooldownSec * 1000,
     willResolve: Math.random() < spec.sellOdds,
   });
   renderAll(); save();
-  $("hint").textContent = `Listed ${RARITY_LABELS[rarity]} SET @ ${usd(ask)}.`;
+  const baseLabel = bulkBaseRarity(key);
+  const isFoil = bulkIsFoil(key);
+  $("hint").textContent = `Listed ${isFoil ? "FOIL " : ""}${RARITY_LABELS[baseLabel]} SET @ ${usd(ask)}.`;
 }
 
 function cancelListing(uid) {
@@ -1689,18 +1789,22 @@ function cancelListing(uid) {
   $("hint").textContent = `Cancelled listing — returned to inventory.`;
 }
 
+function bulkKeyDumpPrice(key) {
+  const base = bulkBaseRarity(key);
+  return bulkIsFoil(key) ? SELL_PRICE[base] * FOIL_MULTIPLIER : SELL_PRICE[base];
+}
 function dumpUnsorted() {
   let total = 0, proceeds = 0;
-  SAND_BULK_RARITIES.forEach(r => {
-    const n = state.unsorted[r] || 0;
+  SAND_BULK_KEYS.forEach(k => {
+    const n = state.unsorted[k] || 0;
     total += n;
-    proceeds += n * SELL_PRICE[r] * DUMP_DISCOUNT;
+    proceeds += n * bulkKeyDumpPrice(k) * DUMP_DISCOUNT;
   });
   if (total === 0) return;
   proceeds = Math.round(proceeds * 100) / 100;
   if (!confirm(`Dump ${total} unsorted card${total > 1 ? "s" : ""} for ${usd(proceeds)}? (${Math.round(DUMP_DISCOUNT * 100)}% of listed price)`)) return;
   state.coins += proceeds;
-  SAND_BULK_RARITIES.forEach(r => state.unsorted[r] = 0);
+  SAND_BULK_KEYS.forEach(k => state.unsorted[k] = 0);
   state.pile = [];
   ensurePileBuckets();
   renderAll(); save();
@@ -1717,8 +1821,9 @@ function resolveListings() {
     if (l.willResolve) {
       state.coins += l.askPrice;
       if (isSetListing(l)) {
-        const setRarity = l.rarity === "standardSet" ? "standard" : "rare";
-        lastMessage = `Sold ${RARITY_LABELS[setRarity]} SET @ ${usd(l.askPrice)}.`;
+        const isFoil = l.rarity === "foilStandardSet";
+        const setRarity = l.rarity === "rareSet" ? "rare" : "standard";
+        lastMessage = `Sold ${isFoil ? "FOIL " : ""}${RARITY_LABELS[setRarity]} SET @ ${usd(l.askPrice)}.`;
       } else {
         lastMessage = `Sold ${l.foil ? "foil " : ""}${RARITY_LABELS[l.rarity].toLowerCase()}${l.cardId != null ? " " + cardFullId(l.rarity, l.cardId) : ""} @ ${usd(l.askPrice)}.`;
       }
@@ -1775,16 +1880,19 @@ function renderListings() {
       ${aimChip("high", "HIGH",      `${Math.round(LISTING_AIM_HIGH_MULT*100)}% · risky`)}
     </div>`;
   if (listings.length === 0) {
-    html += `<div class="listings-empty">Nothing listed. Click a mythic or foil cell in the collection to list, or craft a Standard / Rare set.</div>`;
+    html += `<div class="listings-empty">Nothing listed. Click a mythic/foil cell in the collection to list, or craft a Standard / Rare / Foil-Standard set.</div>`;
   } else {
     html += `<div class="listings-grid">`;
     listings.forEach(l => {
       if (isSetListing(l)) {
-        const setRarity = l.rarity === "standardSet" ? "standard" : "rare";
+        const isFoilSet = l.rarity === "foilStandardSet";
+        const setRarity = l.rarity === "rareSet" ? "rare" : "standard";
         const color = RARITY_COLOURS[setRarity];
-        html += `<button type="button" class="listing-pill set" data-uid="${l.uid}" style="border-color:${color}" title="Click to cancel and return the set to inventory">`
+        const pillCls = "listing-pill set" + (isFoilSet ? " foil" : "");
+        const label = (isFoilSet ? "✨ FOIL " : "") + RARITY_LABELS[setRarity] + " SET";
+        html += `<button type="button" class="${pillCls}" data-uid="${l.uid}" style="border-color:${color}" title="Click to cancel and return the set to inventory">`
               + `<span class="lst-glyph">📦</span>`
-              + `<span class="lst-id" style="color:${color}">${RARITY_LABELS[setRarity]} SET</span>`
+              + `<span class="lst-id"${isFoilSet ? "" : ` style="color:${color}"`}>${label}</span>`
               + `<span class="lst-price">${usd(l.askPrice)}</span>`
               + `</button>`;
       } else {
@@ -1807,10 +1915,10 @@ function renderDumpButton() {
   const btn = $("dump-btn");
   if (!btn) return;
   let total = 0, proceeds = 0;
-  SAND_BULK_RARITIES.forEach(r => {
-    const n = state.unsorted[r] || 0;
+  SAND_BULK_KEYS.forEach(k => {
+    const n = state.unsorted[k] || 0;
     total += n;
-    proceeds += n * SELL_PRICE[r] * DUMP_DISCOUNT;
+    proceeds += n * bulkKeyDumpPrice(k) * DUMP_DISCOUNT;
   });
   btn.disabled = total === 0;
   btn.textContent = total === 0
@@ -1821,9 +1929,17 @@ function renderDumpButton() {
 // ---- Sand simulation -----------------------------------------------------
 const SAND_GRAIN = 5;
 const SAND_CELL  = 7;
-const SAND_COLOR = { standard: "#5ad06a", rare: "#5aa8ff" };
+// Grain colors by bulk-key. Foil standard rotates through a rainbow each frame.
+const SAND_COLOR = { standard: "#5ad06a", rare: "#5aa8ff", foilStandard: "#ffffff" };
+function grainColorFor(key) {
+  if (key === "foilStandard") {
+    const t = (Date.now() / 24) % 360;
+    return `hsl(${t}, 90%, 70%)`;
+  }
+  return SAND_COLOR[key] || "#b8b8c8";
+}
 const SAND_BULK_RARITIES = ["standard", "rare"];
-let fallingGrains = []; // {col, y, vy, rarity}
+let fallingGrains = []; // {col, y, vy, key}
 let sandAnimRunning = false;
 
 function sandColCount() {
@@ -1844,42 +1960,35 @@ function rebuildPileFromStock() {
   state.pile = [];
   ensurePileBuckets();
   const cols = sandColCount();
-  SAND_BULK_RARITIES.forEach(r => {
-    for (let i = 0; i < state.unsorted[r]; i++) {
+  SAND_BULK_KEYS.forEach(k => {
+    for (let i = 0; i < (state.unsorted[k] || 0); i++) {
       const c = Math.floor(Math.random() * cols);
-      state.pile[c].push(r);
+      state.pile[c].push(k);
     }
   });
 }
 
 function syncPileWithStock() {
-  // If the pile and unsorted have drifted (eg. migration), rebuild.
-  const unsortedBulk = SAND_BULK_RARITIES.reduce((s, r) => s + state.unsorted[r], 0);
+  const unsortedBulk = SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
   if (totalPileGrains() + fallingGrains.length !== unsortedBulk) {
     rebuildPileFromStock();
   }
 }
 
-function removeOneGrainByRarity(rarity) {
-  // Prefer removing a still-falling grain so settled pile stays intact longer
-  const fi = fallingGrains.findIndex(g => g.rarity === rarity);
+function removeOneGrainByKey(key) {
+  const fi = fallingGrains.findIndex(g => g.key === key);
   if (fi !== -1) { fallingGrains.splice(fi, 1); return; }
-  // Walk columns tallest-first; pluck from the top of the first column
-  // whose top grain matches. Falls back to digging the tallest column.
   const ordered = state.pile
     .map((col, c) => ({ c, h: col.length }))
     .sort((a, b) => b.h - a.h);
   for (const { c } of ordered) {
     const col = state.pile[c];
-    if (col.length > 0 && col[col.length - 1] === rarity) {
-      col.pop();
-      return;
-    }
+    if (col.length > 0 && col[col.length - 1] === key) { col.pop(); return; }
   }
   for (const { c } of ordered) {
     const col = state.pile[c];
     for (let r = col.length - 1; r >= 0; r--) {
-      if (col[r] === rarity) { col.splice(r, 1); return; }
+      if (col[r] === key) { col.splice(r, 1); return; }
     }
   }
 }
@@ -1891,52 +2000,49 @@ function rollSortAmount() {
 }
 
 function sortCards() {
-  const total = SAND_BULK_RARITIES.reduce((s, r) => s + state.unsorted[r], 0);
+  ensureBulkInv();
+  const total = SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
   if (total === 0) return;
   const { amount, crit } = rollSortAmount();
   const actual = Math.min(amount, total);
   for (let i = 0; i < actual; i++) {
-    // Pick a rarity from the unsorted pile weighted by current counts.
-    const totals = SAND_BULK_RARITIES.map(r => state.unsorted[r] || 0);
+    const totals = SAND_BULK_KEYS.map(k => state.unsorted[k] || 0);
     const sum = totals.reduce((a, b) => a + b, 0);
     if (sum === 0) break;
     let roll = Math.floor(Math.random() * sum);
-    let rarity = SAND_BULK_RARITIES[SAND_BULK_RARITIES.length - 1];
-    for (let j = 0; j < SAND_BULK_RARITIES.length; j++) {
+    let key = SAND_BULK_KEYS[SAND_BULK_KEYS.length - 1];
+    for (let j = 0; j < SAND_BULK_KEYS.length; j++) {
       roll -= totals[j];
-      if (roll < 0) { rarity = SAND_BULK_RARITIES[j]; break; }
+      if (roll < 0) { key = SAND_BULK_KEYS[j]; break; }
     }
-    state.unsorted[rarity] -= 1;
-    state.stock[rarity] = (state.stock[rarity] || 0) + 1;
-    trackBulkCard(rarity, randomCardId(rarity));
-    removeOneGrainByRarity(rarity);
+    state.unsorted[key] -= 1;
+    const baseRarity = bulkBaseRarity(key);
+    if (bulkIsFoil(key)) state.stockFoil[baseRarity] = (state.stockFoil[baseRarity] || 0) + 1;
+    else                 state.stock[baseRarity]     = (state.stock[baseRarity]     || 0) + 1;
+    trackBulkCard(key, randomCardId(baseRarity));
+    removeOneGrainByKey(key);
   }
   renderAll(); save();
   const tag = crit ? " ✨ CRIT!" : "";
   $("hint").textContent = `Sorted ${actual} card${actual > 1 ? "s" : ""}.${tag}`;
 }
 
-function removeGrainsByRarity(rarity) {
-  if (!SAND_BULK_RARITIES.includes(rarity)) return;
-  state.pile = state.pile.map(col => col.filter(r => r !== rarity));
-}
 
-function removeAllBulkGrains() {
-  state.pile = state.pile.map(() => []);
+function pullBulkKey(card) {
+  if (!card.foil && SAND_BULK_RARITIES.includes(card.rarity)) return card.rarity;
+  if (card.foil && card.rarity === "standard") return "foilStandard";
+  return null;
 }
-
 function spawnSandFromPulls(pulls) {
-  const bulk = pulls.filter(c => !c.foil && SAND_BULK_RARITIES.includes(c.rarity));
+  const bulk = pulls.map(c => ({ c, k: pullBulkKey(c) })).filter(x => x.k);
   ensurePileBuckets();
   const cols = sandColCount();
-  // Spawn all grains synchronously into fallingGrains, but stagger their
-  // starting Y so they enter the canvas one-by-one — creates a sandfall stream.
-  bulk.forEach((card, i) => {
+  bulk.forEach(({ k }, i) => {
     fallingGrains.push({
       col: Math.floor(Math.random() * cols),
       y: -SAND_CELL - i * (SAND_CELL * 1.6) - Math.random() * 5,
       vy: 0,
-      rarity: card.rarity,
+      key: k,
     });
   });
   startSandAnim();
@@ -1956,7 +2062,7 @@ function drawSand() {
     for (let r = 0; r < stack.length; r++) {
       const x = c * SAND_CELL + 1;
       const y = h - (r + 1) * SAND_CELL + 1;
-      ctx.fillStyle = SAND_COLOR[stack[r]] || "#b8b8c8";
+      ctx.fillStyle = grainColorFor(stack[r]);
       ctx.beginPath();
       ctx.arc(x + SAND_GRAIN / 2, y + SAND_GRAIN / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
       ctx.fill();
@@ -1964,7 +2070,7 @@ function drawSand() {
   }
   fallingGrains.forEach(g => {
     const x = g.col * SAND_CELL + 1;
-    ctx.fillStyle = SAND_COLOR[g.rarity] || "#b8b8c8";
+    ctx.fillStyle = grainColorFor(g.key);
     ctx.beginPath();
     ctx.arc(x + SAND_GRAIN / 2, g.y + SAND_GRAIN / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
     ctx.fill();
@@ -1982,13 +2088,17 @@ function stepSandAnim() {
     const landY = h - (stackH + 1) * SAND_CELL;
     if (g.y >= landY) {
       g.y = landY;
-      state.pile[g.col].push(g.rarity);
+      state.pile[g.col].push(g.key);
       return false;
     }
     return true;
   });
   drawSand();
-  if (fallingGrains.length > 0) {
+  // If any foil-standard grains are settled in the pile, keep redrawing so
+  // their rainbow shimmer animates.
+  const hasShimmer = fallingGrains.some(g => g.key === "foilStandard")
+                 || state.pile.some(col => col.includes("foilStandard"));
+  if (fallingGrains.length > 0 || hasShimmer) {
     requestAnimationFrame(stepSandAnim);
   } else {
     sandAnimRunning = false;
@@ -2011,6 +2121,9 @@ function renderSandPile() {
   }
   ensurePileBuckets();
   drawSand();
+  // If shimmer grains are sitting in the pile, keep the animation loop alive
+  // so their color cycles each frame.
+  if (state.pile.some(col => col.includes("foilStandard"))) startSandAnim();
 }
 
 function buildSetBar(rarity, foil) {
@@ -2088,13 +2201,13 @@ const DESIGN_FIELDS = [
   { group: "Market baselines", key: "BASELINE.epic",                   path: "BASELINE.epic",                 label: "Epic baseline ($)",       step: 0.1, min: 0 },
   { group: "Market baselines", key: "BASELINE.legendary",              path: "BASELINE.legendary",            label: "Legendary baseline ($)",  step: 0.5, min: 0 },
   { group: "Market baselines", key: "BASELINE.mythic",                 path: "BASELINE.mythic",               label: "Mythic baseline ($)",     step: 1,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilStandard",           path: "BASELINE.foilStandard",         label: "Foil standard baseline ($)",   step: 0.05, min: 0 },
   { group: "Market baselines", key: "BASELINE.foilRare",               path: "BASELINE.foilRare",             label: "Foil rare baseline ($)",       step: 0.1,  min: 0 },
   { group: "Market baselines", key: "BASELINE.foilEpic",               path: "BASELINE.foilEpic",             label: "Foil epic baseline ($)",       step: 0.5,  min: 0 },
   { group: "Market baselines", key: "BASELINE.foilLegendary",          path: "BASELINE.foilLegendary",        label: "Foil legendary baseline ($)",  step: 1,    min: 0 },
   { group: "Market baselines", key: "BASELINE.foilMythic",             path: "BASELINE.foilMythic",           label: "Foil mythic baseline ($)",     step: 5,    min: 0 },
-  { group: "Market baselines", key: "BASELINE.standardSet",            path: "BASELINE.standardSet",          label: "Standard Set baseline ($)",    step: 1,    min: 0 },
-  { group: "Market baselines", key: "BASELINE.rareSet",                path: "BASELINE.rareSet",              label: "Rare Set baseline ($)",        step: 5,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.standardSet",            path: "BASELINE.standardSet",          label: "Standard Set baseline ($)",      step: 1,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.rareSet",                path: "BASELINE.rareSet",              label: "Rare Set baseline ($)",          step: 5,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilStandardSet",        path: "BASELINE.foilStandardSet",      label: "Foil Standard Set baseline ($)", step: 1,    min: 0 },
 
   // Set sizes
   { group: "Set sizes",        key: "SET_SIZES.standard",              path: "SET_SIZES.standard",        label: "Standard card count",          step: 1, min: 1, int: true },
@@ -2385,7 +2498,7 @@ function buyPacks(qty, totalCost, label) {
 }
 
 function unsortedTotal() {
-  return SAND_BULK_RARITIES.reduce((s, r) => s + state.unsorted[r], 0);
+  return SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
 }
 function canRip() {
   return state.packSupply > 0 && unsortedTotal() < UNSORTED_CAPACITY;
