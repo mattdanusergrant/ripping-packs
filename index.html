@@ -934,6 +934,7 @@ const MARKET_KEYS = [
 ];
 const SET_ITEM_KEYS = ["standardSet", "rareSet", "foilStandardSet"];
 // Bulk *keys* (not rarities) — three sortable buckets feed the unsorted pile.
+const SAND_BULK_RARITIES = ["standard", "rare"];
 const SAND_BULK_KEYS = ["standard", "rare", "foilStandard"];
 function setItemKey(key) {
   if (key === "standard")     return "standardSet";
@@ -1208,6 +1209,23 @@ function load() {
           parsed.invById[mk] = newBucket;
         });
       }
+      // Bulk per-id counts (standards/rares/foilStandard) also need clamping
+      // — phantom out-of-range IDs would otherwise persist invisibly forever
+      // and inflate state.stock relative to what canCraftSet() can see.
+      if (parsed.bulkInvById) {
+        SAND_BULK_KEYS.forEach(k => {
+          const max = SET_SIZES[bulkBaseRarity(k)];
+          if (!max) return;
+          const oldBucket = parsed.bulkInvById[k] || {};
+          const newBucket = {};
+          Object.entries(oldBucket).forEach(([id, count]) => {
+            const i = parseInt(id, 10);
+            const target = (i >= 1 && i <= max) ? i : (Math.floor(Math.random() * max) + 1);
+            newBucket[target] = (newBucket[target] || 0) + count;
+          });
+          parsed.bulkInvById[k] = newBucket;
+        });
+      }
       if (parsed.setsCelebrated) {
         RARITIES.forEach(r => {
           parsed.setsCelebrated[r]     = (parsed.owned[r]     || []).length >= SET_SIZES[r];
@@ -1388,10 +1406,16 @@ function load() {
       parsed.listings = kept;
     }
     return parsed;
-  } catch { return null; }
+  } catch (e) {
+    // Surface load failures rather than silently wiping the save — this is
+    // how a TDZ/programming error in migration once silently nuked saves.
+    console.error("save load failed:", e);
+    return null;
+  }
 }
 function save() { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
 function fmt(n) {
+  if (n == null || !Number.isFinite(n)) return "0";
   if (n < 1) return n.toFixed(2);
   return Math.floor(n).toLocaleString();
 }
@@ -1681,7 +1705,10 @@ function buildCollectionRow(rarity, foil) {
   row.appendChild(label);
 
   const grid = document.createElement("div");
-  grid.className = "collection-grid" + (rarity === "standard" ? " cols-18" : "");
+  // Lock to 18 columns for any rarity with an 18-card row so sibling rows
+  // (standard + rare today) align consistently regardless of viewport width.
+  const lock18 = SET_SIZES[rarity] === 18 || SET_SIZES[rarity] === 36;
+  grid.className = "collection-grid" + (lock18 ? " cols-18" : "");
   for (let i = 1; i <= setSize; i++) {
     const cell = document.createElement("div");
     const owned = ownedSet.has(i);
@@ -1783,6 +1810,9 @@ function renderVaultGrid() {
 }
 
 // ---- Marketplace listings ----------------------------------------------
+// Legacy: no current code path creates non-foil bulk listings (standards
+// and rares are now sold via crafted Sets). Kept only so listings carried
+// over from old saves can still cancel/resolve cleanly.
 function isBulkListing(l) {
   return !l.foil && SAND_BULK_RARITIES.includes(l.rarity);
 }
@@ -2115,7 +2145,6 @@ function grainColorFor(key) {
   }
   return SAND_COLOR[key] || "#b8b8c8";
 }
-const SAND_BULK_RARITIES = ["standard", "rare"];
 let fallingGrains = []; // {col, y, vy, key}
 let sandAnimRunning = false;
 
@@ -2650,12 +2679,13 @@ function renderHomieSprites() {
   area.querySelectorAll(".homie-sprite").forEach(el => {
     if (!wanted.has(el.dataset.uid)) el.remove();
   });
-  // Add missing sprites.
+  // Add or update sprites, and re-anchor each surviving sprite to its
+  // current slot index so finishing homies don't leave gaps.
   homies.forEach((h, i) => {
     if (present.has(String(h.uid))) {
-      // Update progress bar width on existing sprite.
       const el = area.querySelector(`.homie-sprite[data-uid="${h.uid}"]`);
       if (el) {
+        el.style.setProperty("--homie-slot", i);
         const pct = Math.min(100, ((BOX_SIZE - h.packsRemaining) / BOX_SIZE) * 100);
         const bar = el.querySelector(".homie-bar > span");
         if (bar) bar.style.width = pct + "%";
@@ -2863,6 +2893,9 @@ function renderSorters() {
   });
 }
 
+// renderTypingZone is intentionally NOT called here — that DOM is owned by
+// the typing module and any external rebuild wipes the transient .hit class
+// that drives the letter-flash animation.
 function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); renderDumpButton(); }
 
 // ---- Actions -------------------------------------------------------------
@@ -3076,7 +3109,10 @@ resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", drawSand);
 window.addEventListener("keydown", (e) => {
-  // Don't hijack keys when the user is in an input/textarea or a modifier is held.
+  // Don't hijack keys when the design modal is open, the user is in an
+  // input/textarea, or a modifier is held.
+  const modal = document.getElementById("design-modal");
+  if (modal && !modal.hidden) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
