@@ -715,8 +715,8 @@ let SELL_PRICE = def("SELL_PRICE", { standard: 0.01, rare: 0.05, epic: 5, legend
 
 // ---- Sorting -------------------------------------------------------------
 // Tweak these to tune the sorting loop.
-let SORT_MIN             = def("SORT_MIN", 1);
-let SORT_MAX             = def("SORT_MAX", 3);
+let SORT_MIN             = def("SORT_MIN", 2);
+let SORT_MAX             = def("SORT_MAX", 6);
 let SORT_CRIT_CHANCE     = def("SORT_CRIT_CHANCE", 0.10);
 let SORT_CRIT_MULTIPLIER = def("SORT_CRIT_MULTIPLIER", 3);
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 500);
@@ -1299,14 +1299,11 @@ function addPull(card) {
   if (mk) {
     state.invById[mk][card.id] = (state.invById[mk][card.id] || 0) + 1;
   }
-  // Bulk pulls (standards, rares, foil standards) don't update set
-  // completion at pull-time — that happens when they're sorted.
+  // Bulk pulls (standards, rares, foil standards) only land in the
+  // collection on sort, so we hold the flash until then.
   const bulkPull = (!card.foil && SAND_BULK_RARITIES.includes(card.rarity))
                 || (card.foil && card.rarity === "standard");
-  if (bulkPull) {
-    flashQueue.push({ rarity: card.rarity, id: card.id, foil: card.foil, fresh: false });
-    return { isNew: false, completed: false };
-  }
+  if (bulkPull) return { isNew: false, completed: false };
   const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
   const wasNew = !ownedList.includes(card.id);
   flashQueue.push({ rarity: card.rarity, id: card.id, foil: card.foil, fresh: wasNew });
@@ -1695,7 +1692,14 @@ function trackBulkCard(key, id) {
   ensureBulkInv();
   state.bulkInvById[key][id] = (state.bulkInvById[key][id] || 0) + 1;
   const ownedList = bulkOwnedList(key);
-  if (!ownedList.includes(id)) ownedList.push(id);
+  const wasNew = !ownedList.includes(id);
+  if (wasNew) ownedList.push(id);
+  flashQueue.push({
+    rarity: bulkBaseRarity(key),
+    id,
+    foil: bulkIsFoil(key),
+    fresh: wasNew,
+  });
 }
 
 function isSetListing(l) {
