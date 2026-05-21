@@ -44,7 +44,36 @@
   .buy-btn .cost { color: var(--gold); font-size: 0.9rem; margin-top: 4px; font-weight: bold; }
   .buy-btn .save { color: var(--uncommon); font-size: 0.65rem; }
 
-  #pack-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 0; }
+  #pack-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 0; position: relative; }
+  .homie-sprite {
+    position: absolute;
+    bottom: 14px;
+    left: calc(50% + 110px + var(--homie-slot, 0) * 56px);
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px;
+    pointer-events: none;
+    animation: homie-bob 0.7s ease-in-out infinite alternate;
+    z-index: 5;
+  }
+  .homie-sprite .homie-emoji { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+  .homie-sprite .homie-count {
+    background: var(--gold); color: #111;
+    border-radius: 8px; font-size: 0.6rem; font-weight: bold;
+    padding: 1px 5px; line-height: 1.2;
+  }
+  .homie-sprite .homie-bar {
+    width: 44px; height: 4px;
+    background: rgba(0,0,0,0.55);
+    border-radius: 2px; overflow: hidden;
+  }
+  .homie-sprite .homie-bar > span {
+    display: block; height: 100%; background: var(--gold);
+    transition: width 0.4s ease;
+  }
+  @keyframes homie-bob {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-6px); }
+  }
   .pack {
     width: 200px; height: 290px; border-radius: 14px;
     background: linear-gradient(135deg, #3a2562, #5a2d8a 50%, #2d4a8a);
@@ -694,22 +723,22 @@
     </button>
     <button class="buy-btn" id="buy-box">
       <div class="lbl">BOX</div>
-      <div class="qty">36 packs</div>
+      <div class="qty">1 sealed box</div>
       <div class="cost" id="cost-box">$100</div>
       <div class="save">save 7%</div>
     </button>
     <button class="buy-btn" id="buy-case">
       <div class="lbl">CASE</div>
-      <div class="qty">6 boxes · 216 packs</div>
+      <div class="qty">6 sealed boxes</div>
       <div class="cost" id="cost-case">$500</div>
       <div class="save">save 23%</div>
     </button>
   </div>
   <div id="staff">
-    <button class="hire-btn" id="hire-friend" type="button">
-      <span class="hire-lbl">HIRE FRIEND</span>
-      <span class="hire-meta">8h shift · sorts, then rips</span>
-      <span class="hire-cost" id="hire-cost">$50</span>
+    <button class="hire-btn" id="hire-homie" type="button">
+      <span class="hire-lbl">HIRE HOMIE</span>
+      <span class="hire-meta">opens 1 box automatically</span>
+      <span class="hire-cost" id="hire-cost">$20 + 📦</span>
     </button>
     <div id="staff-status"></div>
   </div>
@@ -885,10 +914,9 @@ let BOX_SIZE  = def("BOX_SIZE", 36);
 let CASE_SIZE = def("CASE_SIZE", 216);
 
 // ---- Staff --------------------------------------------------------------
-let FRIEND_COST      = def("FRIEND_COST", 50);
-let FRIEND_SHIFT_MS  = def("FRIEND_SHIFT_MS", 8 * 60 * 1000); // 8 IRL minutes
-let FRIEND_ACTION_MS = def("FRIEND_ACTION_MS", 2000);
-const FRIEND_TICK_MS = 500;
+let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
+let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
+const HOMIE_TICK_MS = 250;
 
 // ---- Marketplace --------------------------------------------------------
 let DUMP_DISCOUNT             = def("DUMP_DISCOUNT", 0.5);
@@ -912,7 +940,7 @@ const SAVE_KEY = "cryptid_almanac_save_v4"; // bumped: starter box
 const defaultState = () => ({
   coins: 50,
   packsOpened: 0,
-  packSupply: BOX_SIZE, // start with a box on the house
+  packSupply: BOX_SIZE, // start with a box of loose packs on the house
   unsorted:   { standard: 0, rare: 0, foilStandard: 0 },
   stock:      { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
   stockFoil:  { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
@@ -929,7 +957,9 @@ const defaultState = () => ({
   marketFund:   null, // same shape, fundamental values
   marketVersion: MARKET_VERSION,
   setVersion: SET_VERSION,
-  friends: [], // [{startAt, lastActionAt}] active passive helpers
+  boxesOwned: 1,  // sealed boxes, used to crack open or hire homies (1 free)
+  homies: [],     // [{uid, startAt, packsRemaining, lastRipAt}] active homies
+  homieUidCounter: 0,
   listings: [],          // [{uid, rarity, cardId, foil, aim, askPrice, resolveAt, willResolve}]
   listingAim: "at",      // "fast" | "at" | "high"
   listingsUidCounter: 0,
@@ -1130,11 +1160,11 @@ function load() {
       parsed.stock.uncommon = 0;
       parsed.stock.rare     = 0;
     }
-    if (!Array.isArray(parsed.friends)) parsed.friends = [];
-    const _now = Date.now();
-    parsed.friends = parsed.friends.filter(f =>
-      f && typeof f.startAt === "number" && _now - f.startAt < FRIEND_SHIFT_MS
-    );
+    // Retired: state.friends → replaced by homies.
+    delete parsed.friends;
+    if (typeof parsed.boxesOwned !== "number") parsed.boxesOwned = 0;
+    if (!Array.isArray(parsed.homies)) parsed.homies = [];
+    if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     // Rarity rename: drop legacy "common" data outright, fold "uncommon" into
     // "standard". Listings carrying obsolete rarities are dropped (their
     // proceeds were already lost when the rarity went away).
@@ -1393,7 +1423,10 @@ function renderHeader() {
   $("coins").textContent        = usd(state.coins);
   $("packs-opened").textContent = state.packsOpened;
   $("foils-pulled").textContent = totalFoilsOpened();
-  $("supply-label").textContent = `Supply: ${state.packSupply}`;
+  const boxes = state.boxesOwned || 0;
+  $("supply-label").textContent = boxes > 0
+    ? `Supply: ${state.packSupply} · 📦 ${boxes}`
+    : `Supply: ${state.packSupply}`;
   $("cost-pack").textContent = usd(packCost());
   $("cost-box").textContent  = usd(boxCost());
   $("cost-case").textContent = usd(caseCost());
@@ -2301,10 +2334,9 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "SORT_CRIT_MULTIPLIER",            path: "SORT_CRIT_MULTIPLIER",      label: "Sort crit multiplier",         step: 0.1, min: 1 },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
 
-  // Staff (durations exposed in human units; converted on apply)
-  { group: "Staff",            key: "FRIEND_COST",                     path: "FRIEND_COST",               label: "Hire friend ($)",              step: 1,   min: 0 },
-  { group: "Staff",            key: "FRIEND_SHIFT_MS",                 path: "FRIEND_SHIFT_MS",           label: "Shift length (minutes)",       step: 1,   min: 1, scale: 60000 },
-  { group: "Staff",            key: "FRIEND_ACTION_MS",                path: "FRIEND_ACTION_MS",          label: "Action interval (seconds)",    step: 0.5, min: 0.1, scale: 1000 },
+  // Staff
+  { group: "Staff",            key: "HOMIE_COST",                      path: "HOMIE_COST",                label: "Hire homie ($, plus 1 box)",   step: 1,   min: 0 },
+  { group: "Staff",            key: "HOMIE_PACK_MS",                   path: "HOMIE_PACK_MS",             label: "Homie pack interval (sec)",    step: 0.5, min: 0.5, scale: 1000 },
 
   // Market dynamics
   { group: "Market dynamics",  key: "FUND_MIN_MULT",                   path: "FUND_MIN_MULT",             label: "Fund. min mult",               step: 0.05, min: 0 },
@@ -2350,7 +2382,7 @@ function _liveDesignSnapshot() {
     BASELINE,
     SET_SIZES,
     SORT_MIN, SORT_MAX, SORT_CRIT_CHANCE, SORT_CRIT_MULTIPLIER, UNSORTED_CAPACITY,
-    FRIEND_COST, FRIEND_SHIFT_MS, FRIEND_ACTION_MS,
+    HOMIE_COST, HOMIE_PACK_MS,
     FUND_MIN_MULT, FUND_RANGE,
     TICK_VOLATILITY, TICK_REVERT, TICK_FUND_DRIFT,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO, MARKET_TICK_MS,
@@ -2491,78 +2523,136 @@ function resetDesignOverrides() {
 
 function renderStaff() {
   const cost = $("hire-cost");
-  if (cost) cost.textContent = usd(FRIEND_COST);
-  const btn = $("hire-friend");
-  if (btn) btn.disabled = state.coins < FRIEND_COST;
+  if (cost) cost.textContent = `${usd(HOMIE_COST)} + 📦`;
+  const btn = $("hire-homie");
+  const canHire = state.coins >= HOMIE_COST && (state.boxesOwned || 0) >= 1;
+  if (btn) btn.disabled = !canHire;
 
   const status = $("staff-status");
   if (!status) return;
   status.innerHTML = "";
-  const now = Date.now();
-  const friends = state.friends || [];
-  if (friends.length === 0) return;
-
-  // Sort so the soonest-to-finish appears first
-  const sorted = [...friends].sort((a, b) =>
-    (a.startAt + FRIEND_SHIFT_MS) - (b.startAt + FRIEND_SHIFT_MS)
-  );
-  const unsortedLeft = unsortedTotal();
-  const currentAct = unsortedLeft > 0 ? "SORTING" : (state.packSupply > 0 ? "RIPPING" : "IDLE");
-  sorted.forEach((f, i) => {
-    const elapsed   = now - f.startAt;
-    const remaining = Math.max(0, FRIEND_SHIFT_MS - elapsed);
-    const pct       = Math.min(100, (elapsed / FRIEND_SHIFT_MS) * 100);
-    const mins = Math.floor(remaining / 60000);
-    const secs = Math.floor((remaining % 60000) / 1000);
-    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  const homies = state.homies || [];
+  if (homies.length === 0) return;
+  homies.forEach((h, i) => {
+    const left  = h.packsRemaining;
+    const total = BOX_SIZE;
+    const opened = total - left;
+    const pct = Math.min(100, (opened / total) * 100);
     const pill = document.createElement("div");
     pill.className = "staff-pill";
     pill.innerHTML = `
-      <span>👤 <b>Friend ${i + 1}</b></span>
-      <span class="staff-act">${currentAct}</span>
-      <span>${timeStr}</span>
+      <span>🧢 <b>Homie ${i + 1}</b></span>
+      <span class="staff-act">RIPPING</span>
+      <span>${opened} / ${total}</span>
       <span class="staff-bar"><span style="width:${pct}%"></span></span>`;
     status.appendChild(pill);
   });
 }
 
-function hireFriend() {
-  if (state.coins < FRIEND_COST) return;
-  state.coins -= FRIEND_COST;
-  if (!Array.isArray(state.friends)) state.friends = [];
-  const now = Date.now();
-  state.friends.push({ startAt: now, lastActionAt: 0 });
+function renderHomieSprites() {
+  const area = $("pack-area");
+  if (!area) return;
+  // Remove sprites whose homie is gone, add sprites for new homies.
+  const present = new Set();
+  area.querySelectorAll(".homie-sprite").forEach(el => present.add(el.dataset.uid));
+  const homies = state.homies || [];
+  const wanted = new Set(homies.map(h => String(h.uid)));
+  // Drop stale sprites.
+  area.querySelectorAll(".homie-sprite").forEach(el => {
+    if (!wanted.has(el.dataset.uid)) el.remove();
+  });
+  // Add missing sprites.
+  homies.forEach((h, i) => {
+    if (present.has(String(h.uid))) {
+      // Update progress bar width on existing sprite.
+      const el = area.querySelector(`.homie-sprite[data-uid="${h.uid}"]`);
+      if (el) {
+        const pct = Math.min(100, ((BOX_SIZE - h.packsRemaining) / BOX_SIZE) * 100);
+        const bar = el.querySelector(".homie-bar > span");
+        if (bar) bar.style.width = pct + "%";
+        const label = el.querySelector(".homie-count");
+        if (label) label.textContent = h.packsRemaining;
+      }
+      return;
+    }
+    const el = document.createElement("div");
+    el.className = "homie-sprite";
+    el.dataset.uid = h.uid;
+    el.style.setProperty("--homie-slot", i);
+    el.innerHTML = `
+      <span class="homie-emoji">🧢</span>
+      <span class="homie-count">${h.packsRemaining}</span>
+      <span class="homie-bar"><span style="width:0%"></span></span>`;
+    area.appendChild(el);
+  });
+}
+
+function hireHomie() {
+  if (state.coins < HOMIE_COST) {
+    $("hint").textContent = `Need ${usd(HOMIE_COST - state.coins)} more to hire a homie.`;
+    return;
+  }
+  if ((state.boxesOwned || 0) < 1) {
+    $("hint").textContent = `Need a sealed box first — buy one from the shop.`;
+    return;
+  }
+  state.coins -= HOMIE_COST;
+  state.boxesOwned -= 1;
+  state.homieUidCounter = (state.homieUidCounter || 0) + 1;
+  if (!Array.isArray(state.homies)) state.homies = [];
+  state.homies.push({
+    uid: state.homieUidCounter,
+    startAt: Date.now(),
+    packsRemaining: BOX_SIZE,
+    lastRipAt: 0,
+  });
   renderAll(); save();
-  $("hint").textContent = `Hired a friend for an 8-hour shift.`;
+  $("hint").textContent = `Hired a homie! They'll rip ${BOX_SIZE} packs from your box.`;
 }
 
-function friendAct() {
-  // Priority: clear unsorted pile, then rip remaining packs.
-  if (unsortedTotal() > 0) { sortCards(); return; }
-  if (state.packSupply > 0 && unsortedTotal() < UNSORTED_CAPACITY) { ripOne(); return; }
-  // Else idle this beat.
+function homieRipPack(homie) {
+  // Same as ripOne(), but consumes from the homie's personal pool instead of
+  // state.packSupply, and bails out cleanly if the unsorted pile is full.
+  if (unsortedTotal() >= UNSORTED_CAPACITY) return false;
+  if (homie.packsRemaining <= 0) return false;
+  homie.packsRemaining -= 1;
+  state.packsOpened += 1;
+  const pulls = rollPack();
+  const completions = [];
+  pulls.forEach(card => {
+    const r = addPull(card);
+    if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
+  });
+  spawnSandFromPulls(pulls);
+  spawnParticles(pulls);
+  showHits(pulls, { newCount: 0, completions });
+  return true;
 }
 
-function tickFriends() {
-  if (!Array.isArray(state.friends) || state.friends.length === 0) {
-    renderStaff();
+function tickHomies() {
+  const homies = state.homies || [];
+  if (homies.length === 0) {
+    renderHomieSprites();
     return;
   }
   const now = Date.now();
-  const before = state.friends.length;
-  state.friends = state.friends.filter(f => now - f.startAt < FRIEND_SHIFT_MS);
-  let endedSomeone = before !== state.friends.length;
-  state.friends.forEach(f => {
-    if (now - (f.lastActionAt || 0) >= FRIEND_ACTION_MS) {
-      f.lastActionAt = now;
-      friendAct(); // sortCards()/ripOne() handle their own render+save
+  let acted = false;
+  homies.forEach(h => {
+    if (h.packsRemaining > 0 && now - (h.lastRipAt || 0) >= HOMIE_PACK_MS) {
+      if (homieRipPack(h)) {
+        h.lastRipAt = now;
+        acted = true;
+      }
     }
   });
-  if (endedSomeone) { renderAll(); save(); }
-  else              { renderStaff(); }
+  const before = homies.length;
+  state.homies = homies.filter(h => h.packsRemaining > 0);
+  const ended = before !== state.homies.length;
+  if (acted || ended) { renderAll(); save(); }
+  else                { renderHomieSprites(); renderStaff(); }
 }
 
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderDumpButton(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderDumpButton(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -2575,15 +2665,35 @@ function buyPacks(qty, totalCost, label) {
   renderAll(); save();
   $("hint").textContent = `Bought ${label}. Supply: ${state.packSupply}.`;
 }
+function buyBoxes(qty, totalCost, label) {
+  if (state.coins < totalCost) {
+    $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
+    return;
+  }
+  state.coins -= totalCost;
+  state.boxesOwned = (state.boxesOwned || 0) + qty;
+  renderAll(); save();
+  $("hint").textContent = `Bought ${label}. Boxes: ${state.boxesOwned}.`;
+}
 
 function unsortedTotal() {
   return SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
 }
+function maybeCrackBox() {
+  if (state.packSupply <= 0 && (state.boxesOwned || 0) > 0) {
+    state.boxesOwned -= 1;
+    state.packSupply += BOX_SIZE;
+    $("hint").textContent = `Cracked a sealed box → ${BOX_SIZE} packs.`;
+    return true;
+  }
+  return false;
+}
 function canRip() {
-  return state.packSupply > 0 && unsortedTotal() < UNSORTED_CAPACITY;
+  return (state.packSupply > 0 || (state.boxesOwned || 0) > 0) && unsortedTotal() < UNSORTED_CAPACITY;
 }
 
 function ripOne() {
+  if (state.packSupply < 1) maybeCrackBox();
   if (state.packSupply < 1) {
     $("hint").textContent = "No packs in supply. Buy one above.";
     return;
@@ -2623,8 +2733,8 @@ function resetGame() {
 // ---- Boot ----------------------------------------------------------------
 $("pack").addEventListener("click", ripOne);
 $("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
-$("buy-box").addEventListener("click",  () => buyPacks(BOX_SIZE,  boxCost(),  "a box (36 packs)"));
-$("buy-case").addEventListener("click", () => buyPacks(CASE_SIZE, caseCost(), "a case (216 packs)"));
+$("buy-box").addEventListener("click",  () => buyBoxes(1, boxCost(),  "1 sealed box"));
+$("buy-case").addEventListener("click", () => buyBoxes(Math.max(1, Math.round(CASE_SIZE / BOX_SIZE)), caseCost(), `a case (${Math.round(CASE_SIZE / BOX_SIZE)} sealed boxes)`));
 $("vault-grid").addEventListener("click", (e) => {
   const cell = e.target.closest(".collection-cell.priced.owned");
   if (!cell) return;
@@ -2649,7 +2759,7 @@ $("dump-btn").addEventListener("click", dumpUnsorted);
 $("sand-canvas").addEventListener("click", () => sortCards());
 $("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
 $("reset-btn").addEventListener("click", resetGame);
-$("hire-friend").addEventListener("click", hireFriend);
+$("hire-homie").addEventListener("click", hireHomie);
 $("design-btn").addEventListener("click", openDesignPanel);
 $("design-close").addEventListener("click", closeDesignPanel);
 $("design-cancel").addEventListener("click", closeDesignPanel);
@@ -2661,7 +2771,7 @@ document.addEventListener("keydown", (e) => {
 });
 setInterval(save, 5000);
 setInterval(tickMarket, MARKET_TICK_MS);
-setInterval(tickFriends, FRIEND_TICK_MS);
+setInterval(tickHomies, HOMIE_TICK_MS);
 setInterval(resolveListings, LISTING_TICK_MS);
 // Tick the listing countdown displays each second so timers visibly count down.
 setInterval(() => {
