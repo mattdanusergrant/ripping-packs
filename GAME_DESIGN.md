@@ -165,12 +165,14 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 - **Lifetime:** until the box is empty (~108s total, faster if you bought multiple homies — they tile to the right)
 - Homie rips trigger the same pull / sand-pile / particle animations as manual rips, but don't drain `state.packSupply`
 
-### Buy Sorter — permanent auto-sorter
+### Buy Sorter — permanent two-stage sorting machine
 
 - **Cost:** $1,000 each, max **3** per save
-- **Behavior:** Each tick (250ms) the sorter checks its internal interval. When elapsed, it pulls one card from the unsorted pile (weighted by key counts) into its own per-key buffer and removes the grain from the sand canvas.
-- **Buffer cap:** 20 cards at Lv 1 (+10 per level). When full, the sorter pauses until you collect.
-- **Manual collect:** Click the gold-glowing **COLLECT** button on the sorter card to flush its buffer into the collection — all cards land at once with `trackBulkCard` flash animations + set-progress updates.
+- **Two buffers:** `input` (raw, manually loaded from the pile) and `output` (processed, ready to collect). The sorter only moves cards from `input` → `output`; it never reaches into the pile on its own.
+- **Manual LOAD:** Click the blue **LOAD** button to scoop the entire bottom row of the sand pile (up to remaining sorter capacity) into the sorter's input. Each loaded grain leaves a tombstone in the pile, and the rest of the pile gravity-settles down by one row.
+- **Tick:** Every `sorterInterval(level)` ms the sorter pops one grain from input (weighted by what's loaded) into output. With input empty, the sorter idles.
+- **Buffer cap:** 500 at Lv 1 (+10 per level). Counted across input + output combined. When at cap, LOAD refuses until you collect.
+- **Manual COLLECT:** Click the gold-glowing **COLLECT** button to flush output into the collection — set-progress + flash animations fire as the cards land.
 
 ### Sorter upgrades
 
