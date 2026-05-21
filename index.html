@@ -2971,49 +2971,48 @@ function upgradeSorter(uid) {
 
 // Compute what a LOAD click would scoop right now: a snapshot of the pile's
 // bottom row, capped by remaining sorter capacity.
+// LOAD is only available when the pile has a *complete* bottom row across
+// every column AND the sorter has enough remaining capacity for the entire
+// row in one go. No partial loads.
 function previewLoadGrains(s) {
-  const cap = sorterCapacity(s.level);
-  const remaining = cap - sorterTotal(s);
-  if (remaining <= 0) return { available: 0, capped: true };
-  let available = 0;
-  for (let c = 0; c < state.pile.length; c++) {
+  const cols = sandColCount();
+  const remaining = sorterCapacity(s.level) - sorterTotal(s);
+  let count = 0;
+  let complete = cols > 0;
+  for (let c = 0; c < cols; c++) {
     const col = state.pile[c];
-    if (!col || col.length === 0) continue;
+    if (!col || col.length === 0) { complete = false; continue; }
     const k = col[0];
-    if (!k || k === "__") continue;
-    available += 1;
-    if (available >= remaining) break;
+    if (!k || k === "__") { complete = false; continue; }
+    count += 1;
   }
-  return { available, capped: false };
+  const fits = complete && remaining >= count;
+  return { count, complete, fits, canLoad: complete && fits };
 }
 
-// LOAD scoops the pile's bottom row into the sorter's input buffer. Capped
-// by remaining sorter capacity. Triggers a settle animation as the rest of
-// the pile drops down one row.
 function loadSorter(uid) {
   const s = (state.sorters || []).find(x => x.uid === uid);
   if (!s) return;
   ensureBulkInv();
-  let remaining = sorterCapacity(s.level) - sorterTotal(s);
-  if (remaining <= 0) {
-    $("hint").textContent = "Sorter is full — collect first.";
+  const preview = previewLoadGrains(s);
+  if (!preview.complete) {
+    $("hint").textContent = "Bottom row isn't complete — fill the pile across all columns first.";
+    return;
+  }
+  if (!preview.fits) {
+    const short = preview.count - (sorterCapacity(s.level) - sorterTotal(s));
+    $("hint").textContent = `Sorter needs ${short} more space for that row — collect first.`;
     return;
   }
   let loaded = 0;
-  for (let c = 0; c < state.pile.length && remaining > 0; c++) {
+  const cols = sandColCount();
+  for (let c = 0; c < cols; c++) {
     const col = state.pile[c];
-    if (!col || col.length === 0) continue;
     const k = col[0];
-    if (!k || k === "__") continue;
     s.input[k] = (s.input[k] || 0) + 1;
     col[0] = "__";                                       // tombstone for settle
     state.unsorted[k] = Math.max(0, (state.unsorted[k] || 0) - 1);
     loaded += 1;
-    remaining -= 1;
-  }
-  if (loaded === 0) {
-    $("hint").textContent = "Nothing to load — pile is empty.";
-    return;
   }
   settlePileAfterChain();
   renderAll(); save();
@@ -3113,7 +3112,7 @@ function renderSorters() {
     const atMax      = s.level >= SORTER_LEVEL_MAX;
     const upCost     = sorterUpgradeCost(s.level);
     const preview    = previewLoadGrains(s);
-    const canLoad    = preview.available > 0 && totalN < cap;
+    const canLoad    = preview.canLoad;
     const canCollect = outputN > 0;
     const canUpgrade = !atMax && state.coins >= upCost;
 
@@ -3129,10 +3128,14 @@ function renderSorters() {
     if (bufEl.innerHTML !== bufHtml) bufEl.innerHTML = bufHtml;
 
     const loadBtn = card.querySelector(".sorter-load");
-    const loadText = preview.available > 0
-      ? `LOAD ${preview.available}`
-      : "LOAD";
+    const loadText = preview.count > 0 ? `LOAD ${preview.count}` : "LOAD";
     if (loadBtn.textContent !== loadText) loadBtn.textContent = loadText;
+    const loadTitle = preview.canLoad
+      ? `Scoop the bottom row (${preview.count} grains) into this sorter`
+      : (!preview.complete
+          ? "Bottom row isn't complete across all columns"
+          : `Sorter needs ${preview.count - (cap - totalN)} more space`);
+    if (loadBtn.title !== loadTitle) loadBtn.title = loadTitle;
     if (loadBtn.disabled !== !canLoad) loadBtn.disabled = !canLoad;
 
     const collectBtn = card.querySelector(".sorter-collect");
