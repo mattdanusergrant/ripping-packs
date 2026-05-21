@@ -608,7 +608,7 @@
   <div id="vault-grid"></div>
 </section>
 
-<footer>10 cards/pack — 9 standard + 1 rare+ (R / E / L / M). Each of the first 6 slots can foil-upgrade.</footer>
+<footer>10 cards/pack — 10 standards, one upgrades to rare+ at a random slot. Every slot then rolls foil and a chained tier upgrade.</footer>
 
 <script>
 // ---- Config --------------------------------------------------------------
@@ -651,15 +651,16 @@ let SORT_CRIT_CHANCE     = def("SORT_CRIT_CHANCE", 0.10);
 let SORT_CRIT_MULTIPLIER = def("SORT_CRIT_MULTIPLIER", 3);
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 500);
 
-let FOIL_MULTIPLIER      = def("FOIL_MULTIPLIER", 10);
-// Each common slot in a pack independently has FOIL_SLOT_CHANCE to upgrade
-// to a foil; the foil's rarity then rolls against FOIL_RARITY_WEIGHTS.
-let FOIL_SLOT_CHANCE     = def("FOIL_SLOT_CHANCE", 0.025);
-let FOIL_RARITY_WEIGHTS  = def("FOIL_RARITY_WEIGHTS", {
-  standard: 0.70, rare: 0.20, epic: 0.06, legendary: 0.03, mythic: 0.01,
-});
-// The single rare+ slot rolls one of these rarities each pack.
-let RARE_PLUS_WEIGHTS    = def("RARE_PLUS_WEIGHTS", {
+let FOIL_MULTIPLIER       = def("FOIL_MULTIPLIER", 10);
+// Per-slot foil roll. Each card in the pack independently rolls foil after
+// step 1's rare+ upgrade resolves.
+let PACK_FOIL_CHANCE      = def("PACK_FOIL_CHANCE", 0.02);
+// Per-slot tier-upgrade roll, chained: while a roll succeeds, the card's
+// rarity bumps one tier (standard → rare → epic → legendary → mythic).
+// At mythic, the chain stops. Cascading is what makes a god pack possible.
+let PACK_UPGRADE_CHANCE   = def("PACK_UPGRADE_CHANCE", 0.05);
+// The rare+ slot (placed at a random position in step 1) draws from these.
+let RARE_PLUS_WEIGHTS     = def("RARE_PLUS_WEIGHTS", {
   rare: 0.85, epic: 0.10, legendary: 0.04, mythic: 0.01,
 });
 
@@ -1112,25 +1113,34 @@ function rollWeighted(weights, fallback) {
   }
   return fallback;
 }
-function rollRarePlus()    { return rollWeighted(RARE_PLUS_WEIGHTS, "rare"); }
-function rollFoilRarity()  { return rollWeighted(FOIL_RARITY_WEIGHTS, "standard"); }
-function rollCommonSlot() {
-  // Each standard slot independently has FOIL_SLOT_CHANCE of upgrading to a
-  // foil; the foil's rarity then rolls against FOIL_RARITY_WEIGHTS.
-  if (Math.random() < FOIL_SLOT_CHANCE) return { rarity: rollFoilRarity(), foil: true };
-  return { rarity: "standard", foil: false };
-}
+function rollRarePlus() { return rollWeighted(RARE_PLUS_WEIGHTS, "rare"); }
 function randomCardId(rarity) {
   const size = SET_SIZES[rarity] || 1;
   return Math.floor(Math.random() * size) + 1;
 }
+
 function rollPack() {
-  // 9 standards (first 6 can foil-upgrade) + 1 rare+ slot
+  // Step 1: 10 standards, one random slot upgrades into a rare+ card.
   const cards = [];
-  for (let i = 0; i < 6; i++) cards.push(rollCommonSlot());
-  for (let i = 0; i < 3; i++) cards.push({ rarity: "standard", foil: false });
-  cards.push({ rarity: rollRarePlus(), foil: false });
-  return cards.map(c => ({ ...c, id: randomCardId(c.rarity) }));
+  for (let i = 0; i < 10; i++) {
+    cards.push({ rarity: "standard", foil: false, id: 0 });
+  }
+  const rarePlusSlot = Math.floor(Math.random() * 10);
+  cards[rarePlusSlot].rarity = rollRarePlus();
+
+  // Step 2: per-slot, independent foil and chained tier-upgrade rolls. The
+  // upgrade chain keeps rolling while it succeeds, so a standard slot can —
+  // in absurdly rare circumstances — climb all the way to mythic.
+  cards.forEach(c => {
+    if (Math.random() < PACK_FOIL_CHANCE) c.foil = true;
+    while (Math.random() < PACK_UPGRADE_CHANCE) {
+      const idx = RARITIES.indexOf(c.rarity);
+      if (idx < 0 || idx >= RARITIES.length - 1) break; // mythic caps the chain
+      c.rarity = RARITIES[idx + 1];
+    }
+    c.id = randomCardId(c.rarity); // ID is re-rolled against the final rarity
+  });
+  return cards;
 }
 function addPull(card) {
   if (card.foil) {
@@ -1846,18 +1856,14 @@ const DESIGN_FIELDS = [
   { group: "Sell prices",      key: "SELL_PRICE.legendary",            path: "SELL_PRICE.legendary",      label: "Legendary ($, foil fallback)", step: 0.01, min: 0 },
   { group: "Sell prices",      key: "SELL_PRICE.mythic",               path: "SELL_PRICE.mythic",         label: "Mythic ($, foil fallback)",   step: 0.01, min: 0 },
 
-  // Foils + rare+ slot
-  { group: "Foils & rarity",   key: "FOIL_MULTIPLIER",                 path: "FOIL_MULTIPLIER",           label: "Foil sell multiplier",         step: 0.1,  min: 0 },
-  { group: "Foils & rarity",   key: "FOIL_SLOT_CHANCE",                path: "FOIL_SLOT_CHANCE",          label: "Foil upgrade chance / slot",   step: 0.005, min: 0, max: 1 },
-  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.standard",    path: "FOIL_RARITY_WEIGHTS.standard",  label: "Foil weight: standard",   step: 0.01, min: 0 },
-  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.rare",        path: "FOIL_RARITY_WEIGHTS.rare",      label: "Foil weight: rare",       step: 0.01, min: 0 },
-  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.epic",        path: "FOIL_RARITY_WEIGHTS.epic",      label: "Foil weight: epic",       step: 0.005, min: 0 },
-  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.legendary",   path: "FOIL_RARITY_WEIGHTS.legendary", label: "Foil weight: legendary",  step: 0.005, min: 0 },
-  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.mythic",      path: "FOIL_RARITY_WEIGHTS.mythic",    label: "Foil weight: mythic",     step: 0.005, min: 0 },
-  { group: "Foils & rarity",   key: "RARE_PLUS_WEIGHTS.rare",          path: "RARE_PLUS_WEIGHTS.rare",        label: "Rare+ slot: rare",        step: 0.01, min: 0 },
-  { group: "Foils & rarity",   key: "RARE_PLUS_WEIGHTS.epic",          path: "RARE_PLUS_WEIGHTS.epic",        label: "Rare+ slot: epic",        step: 0.01, min: 0 },
-  { group: "Foils & rarity",   key: "RARE_PLUS_WEIGHTS.legendary",     path: "RARE_PLUS_WEIGHTS.legendary",   label: "Rare+ slot: legendary",   step: 0.005, min: 0 },
-  { group: "Foils & rarity",   key: "RARE_PLUS_WEIGHTS.mythic",        path: "RARE_PLUS_WEIGHTS.mythic",      label: "Rare+ slot: mythic",      step: 0.005, min: 0 },
+  // Pack rolls
+  { group: "Pack rolls",       key: "FOIL_MULTIPLIER",                 path: "FOIL_MULTIPLIER",           label: "Foil sell multiplier",         step: 0.1,   min: 0 },
+  { group: "Pack rolls",       key: "PACK_FOIL_CHANCE",                path: "PACK_FOIL_CHANCE",          label: "Foil chance / slot",           step: 0.005, min: 0, max: 1 },
+  { group: "Pack rolls",       key: "PACK_UPGRADE_CHANCE",             path: "PACK_UPGRADE_CHANCE",       label: "Tier upgrade chance / slot",   step: 0.005, min: 0, max: 1 },
+  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.rare",          path: "RARE_PLUS_WEIGHTS.rare",        label: "Rare+ slot: rare",        step: 0.01,  min: 0 },
+  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.epic",          path: "RARE_PLUS_WEIGHTS.epic",        label: "Rare+ slot: epic",        step: 0.01,  min: 0 },
+  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.legendary",     path: "RARE_PLUS_WEIGHTS.legendary",   label: "Rare+ slot: legendary",   step: 0.005, min: 0 },
+  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.mythic",        path: "RARE_PLUS_WEIGHTS.mythic",      label: "Rare+ slot: mythic",      step: 0.005, min: 0 },
 
   // Market baselines
   { group: "Market baselines", key: "BASELINE.epic",                   path: "BASELINE.epic",                 label: "Epic baseline ($)",       step: 0.1, min: 0 },
@@ -1927,7 +1933,7 @@ function _liveDesignSnapshot() {
   return {
     PACK_COST, BOX_COST, CASE_COST, BOX_SIZE, CASE_SIZE,
     SELL_PRICE,
-    FOIL_MULTIPLIER, FOIL_SLOT_CHANCE, FOIL_RARITY_WEIGHTS, RARE_PLUS_WEIGHTS,
+    FOIL_MULTIPLIER, PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
     BASELINE,
     SET_SIZES,
     SORT_MIN, SORT_MAX, SORT_CRIT_CHANCE, SORT_CRIT_MULTIPLIER, UNSORTED_CAPACITY,
