@@ -300,7 +300,6 @@
   .counts .foil-line { background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 4px; }
   .counts .sell-price { font-size: 0.65rem; color: var(--gold); }
   .sell-stack { display: flex; flex-direction: column; gap: 6px; }
-  .sell-stack-note { color: var(--muted); font-size: 0.7rem; font-style: italic; text-align: right; }
   .sell-btn {
     background: transparent; color: var(--gold); border: 1px solid var(--gold);
     border-radius: 6px; padding: 7px 12px; cursor: pointer; font-family: inherit;
@@ -963,6 +962,7 @@ function renderVault() {
     const opened    = state.opened[rarity];
     const openedF   = state.openedFoil[rarity];
     const normalProceeds = inventoryValue(rarity, false);
+    const foilProceeds   = inventoryValue(rarity, true);
     const isPriced     = !!marketKey(rarity, false);
     const isPricedFoil = !!marketKey(rarity, true);
     const priceLabel     = isPriced
@@ -971,11 +971,16 @@ function renderVault() {
     const priceLabelFoil = isPricedFoil
       ? (stockF > 0 ? `~${usd(inventoryAvgPrice(rarity, true))} avg`  : "market")
       : `@ ${usd(foilPrice(rarity))}`;
-    const sellStack = isPriced
-      ? `<span class="sell-stack-note">sold via strip ↑</span>`
-      : `<button class="sell-btn" data-rarity="${rarity}" data-foil="0" ${stock === 0 ? "disabled" : ""}>
+    const regularBtn = `<button class="sell-btn" data-rarity="${rarity}" data-foil="0" ${stock === 0 ? "disabled" : ""}>
            ${stock === 0 ? "—" : `SELL ${stock} → ${usd(normalProceeds)}`}
          </button>`;
+    const hasFoilUI = isPricedFoil || (stockF + openedF) > 0;
+    const foilBtn = hasFoilUI
+      ? `<button class="sell-btn foil" data-rarity="${rarity}" data-foil="1" ${stockF === 0 ? "disabled" : ""}>
+           ${stockF === 0 ? "— foils —" : `SELL ${stockF} foil → ${usd(foilProceeds)}`}
+         </button>`
+      : "";
+    const sellStack = foilBtn + regularBtn;
     const row = document.createElement("div");
     row.className = `stock-row ${rarity}`;
     row.innerHTML = `
