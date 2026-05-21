@@ -440,24 +440,6 @@
     font-size: 0.72rem; letter-spacing: 3px; color: var(--gold);
   }
   .listings-header .listings-count { color: var(--muted); font-size: 0.65rem; letter-spacing: 1px; }
-  .aim-row {
-    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
-  }
-  .aim-btn {
-    background: var(--panel-light); color: var(--muted);
-    border: 1px solid rgba(255,255,255,0.10); border-radius: 6px;
-    padding: 5px 6px; cursor: pointer; font-family: inherit;
-    display: flex; flex-direction: column; align-items: center; gap: 1px;
-    transition: all 0.12s ease;
-  }
-  .aim-btn .aim-lbl { font-size: 0.68rem; font-weight: bold; letter-spacing: 1.5px; }
-  .aim-btn .aim-sub { font-size: 0.58rem; color: var(--muted); }
-  .aim-btn:hover { background: #2e2752; color: var(--ink); }
-  .aim-btn.active {
-    background: rgba(245,197,66,0.12); color: var(--gold);
-    border-color: var(--gold);
-  }
-  .aim-btn.active .aim-sub { color: rgba(245,197,66,0.7); }
   .listings-empty {
     color: var(--muted); font-size: 0.72rem; font-style: italic;
     text-align: center; padding: 8px 0;
@@ -1028,17 +1010,9 @@ function sorterBufferTotal(s) {
 
 // ---- Marketplace --------------------------------------------------------
 let DUMP_DISCOUNT             = def("DUMP_DISCOUNT", 0.5);
-let LISTING_AIM_FAST_MULT     = def("LISTING_AIM_FAST_MULT", 0.80);
-let LISTING_AIM_AT_MULT       = def("LISTING_AIM_AT_MULT",   1.00);
-let LISTING_AIM_HIGH_MULT     = def("LISTING_AIM_HIGH_MULT", 1.20);
-let LISTING_COOLDOWN_FAST_MIN = def("LISTING_COOLDOWN_FAST_MIN", 10);
-let LISTING_COOLDOWN_FAST_MAX = def("LISTING_COOLDOWN_FAST_MAX", 20);
-let LISTING_COOLDOWN_AT_MIN   = def("LISTING_COOLDOWN_AT_MIN",   20);
-let LISTING_COOLDOWN_AT_MAX   = def("LISTING_COOLDOWN_AT_MAX",   40);
-let LISTING_COOLDOWN_HIGH_MIN = def("LISTING_COOLDOWN_HIGH_MIN", 40);
-let LISTING_COOLDOWN_HIGH_MAX = def("LISTING_COOLDOWN_HIGH_MAX", 80);
-let LISTING_HIGH_SELL_ODDS    = def("LISTING_HIGH_SELL_ODDS",    0.5);
-let LISTING_SLOTS             = def("LISTING_SLOTS", 3);
+let LISTING_COOLDOWN_MIN = def("LISTING_COOLDOWN_MIN", 20); // seconds
+let LISTING_COOLDOWN_MAX = def("LISTING_COOLDOWN_MAX", 40);
+let LISTING_SLOTS        = def("LISTING_SLOTS", 10);
 const LISTING_TICK_MS = 2000;
 
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
@@ -1070,8 +1044,7 @@ const defaultState = () => ({
   homieUidCounter: 0,
   sorters: [],    // [{uid, level, buffer:{standard,rare,foilStandard}, lastSortAt}]
   sorterUidCounter: 0,
-  listings: [],          // [{uid, rarity, cardId, foil, aim, askPrice, resolveAt, willResolve}]
-  listingAim: "at",      // "fast" | "at" | "high"
+  listings: [],          // [{uid, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
 });
 
@@ -1348,7 +1321,7 @@ function load() {
       });
     }
     if (!Array.isArray(parsed.listings)) parsed.listings = [];
-    if (typeof parsed.listingAim !== "string") parsed.listingAim = "at";
+    delete parsed.listingAim; // legacy fast/at/high — retired
     if (typeof parsed.listingsUidCounter !== "number") {
       parsed.listingsUidCounter = parsed.listings.reduce((m, l) => Math.max(m, l.uid || 0), 0);
     }
@@ -1823,12 +1796,8 @@ function listedCountFor(rarity, cardId, foil) {
   return n;
 }
 
-function listingAimSpec(aim) {
-  switch (aim) {
-    case "fast": return { mult: LISTING_AIM_FAST_MULT, min: LISTING_COOLDOWN_FAST_MIN, max: LISTING_COOLDOWN_FAST_MAX, sellOdds: 1 };
-    case "high": return { mult: LISTING_AIM_HIGH_MULT, min: LISTING_COOLDOWN_HIGH_MIN, max: LISTING_COOLDOWN_HIGH_MAX, sellOdds: LISTING_HIGH_SELL_ODDS };
-    default:     return { mult: LISTING_AIM_AT_MULT,   min: LISTING_COOLDOWN_AT_MIN,   max: LISTING_COOLDOWN_AT_MAX,   sellOdds: 1 };
-  }
+function rollListingCooldown() {
+  return LISTING_COOLDOWN_MIN + Math.random() * Math.max(0, LISTING_COOLDOWN_MAX - LISTING_COOLDOWN_MIN);
 }
 
 function basePriceFor(rarity, cardId, foil) {
@@ -1840,17 +1809,15 @@ function basePriceFor(rarity, cardId, foil) {
 }
 
 function makeListing(rarity, cardId, foil) {
-  const aim = state.listingAim || "at";
-  const spec = listingAimSpec(aim);
-  const ask = Math.max(0.01, Math.round(basePriceFor(rarity, cardId, foil) * spec.mult * 100) / 100);
-  const cooldownSec = spec.min + Math.random() * (spec.max - spec.min);
+  const ask = Math.max(0.01, Math.round(basePriceFor(rarity, cardId, foil) * 100) / 100);
+  const cooldownSec = rollListingCooldown();
   const uid = (state.listingsUidCounter || 0) + 1;
   state.listingsUidCounter = uid;
   return {
-    uid, rarity, cardId, foil, aim,
+    uid, rarity, cardId, foil,
     askPrice: ask,
     resolveAt: Date.now() + cooldownSec * 1000,
-    willResolve: Math.random() < spec.sellOdds,
+    willResolve: true,
   };
 }
 
@@ -1961,19 +1928,17 @@ function listSetItem(key) {
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
-  const aim = state.listingAim || "at";
-  const spec = listingAimSpec(aim);
   const basePrice = (state.market && state.market[itemKey]) ? (state.market[itemKey][1] || BASELINE[itemKey]) : BASELINE[itemKey];
-  const ask = Math.max(0.01, Math.round(basePrice * spec.mult * 100) / 100);
-  const cooldownSec = spec.min + Math.random() * (spec.max - spec.min);
+  const ask = Math.max(0.01, Math.round(basePrice * 100) / 100);
+  const cooldownSec = rollListingCooldown();
   const uid = (state.listingsUidCounter || 0) + 1;
   state.listingsUidCounter = uid;
   if (!Array.isArray(state.listings)) state.listings = [];
   state.listings.push({
-    uid, rarity: itemKey, cardId: 1, foil: false, aim,
+    uid, rarity: itemKey, cardId: 1, foil: false,
     askPrice: ask,
     resolveAt: Date.now() + cooldownSec * 1000,
-    willResolve: Math.random() < spec.sellOdds,
+    willResolve: true,
   });
   renderAll(); save();
   const baseLabel = bulkBaseRarity(key);
@@ -2069,11 +2034,6 @@ function resolveListings() {
   }
 }
 
-function setListingAim(aim) {
-  if (aim !== "fast" && aim !== "at" && aim !== "high") return;
-  state.listingAim = aim;
-  renderAll(); save();
-}
 
 function listingCountdownLabel(l) {
   const ms = (l.resolveAt || 0) - Date.now();
@@ -2086,25 +2046,14 @@ function listingCountdownLabel(l) {
 function renderListings() {
   const wrap = $("listings-panel");
   if (!wrap) return;
-  const aim = state.listingAim || "at";
   const listings = Array.isArray(state.listings) ? state.listings : [];
   const used = listings.length;
   const slots = LISTING_SLOTS;
   const empties = Math.max(0, slots - used);
-  const aimChip = (id, label, sub) =>
-    `<button type="button" class="aim-btn ${id === aim ? "active" : ""}" data-aim="${id}">
-       <span class="aim-lbl">${label}</span>
-       <span class="aim-sub">${sub}</span>
-     </button>`;
   let html = `
     <div class="listings-header">
       <span>MARKETPLACE</span>
       <span class="listings-count">${used} / ${slots} slots</span>
-    </div>
-    <div class="aim-row">
-      ${aimChip("fast", "FAST",      `${Math.round(LISTING_AIM_FAST_MULT*100)}% · sure`)}
-      ${aimChip("at",   "AT MARKET", `${Math.round(LISTING_AIM_AT_MULT*100)}% · sure`)}
-      ${aimChip("high", "HIGH",      `${Math.round(LISTING_AIM_HIGH_MULT*100)}% · risky`)}
     </div>
     <div class="listings-grid">`;
   listings.forEach(l => {
@@ -2500,16 +2449,8 @@ const DESIGN_FIELDS = [
 
   // Marketplace
   { group: "Marketplace",      key: "DUMP_DISCOUNT",                   path: "DUMP_DISCOUNT",             label: "Dump payout (× SELL_PRICE)",  step: 0.05, min: 0, max: 1 },
-  { group: "Marketplace",      key: "LISTING_AIM_FAST_MULT",           path: "LISTING_AIM_FAST_MULT",     label: "Fast: price × market",        step: 0.05, min: 0 },
-  { group: "Marketplace",      key: "LISTING_AIM_AT_MULT",             path: "LISTING_AIM_AT_MULT",       label: "At market: price × market",   step: 0.05, min: 0 },
-  { group: "Marketplace",      key: "LISTING_AIM_HIGH_MULT",           path: "LISTING_AIM_HIGH_MULT",     label: "High: price × market",        step: 0.05, min: 0 },
-  { group: "Marketplace",      key: "LISTING_COOLDOWN_FAST_MIN",       path: "LISTING_COOLDOWN_FAST_MIN", label: "Fast cooldown min (sec)",     step: 1, min: 1 },
-  { group: "Marketplace",      key: "LISTING_COOLDOWN_FAST_MAX",       path: "LISTING_COOLDOWN_FAST_MAX", label: "Fast cooldown max (sec)",     step: 1, min: 1 },
-  { group: "Marketplace",      key: "LISTING_COOLDOWN_AT_MIN",         path: "LISTING_COOLDOWN_AT_MIN",   label: "At cooldown min (sec)",       step: 1, min: 1 },
-  { group: "Marketplace",      key: "LISTING_COOLDOWN_AT_MAX",         path: "LISTING_COOLDOWN_AT_MAX",   label: "At cooldown max (sec)",       step: 1, min: 1 },
-  { group: "Marketplace",      key: "LISTING_COOLDOWN_HIGH_MIN",       path: "LISTING_COOLDOWN_HIGH_MIN", label: "High cooldown min (sec)",     step: 1, min: 1 },
-  { group: "Marketplace",      key: "LISTING_COOLDOWN_HIGH_MAX",       path: "LISTING_COOLDOWN_HIGH_MAX", label: "High cooldown max (sec)",     step: 1, min: 1 },
-  { group: "Marketplace",      key: "LISTING_HIGH_SELL_ODDS",          path: "LISTING_HIGH_SELL_ODDS",    label: "High sell odds (0–1)",        step: 0.05, min: 0, max: 1 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_MIN",            path: "LISTING_COOLDOWN_MIN",      label: "Listing cooldown min (sec)",   step: 1, min: 1 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_MAX",            path: "LISTING_COOLDOWN_MAX",      label: "Listing cooldown max (sec)",   step: 1, min: 1 },
   { group: "Marketplace",      key: "LISTING_SLOTS",                   path: "LISTING_SLOTS",             label: "Listing slots",                step: 1, min: 1, int: true },
 ];
 
@@ -2539,11 +2480,7 @@ function _liveDesignSnapshot() {
     TICK_VOLATILITY, TICK_REVERT, TICK_FUND_DRIFT,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO, MARKET_TICK_MS,
     DUMP_DISCOUNT,
-    LISTING_AIM_FAST_MULT, LISTING_AIM_AT_MULT, LISTING_AIM_HIGH_MULT,
-    LISTING_COOLDOWN_FAST_MIN, LISTING_COOLDOWN_FAST_MAX,
-    LISTING_COOLDOWN_AT_MIN, LISTING_COOLDOWN_AT_MAX,
-    LISTING_COOLDOWN_HIGH_MIN, LISTING_COOLDOWN_HIGH_MAX,
-    LISTING_HIGH_SELL_ODDS, LISTING_SLOTS,
+    LISTING_COOLDOWN_MIN, LISTING_COOLDOWN_MAX, LISTING_SLOTS,
   };
 }
 function _readCurrent(path) {
@@ -3085,10 +3022,8 @@ $("vault-grid").addEventListener("click", (e) => {
   listCard(rarity, id, foil);
 });
 $("listings-panel").addEventListener("click", (e) => {
-  const aimBtn = e.target.closest(".aim-btn");
-  if (aimBtn && aimBtn.dataset.aim) { setListingAim(aimBtn.dataset.aim); return; }
-  const pill = e.target.closest(".listing-pill");
-  if (pill && pill.dataset.uid) cancelListing(parseInt(pill.dataset.uid, 10));
+  const card = e.target.closest(".listing-card");
+  if (card && card.dataset.uid) cancelListing(parseInt(card.dataset.uid, 10));
 });
 $("stock-rows").addEventListener("click", (e) => {
   const craft = e.target.closest(".set-craft-btn");
