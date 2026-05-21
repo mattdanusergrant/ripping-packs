@@ -2146,6 +2146,8 @@ function grainColorFor(key) {
 }
 let fallingGrains = []; // {col, y, vy, key}
 let sandAnimRunning = false;
+let critPops = [];      // {x, y, age, maxAge, color} — chain-explosion VFX
+const CHAIN_STEP_MS = 90; // delay between chain waves so each pop reads
 
 function sandColCount() {
   const c = $("sand-canvas");
@@ -2158,7 +2160,9 @@ function ensurePileBuckets() {
 }
 
 function totalPileGrains() {
-  return state.pile.reduce((s, col) => s + col.length, 0);
+  // Tombstones ("__") are mid-chain placeholders, not live grains — skip them
+  // so syncPileWithStock doesn't rebuild during an in-progress chain explosion.
+  return state.pile.reduce((s, col) => s + col.reduce((n, k) => n + (k === "__" ? 0 : 1), 0), 0);
 }
 
 function rebuildPileFromStock() {
@@ -2235,34 +2239,67 @@ function findCritNode(clickX, clickY) {
 
 // BFS chain explosion. Marks destroyed cells as "__" tombstones in state.pile
 // so callers can settle the pile afterward. Returns the destroyed grains in
-// destruction order so callers can sort each one.
-function chainCritExplode(startCol, startRow) {
-  const destroyed = [];
-  const queue = [];
-  const startKey = state.pile[startCol] && state.pile[startCol][startRow];
-  if (!startKey || startKey === "__") return destroyed;
-  destroyed.push({ col: startCol, row: startRow, key: startKey });
+// Spawn a brief expanding pop at the canvas position of a destroyed cell.
+function spawnCritPop(col, row, key) {
+  const canvas = $("sand-canvas");
+  if (!canvas) return;
+  const h = canvas.clientHeight || 90;
+  const x = col * SAND_CELL + 1 + SAND_GRAIN / 2;
+  const y = h - (row + 1) * SAND_CELL + 1 + SAND_GRAIN / 2;
+  critPops.push({ x, y, age: 0, maxAge: 14, color: grainColorFor(key) });
+}
+
+const CHAIN_ORTHO = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// Wave-based chain detonation. Each wave fires one BFS level — the seed pops
+// alone, then its 4 orthogonal neighbors all pop together, then each non-std
+// neighbor's own 4 orthogonals, and so on. CHAIN_STEP_MS spaces the waves so
+// each pop is visible. The chain consumes destroyed grains as sorted cards
+// (sortOneOfKey) live, and calls onDone(totalDestroyed) when the chain ends.
+function runChainCrit(startCol, startRow, onDone) {
+  const seedKey = state.pile[startCol] && state.pile[startCol][startRow];
+  if (!seedKey || seedKey === "__") { onDone(0); return; }
+  // Wave 0: seed alone.
   state.pile[startCol][startRow] = "__";
-  queue.push([startCol, startRow]);
-  while (queue.length) {
-    const [c, r] = queue.shift();
-    for (let dc = -1; dc <= 1; dc++) {
-      for (let dr = -1; dr <= 1; dr++) {
-        if (dc === 0 && dr === 0) continue;
+  spawnCritPop(startCol, startRow, seedKey);
+  sortOneOfKey(seedKey);
+  let total = 1;
+  let detonators = [[startCol, startRow]]; // cells whose neighbors blow next wave
+  startSandAnim();
+  renderHeader();
+  renderVault();
+  renderVaultGrid();
+  renderSetProgress();
+  renderSandPile();
+
+  function step() {
+    if (detonators.length === 0) { onDone(total); return; }
+    const next = [];
+    detonators.forEach(([c, r]) => {
+      CHAIN_ORTHO.forEach(([dc, dr]) => {
         const nc = c + dc, nr = r + dr;
-        if (nc < 0 || nc >= state.pile.length) continue;
+        if (nc < 0 || nc >= state.pile.length) return;
         const col = state.pile[nc];
-        if (!col || nr < 0 || nr >= col.length) continue;
+        if (!col || nr < 0 || nr >= col.length) return;
         const k = col[nr];
-        if (!k || k === "__") continue;
-        destroyed.push({ col: nc, row: nr, key: k });
+        if (!k || k === "__") return;
         col[nr] = "__";
-        // Non-standard grains chain — their own 8 neighbors also blow up.
-        if (k !== "standard") queue.push([nc, nr]);
-      }
-    }
+        spawnCritPop(nc, nr, k);
+        sortOneOfKey(k);
+        total += 1;
+        if (k !== "standard") next.push([nc, nr]);
+      });
+    });
+    startSandAnim();
+    renderHeader();
+    renderVault();
+    renderVaultGrid();
+    renderSetProgress();
+    renderSandPile();
+    detonators = next;
+    setTimeout(step, CHAIN_STEP_MS);
   }
-  return destroyed;
+  setTimeout(step, CHAIN_STEP_MS);
 }
 
 // Consume one card from state.unsorted[key]: bumps stock/stockFoil, runs
@@ -2304,23 +2341,7 @@ function settlePileAfterChain() {
   startSandAnim();
 }
 
-function sortCards(opts) {
-  ensureBulkInv();
-  if (SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0) === 0) return;
-
-  // 1. Chain crit from the click position, if a non-standard grain is nearby.
-  let critCount = 0;
-  if (opts && opts.click) {
-    const node = findCritNode(opts.click.x, opts.click.y);
-    if (node) {
-      const destroyed = chainCritExplode(node.col, node.row);
-      destroyed.forEach(d => sortOneOfKey(d.key));
-      settlePileAfterChain();
-      critCount = destroyed.length;
-    }
-  }
-
-  // 2. Regular sort always runs after the chain.
+function runRegularSort() {
   const baseAmount = rollSortBase();
   let regular = 0;
   for (let i = 0; i < baseAmount; i++) {
@@ -2338,13 +2359,35 @@ function sortCards(opts) {
       regular += 1;
     }
   }
+  return regular;
+}
 
-  renderAll(); save();
-  if (critCount > 0) {
-    $("hint").textContent = `✨ CRIT! Chain sorted ${critCount} + regular ${regular} = ${critCount + regular} cards.`;
-  } else {
-    $("hint").textContent = `Sorted ${regular} card${regular !== 1 ? "s" : ""}.`;
+function sortCards(opts) {
+  ensureBulkInv();
+  if (SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0) === 0) return;
+
+  const finish = (critCount, regular) => {
+    settlePileAfterChain();
+    renderAll(); save();
+    if (critCount > 0) {
+      $("hint").textContent = `✨ CRIT! Chain sorted ${critCount} + regular ${regular} = ${critCount + regular} cards.`;
+    } else {
+      $("hint").textContent = `Sorted ${regular} card${regular !== 1 ? "s" : ""}.`;
+    }
+  };
+
+  if (opts && opts.click) {
+    const node = findCritNode(opts.click.x, opts.click.y);
+    if (node) {
+      runChainCrit(node.col, node.row, (totalDestroyed) => {
+        const regular = runRegularSort();
+        finish(totalDestroyed, regular);
+      });
+      return;
+    }
   }
+  const regular = runRegularSort();
+  finish(0, regular);
 }
 
 
@@ -2380,6 +2423,7 @@ function drawSand() {
   for (let c = 0; c < state.pile.length && c < cols; c++) {
     const stack = state.pile[c];
     for (let r = 0; r < stack.length; r++) {
+      if (stack[r] === "__") continue; // chain-explosion tombstone, not yet settled
       const x = c * SAND_CELL + 1;
       const y = h - (r + 1) * SAND_CELL + 1;
       ctx.fillStyle = grainColorFor(stack[r]);
@@ -2395,6 +2439,19 @@ function drawSand() {
     ctx.arc(x + SAND_GRAIN / 2, g.y + SAND_GRAIN / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
     ctx.fill();
   });
+  // Crit-pop VFX — expanding rings that fade with age.
+  if (critPops.length > 0) {
+    critPops.forEach(p => {
+      const t = p.age / p.maxAge;
+      const r = SAND_GRAIN / 2 + t * SAND_CELL * 1.4;
+      ctx.globalAlpha = Math.max(0, 1 - t);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  }
 }
 
 function stepSandAnim() {
@@ -2413,12 +2470,17 @@ function stepSandAnim() {
     }
     return true;
   });
+  // Age the crit-pop particles; drop any that have lived past maxAge.
+  critPops = critPops.filter(p => {
+    p.age += 1;
+    return p.age < p.maxAge;
+  });
   drawSand();
-  // If any foil-standard grains are settled in the pile, keep redrawing so
-  // their rainbow shimmer animates.
+  // Keep the animation loop running while there are falling grains, foil
+  // shimmer grains (for the rainbow cycle), or active crit pops.
   const hasShimmer = fallingGrains.some(g => g.key === "foilStandard")
                  || state.pile.some(col => col.includes("foilStandard"));
-  if (fallingGrains.length > 0 || hasShimmer) {
+  if (fallingGrains.length > 0 || hasShimmer || critPops.length > 0) {
     requestAnimationFrame(stepSandAnim);
   } else {
     sandAnimRunning = false;

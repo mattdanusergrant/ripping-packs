@@ -64,14 +64,14 @@ Clicking the canvas removes 3–7 grains and moves those cards into your collect
 Crits aren't a multiplier — they're a local explosion event.
 
 1. Click → search a 2-cell (`SORT_CRIT_RADIUS_CELLS`) Manhattan diamond around the click for the nearest non-standard grain. If none, no crit.
-2. That **crit node** annihilates itself plus all 8 surrounding grains.
-3. Any non-standard grains caught in that 8-neighborhood **chain** — they detonate their own 8-neighborhood. Standards in the blast are consumed but don't propagate the chain.
-4. The cascade continues until no non-standard grain is in any active blast — typically 9 cards on a lone rare, often 20–40+ on a cluster.
+2. That **crit node** annihilates itself. On the next wave (CHAIN_STEP_MS = 90ms later), all 4 **orthogonal** neighbors annihilate (no diagonals). On the wave after that, every non-standard cell from the previous wave detonates *its* 4 orthogonals. And so on.
+3. Standards in any blast are consumed but don't propagate the chain. Non-standards do.
+4. Each destruction spawns an **expanding pop** in the rarity's color on the canvas — the chain visibly ripples outward one wave at a time.
 5. **Every destroyed grain is fully sorted** (set progress, collection flash, market-key tracking — same as a manual sort).
-6. After the chain: the **regular 3–7 sort** runs as usual.
+6. After the chain finishes: the **regular 3–7 sort** runs as usual.
 7. The pile gravity-settles via the falling-grain physics: every surviving grain above a destroyed cell becomes a falling grain at its previous visual Y and physics-falls down to fill the gap.
 
-So a good crit click into a dense rare/foil cluster can sort 30+ cards with one click and trigger a small chunk of the pile to physically tumble down.
+So a good crit click into a chain of orthogonally adjacent rares/foils ripples outward visibly, can sort 20+ cards in one click, and ends with a chunk of the pile physically tumbling down.
 
 ### Unsorted cap
 
