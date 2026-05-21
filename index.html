@@ -732,7 +732,7 @@ function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 // ---- State ---------------------------------------------------------------
 const SAVE_KEY = "cryptid_almanac_save_v4"; // bumped: starter box
 const defaultState = () => ({
-  coins: 0,
+  coins: 50,
   packsOpened: 0,
   packSupply: BOX_SIZE, // start with a box on the house
   unsorted:   { common: 0, uncommon: 0, rare: 0 },
