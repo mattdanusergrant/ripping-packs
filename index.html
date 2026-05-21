@@ -608,14 +608,14 @@
   <div id="vault-grid"></div>
 </section>
 
-<footer>10 cards/pack — 6C · 3U · 1 rare+ (R / E / L / M). Each common can foil-upgrade to any rarity.</footer>
+<footer>10 cards/pack — 9 standard + 1 rare+ (R / E / L / M). Each of the first 6 slots can foil-upgrade.</footer>
 
 <script>
 // ---- Config --------------------------------------------------------------
-const RARITIES = ["common", "uncommon", "rare", "epic", "legendary", "mythic"];
-const RARITY_LABELS  = { common: "COMMON",   uncommon: "UNCOMMON", rare: "RARE",     epic: "EPIC",      legendary: "LEGENDARY", mythic: "MYTHIC" };
-const RARITY_COLOURS = { common: "#b8b8c8",  uncommon: "#5ad06a",  rare: "#5aa8ff",  epic: "#c060ff",   legendary: "#ffd84d",   mythic: "#ff7a3d" };
-const RARITY_GLYPHS  = { common: "●",        uncommon: "◆",        rare: "★",       epic: "◈",         legendary: "✪",         mythic: "✦" };
+const RARITIES = ["standard", "rare", "epic", "legendary", "mythic"];
+const RARITY_LABELS  = { standard: "STANDARD", rare: "RARE",     epic: "EPIC",      legendary: "LEGENDARY", mythic: "MYTHIC" };
+const RARITY_COLOURS = { standard: "#5ad06a",  rare: "#5aa8ff",  epic: "#c060ff",   legendary: "#ffd84d",   mythic: "#ff7a3d" };
+const RARITY_GLYPHS  = { standard: "◆",        rare: "★",        epic: "◈",         legendary: "✪",         mythic: "✦" };
 
 // ---- Design overrides ---------------------------------------------------
 // All tunables flow through `def()`. The Game Design panel reads the
@@ -641,7 +641,7 @@ function def(key, fallback) {
 // Bulk SELL_PRICE only applies to non-market rarities (common, uncommon, rare).
 // Higher rarities go through the market; the entries are kept for the foil
 // fallback path and the dump-discount calculation.
-let SELL_PRICE = def("SELL_PRICE", { common: 0.10, uncommon: 0.30, rare: 1, epic: 5, legendary: 25, mythic: 100 });
+let SELL_PRICE = def("SELL_PRICE", { standard: 0.30, rare: 1, epic: 5, legendary: 25, mythic: 100 });
 
 // ---- Sorting -------------------------------------------------------------
 // Tweak these to tune the sorting loop.
@@ -656,7 +656,7 @@ let FOIL_MULTIPLIER      = def("FOIL_MULTIPLIER", 10);
 // to a foil; the foil's rarity then rolls against FOIL_RARITY_WEIGHTS.
 let FOIL_SLOT_CHANCE     = def("FOIL_SLOT_CHANCE", 0.025);
 let FOIL_RARITY_WEIGHTS  = def("FOIL_RARITY_WEIGHTS", {
-  common: 0.50, uncommon: 0.25, rare: 0.15, epic: 0.06, legendary: 0.03, mythic: 0.01,
+  standard: 0.70, rare: 0.20, epic: 0.06, legendary: 0.03, mythic: 0.01,
 });
 // The single rare+ slot rolls one of these rarities each pack.
 let RARE_PLUS_WEIGHTS    = def("RARE_PLUS_WEIGHTS", {
@@ -668,7 +668,7 @@ let RARE_PLUS_WEIGHTS    = def("RARE_PLUS_WEIGHTS", {
 // and sets can be added without colliding with existing data.
 const GAME_ID = 1;
 const SET_ID  = 1;
-let SET_SIZES = def("SET_SIZES", { common: 60, uncommon: 40, rare: 20, epic: 15, legendary: 10, mythic: 5 });
+let SET_SIZES = def("SET_SIZES", { standard: 20, rare: 15, epic: 10, legendary: 5, mythic: 1 });
 // Card numbers are globally unique within a set, across rarities. Derived
 // from SET_SIZES so changing one auto-shifts the others.
 function computeCardOffsets(sizes) {
@@ -679,7 +679,7 @@ function computeCardOffsets(sizes) {
 }
 let CARD_NUMBER_OFFSETS = computeCardOffsets(SET_SIZES);
 let TOTAL_SET_CARDS     = RARITIES.reduce((s, r) => s + (SET_SIZES[r] || 0), 0);
-const SET_VERSION = 5; // bump when SET_SIZES change so old saves get migrated
+const SET_VERSION = 6; // bump when SET_SIZES change so old saves get migrated
 
 function cardFullId(rarity, idx, game, set) {
   const g = game ?? GAME_ID;
@@ -693,15 +693,14 @@ function cardFullId(rarity, idx, game, set) {
 // Commons, uncommons, and non-foil rares stay bulk-priced (SELL_PRICE).
 const MARKET_KEYS = [
   "epic", "legendary", "mythic",
-  "foilCommon", "foilUncommon", "foilRare", "foilEpic", "foilLegendary", "foilMythic",
+  "foilStandard", "foilRare", "foilEpic", "foilLegendary", "foilMythic",
 ];
-const MARKET_VERSION = 6; // bump to force regeneration when baselines change
+const MARKET_VERSION = 7; // bump to force regeneration when baselines change
 let BASELINE = def("BASELINE", {
   epic:           5,
   legendary:      25,
   mythic:         100,
-  foilCommon:     1,
-  foilUncommon:   3,
+  foilStandard:   3,
   foilRare:       10,
   foilEpic:       50,
   foilLegendary:  250,
@@ -723,8 +722,7 @@ function marketKey(rarity, foil) {
     if (rarity === "mythic")    return "mythic";
     return null;
   }
-  if (rarity === "common")    return "foilCommon";
-  if (rarity === "uncommon")  return "foilUncommon";
+  if (rarity === "standard")  return "foilStandard";
   if (rarity === "rare")      return "foilRare";
   if (rarity === "epic")      return "foilEpic";
   if (rarity === "legendary") return "foilLegendary";
@@ -766,16 +764,16 @@ const defaultState = () => ({
   coins: 50,
   packsOpened: 0,
   packSupply: BOX_SIZE, // start with a box on the house
-  unsorted:   { common: 0, uncommon: 0, rare: 0 },
-  stock:      { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
-  stockFoil:  { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
-  opened:     { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
-  openedFoil: { common: 0, uncommon: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+  unsorted:   { standard: 0, rare: 0 },
+  stock:      { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+  stockFoil:  { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+  opened:     { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+  openedFoil: { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
   pile: [], // [colIndex] = array of rarity strings, bottom-up
-  owned:     { common: [], uncommon: [], rare: [], epic: [], legendary: [], mythic: [] },
-  ownedFoil: { common: [], uncommon: [], rare: [], epic: [], legendary: [], mythic: [] },
-  setsCelebrated:     { common: false, uncommon: false, rare: false, epic: false, legendary: false, mythic: false },
-  setsCelebratedFoil: { common: false, uncommon: false, rare: false, epic: false, legendary: false, mythic: false },
+  owned:     { standard: [], rare: [], epic: [], legendary: [], mythic: [] },
+  ownedFoil: { standard: [], rare: [], epic: [], legendary: [], mythic: [] },
+  setsCelebrated:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
+  setsCelebratedFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
   invById:     emptyInvById(),
   market:      null, // {key: per-card live prices}, populated by initMarket
   marketFund:  null, // same shape, fundamental values
@@ -913,7 +911,7 @@ function load() {
         const id = Math.floor(Math.random() * mythicSize) + 1;
         inv.mythic[id] = (inv.mythic[id] || 0) + 1;
       }
-      ["common", "uncommon", "rare", "mythic"].forEach(r => {
+      RARITIES.forEach(r => {
         const mk = marketKey(r, true);
         if (!mk) return;
         const size = SET_SIZES[r];
@@ -986,6 +984,60 @@ function load() {
     parsed.friends = parsed.friends.filter(f =>
       f && typeof f.startAt === "number" && _now - f.startAt < FRIEND_SHIFT_MS
     );
+    // Rarity rename: drop legacy "common" data outright, fold "uncommon" into
+    // "standard". Listings carrying obsolete rarities are dropped (their
+    // proceeds were already lost when the rarity went away).
+    function mergeNumericBucket(field, fromR, toR) {
+      if (!parsed[field]) return;
+      if (parsed[field][fromR] != null) {
+        parsed[field][toR] = (parsed[field][toR] || 0) + (parsed[field][fromR] || 0);
+        delete parsed[field][fromR];
+      }
+    }
+    function dropNumericBucket(field, r) {
+      if (parsed[field] && parsed[field][r] != null) delete parsed[field][r];
+    }
+    function mergeArrayBucket(field, fromR, toR) {
+      if (!parsed[field]) return;
+      if (Array.isArray(parsed[field][fromR])) {
+        const merged = new Set([...(parsed[field][toR] || []), ...parsed[field][fromR]]);
+        parsed[field][toR] = [...merged];
+        delete parsed[field][fromR];
+      }
+    }
+    function dropArrayBucket(field, r) {
+      if (parsed[field] && parsed[field][r] != null) delete parsed[field][r];
+    }
+    ["stock", "stockFoil", "opened", "openedFoil", "unsorted"].forEach(f => {
+      mergeNumericBucket(f, "uncommon", "standard");
+      dropNumericBucket(f, "common");
+    });
+    ["owned", "ownedFoil"].forEach(f => {
+      mergeArrayBucket(f, "uncommon", "standard");
+      dropArrayBucket(f, "common");
+    });
+    ["setsCelebrated", "setsCelebratedFoil"].forEach(f => {
+      if (parsed[f] && parsed[f].common != null) delete parsed[f].common;
+      if (parsed[f] && parsed[f].uncommon != null) {
+        parsed[f].standard = !!(parsed[f].standard || parsed[f].uncommon);
+        delete parsed[f].uncommon;
+      }
+    });
+    // invById key rename / drop
+    if (parsed.invById) {
+      if (parsed.invById.foilUncommon) {
+        parsed.invById.foilStandard = parsed.invById.foilStandard || {};
+        Object.entries(parsed.invById.foilUncommon).forEach(([id, n]) => {
+          parsed.invById.foilStandard[id] = (parsed.invById.foilStandard[id] || 0) + n;
+        });
+        delete parsed.invById.foilUncommon;
+      }
+      delete parsed.invById.foilCommon;
+    }
+    // Listings: drop common/uncommon (they no longer exist as rarities)
+    if (Array.isArray(parsed.listings)) {
+      parsed.listings = parsed.listings.filter(l => l.rarity !== "common" && l.rarity !== "uncommon");
+    }
     // Marketplace migration: sorted bulk cards from the old system go back to
     // the unsorted pile so the player can dump or re-sort (which now lists).
     if (parsed.stock) {
@@ -1038,8 +1090,7 @@ function rarityFromMarketKey(k) {
   if (k === "epic")          return { rarity: "epic",      foil: false };
   if (k === "legendary")     return { rarity: "legendary", foil: false };
   if (k === "mythic")        return { rarity: "mythic",    foil: false };
-  if (k === "foilCommon")    return { rarity: "common",    foil: true  };
-  if (k === "foilUncommon")  return { rarity: "uncommon",  foil: true  };
+  if (k === "foilStandard")  return { rarity: "standard",  foil: true  };
   if (k === "foilRare")      return { rarity: "rare",      foil: true  };
   if (k === "foilEpic")      return { rarity: "epic",      foil: true  };
   if (k === "foilLegendary") return { rarity: "legendary", foil: true  };
@@ -1062,22 +1113,22 @@ function rollWeighted(weights, fallback) {
   return fallback;
 }
 function rollRarePlus()    { return rollWeighted(RARE_PLUS_WEIGHTS, "rare"); }
-function rollFoilRarity()  { return rollWeighted(FOIL_RARITY_WEIGHTS, "common"); }
+function rollFoilRarity()  { return rollWeighted(FOIL_RARITY_WEIGHTS, "standard"); }
 function rollCommonSlot() {
-  // Each common slot independently has FOIL_SLOT_CHANCE of upgrading to a
+  // Each standard slot independently has FOIL_SLOT_CHANCE of upgrading to a
   // foil; the foil's rarity then rolls against FOIL_RARITY_WEIGHTS.
   if (Math.random() < FOIL_SLOT_CHANCE) return { rarity: rollFoilRarity(), foil: true };
-  return { rarity: "common", foil: false };
+  return { rarity: "standard", foil: false };
 }
 function randomCardId(rarity) {
   const size = SET_SIZES[rarity] || 1;
   return Math.floor(Math.random() * size) + 1;
 }
 function rollPack() {
-  // 6 commons (each can upgrade to a foil of any rarity), 3 uncommons, 1 rare+
+  // 9 standards (first 6 can foil-upgrade) + 1 rare+ slot
   const cards = [];
   for (let i = 0; i < 6; i++) cards.push(rollCommonSlot());
-  for (let i = 0; i < 3; i++) cards.push({ rarity: "uncommon", foil: false });
+  for (let i = 0; i < 3; i++) cards.push({ rarity: "standard", foil: false });
   cards.push({ rarity: rollRarePlus(), foil: false });
   return cards.map(c => ({ ...c, id: randomCardId(c.rarity) }));
 }
@@ -1542,8 +1593,8 @@ function renderDumpButton() {
 // ---- Sand simulation -----------------------------------------------------
 const SAND_GRAIN = 5;
 const SAND_CELL  = 7;
-const SAND_COLOR = { common: "#b8b8c8", uncommon: "#5ad06a", rare: "#5aa8ff" };
-const SAND_BULK_RARITIES = ["common", "uncommon", "rare"];
+const SAND_COLOR = { standard: "#5ad06a", rare: "#5aa8ff" };
+const SAND_BULK_RARITIES = ["standard", "rare"];
 let fallingGrains = []; // {col, y, vy, rarity}
 let sandAnimRunning = false;
 
@@ -1617,10 +1668,16 @@ function sortCards() {
   const { amount, crit } = rollSortAmount();
   const actual = Math.min(amount, total);
   for (let i = 0; i < actual; i++) {
-    const roll = Math.floor(Math.random() * (state.unsorted.common + state.unsorted.uncommon + state.unsorted.rare));
-    const rarity = roll < state.unsorted.common ? "common"
-                 : roll < state.unsorted.common + state.unsorted.uncommon ? "uncommon"
-                 : "rare";
+    // Pick a rarity from the unsorted pile weighted by current counts.
+    const totals = SAND_BULK_RARITIES.map(r => state.unsorted[r] || 0);
+    const sum = totals.reduce((a, b) => a + b, 0);
+    if (sum === 0) break;
+    let roll = Math.floor(Math.random() * sum);
+    let rarity = SAND_BULK_RARITIES[SAND_BULK_RARITIES.length - 1];
+    for (let j = 0; j < SAND_BULK_RARITIES.length; j++) {
+      roll -= totals[j];
+      if (roll < 0) { rarity = SAND_BULK_RARITIES[j]; break; }
+    }
     state.unsorted[rarity] -= 1;
     listBulkCard(rarity); // sort = auto-list at current aim
     removeOneGrainByRarity(rarity);
@@ -1783,8 +1840,7 @@ const DESIGN_FIELDS = [
   { group: "Economy",          key: "CASE_SIZE",                       path: "CASE_SIZE",                 label: "Case pack count",              step: 1,    min: 1, int: true },
 
   // Sell prices (non-foil bulk)
-  { group: "Sell prices",      key: "SELL_PRICE.common",               path: "SELL_PRICE.common",         label: "Common ($)",                   step: 0.01, min: 0 },
-  { group: "Sell prices",      key: "SELL_PRICE.uncommon",             path: "SELL_PRICE.uncommon",       label: "Uncommon ($)",                 step: 0.01, min: 0 },
+  { group: "Sell prices",      key: "SELL_PRICE.standard",             path: "SELL_PRICE.standard",       label: "Standard ($)",                 step: 0.01, min: 0 },
   { group: "Sell prices",      key: "SELL_PRICE.rare",                 path: "SELL_PRICE.rare",           label: "Rare ($)",                     step: 0.01, min: 0 },
   { group: "Sell prices",      key: "SELL_PRICE.epic",                 path: "SELL_PRICE.epic",           label: "Epic ($, foil fallback)",     step: 0.01, min: 0 },
   { group: "Sell prices",      key: "SELL_PRICE.legendary",            path: "SELL_PRICE.legendary",      label: "Legendary ($, foil fallback)", step: 0.01, min: 0 },
@@ -1792,9 +1848,8 @@ const DESIGN_FIELDS = [
 
   // Foils + rare+ slot
   { group: "Foils & rarity",   key: "FOIL_MULTIPLIER",                 path: "FOIL_MULTIPLIER",           label: "Foil sell multiplier",         step: 0.1,  min: 0 },
-  { group: "Foils & rarity",   key: "FOIL_SLOT_CHANCE",                path: "FOIL_SLOT_CHANCE",          label: "Foil upgrade chance / common", step: 0.005, min: 0, max: 1 },
-  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.common",      path: "FOIL_RARITY_WEIGHTS.common",    label: "Foil weight: common",     step: 0.01, min: 0 },
-  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.uncommon",    path: "FOIL_RARITY_WEIGHTS.uncommon",  label: "Foil weight: uncommon",   step: 0.01, min: 0 },
+  { group: "Foils & rarity",   key: "FOIL_SLOT_CHANCE",                path: "FOIL_SLOT_CHANCE",          label: "Foil upgrade chance / slot",   step: 0.005, min: 0, max: 1 },
+  { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.standard",    path: "FOIL_RARITY_WEIGHTS.standard",  label: "Foil weight: standard",   step: 0.01, min: 0 },
   { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.rare",        path: "FOIL_RARITY_WEIGHTS.rare",      label: "Foil weight: rare",       step: 0.01, min: 0 },
   { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.epic",        path: "FOIL_RARITY_WEIGHTS.epic",      label: "Foil weight: epic",       step: 0.005, min: 0 },
   { group: "Foils & rarity",   key: "FOIL_RARITY_WEIGHTS.legendary",   path: "FOIL_RARITY_WEIGHTS.legendary", label: "Foil weight: legendary",  step: 0.005, min: 0 },
@@ -1808,16 +1863,14 @@ const DESIGN_FIELDS = [
   { group: "Market baselines", key: "BASELINE.epic",                   path: "BASELINE.epic",                 label: "Epic baseline ($)",       step: 0.1, min: 0 },
   { group: "Market baselines", key: "BASELINE.legendary",              path: "BASELINE.legendary",            label: "Legendary baseline ($)",  step: 0.5, min: 0 },
   { group: "Market baselines", key: "BASELINE.mythic",                 path: "BASELINE.mythic",               label: "Mythic baseline ($)",     step: 1,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilCommon",             path: "BASELINE.foilCommon",           label: "Foil common baseline ($)",     step: 0.01, min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilUncommon",           path: "BASELINE.foilUncommon",         label: "Foil uncommon baseline ($)",   step: 0.05, min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilStandard",           path: "BASELINE.foilStandard",         label: "Foil standard baseline ($)",   step: 0.05, min: 0 },
   { group: "Market baselines", key: "BASELINE.foilRare",               path: "BASELINE.foilRare",             label: "Foil rare baseline ($)",       step: 0.1,  min: 0 },
   { group: "Market baselines", key: "BASELINE.foilEpic",               path: "BASELINE.foilEpic",             label: "Foil epic baseline ($)",       step: 0.5,  min: 0 },
   { group: "Market baselines", key: "BASELINE.foilLegendary",          path: "BASELINE.foilLegendary",        label: "Foil legendary baseline ($)",  step: 1,    min: 0 },
   { group: "Market baselines", key: "BASELINE.foilMythic",             path: "BASELINE.foilMythic",           label: "Foil mythic baseline ($)",     step: 5,    min: 0 },
 
   // Set sizes
-  { group: "Set sizes",        key: "SET_SIZES.common",                path: "SET_SIZES.common",          label: "Common card count",            step: 1, min: 1, int: true },
-  { group: "Set sizes",        key: "SET_SIZES.uncommon",              path: "SET_SIZES.uncommon",        label: "Uncommon card count",          step: 1, min: 1, int: true },
+  { group: "Set sizes",        key: "SET_SIZES.standard",              path: "SET_SIZES.standard",        label: "Standard card count",          step: 1, min: 1, int: true },
   { group: "Set sizes",        key: "SET_SIZES.rare",                  path: "SET_SIZES.rare",            label: "Rare card count",              step: 1, min: 1, int: true },
   { group: "Set sizes",        key: "SET_SIZES.epic",                  path: "SET_SIZES.epic",            label: "Epic card count",              step: 1, min: 1, int: true },
   { group: "Set sizes",        key: "SET_SIZES.legendary",             path: "SET_SIZES.legendary",       label: "Legendary card count",         step: 1, min: 1, int: true },
