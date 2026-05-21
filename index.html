@@ -282,11 +282,92 @@
     margin-bottom: 4px;
   }
   #sort-pile-header .sort-hint { color: var(--gold); font-size: 0.68rem; }
+  #dump-btn {
+    background: transparent; color: #ff7eb3;
+    border: 1px solid rgba(255,126,179,0.45); border-radius: 6px;
+    padding: 6px 10px; cursor: pointer;
+    font-family: inherit; font-size: 0.72rem; letter-spacing: 1px;
+    margin: 4px 0 8px; align-self: flex-start;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  #dump-btn:hover:not(:disabled) { background: rgba(255,126,179,0.12); color: #ffaad0; }
+  #dump-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ---- Marketplace listings -------------------------------------------- */
+  #listings-panel {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 10px 12px;
+    background: rgba(0,0,0,0.22); border-radius: 8px;
+    border: 1px solid rgba(245,197,66,0.18);
+  }
+  .listings-header {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 0.72rem; letter-spacing: 3px; color: var(--gold);
+  }
+  .listings-header .listings-count { color: var(--muted); font-size: 0.65rem; letter-spacing: 1px; }
+  .aim-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
+  }
+  .aim-btn {
+    background: var(--panel-light); color: var(--muted);
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 6px;
+    padding: 5px 6px; cursor: pointer; font-family: inherit;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    transition: all 0.12s ease;
+  }
+  .aim-btn .aim-lbl { font-size: 0.68rem; font-weight: bold; letter-spacing: 1.5px; }
+  .aim-btn .aim-sub { font-size: 0.58rem; color: var(--muted); }
+  .aim-btn:hover { background: #2e2752; color: var(--ink); }
+  .aim-btn.active {
+    background: rgba(245,197,66,0.12); color: var(--gold);
+    border-color: var(--gold);
+  }
+  .aim-btn.active .aim-sub { color: rgba(245,197,66,0.7); }
+  .listings-empty {
+    color: var(--muted); font-size: 0.72rem; font-style: italic;
+    text-align: center; padding: 8px 0;
+  }
+  .listings-grid {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    max-height: 160px; overflow-y: auto;
+  }
+  .listing-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--panel-light); color: var(--ink);
+    border: 1.5px solid; border-radius: 12px;
+    padding: 3px 9px;
+    font-family: inherit; font-size: 0.7rem; cursor: pointer;
+    transition: filter 0.12s ease, transform 0.08s ease;
+  }
+  .listing-pill:hover { filter: brightness(1.3); }
+  .listing-pill:active { transform: translateY(1px); }
+  .listing-pill.foil {
+    background: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3);
+    background-size: 250% 250%;
+    animation: shimmer 2.5s linear infinite;
+    color: #111; border-color: #fff;
+  }
+  .listing-pill .lst-glyph { font-size: 0.85rem; line-height: 1; }
+  .listing-pill .lst-id    { letter-spacing: 0.5px; }
+  .listing-pill .lst-price { font-weight: bold; }
+  .listing-pill[title]::after { content: ""; } /* no-op, just to suppress lint */
+
+  .collection-cell.listed {
+    box-shadow: 0 0 0 2px rgba(245,197,66,0.55) inset;
+  }
+  .collection-cell .cell-listed {
+    position: absolute; top: -3px; left: -3px;
+    background: var(--gold); color: #1a1530;
+    border-radius: 8px;
+    font-size: 8px; font-weight: bold;
+    padding: 0 3px; line-height: 1.2;
+    min-width: 12px; text-align: center;
+  }
 
   #stock-rows { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 4px; }
   .stock-row {
     background: var(--panel-light); border-radius: 8px; padding: 12px 14px;
-    display: grid; grid-template-columns: 0.9fr 1.3fr auto; align-items: center; gap: 12px;
+    display: grid; grid-template-columns: 0.9fr 1fr; align-items: center; gap: 12px;
     border-left: 4px solid #444;
   }
   .stock-row.common    { border-left-color: var(--common); }
@@ -511,6 +592,7 @@
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
       <span class="sort-hint" id="sort-hint">click to sort <span id="sort-range-label"></span></span>
     </div>
+    <button id="dump-btn" type="button" disabled>DUMP PILE — $0</button>
     <canvas id="sand-canvas"></canvas>
   </div>
 </section>
@@ -518,6 +600,7 @@
 <section id="vault">
   <h2>VAULT</h2>
   <div id="stock-rows"></div>
+  <div id="listings-panel"></div>
   <div id="vault-grid"></div>
 </section>
 
@@ -630,6 +713,20 @@ let FRIEND_SHIFT_MS  = def("FRIEND_SHIFT_MS", 8 * 60 * 1000); // 8 IRL minutes
 let FRIEND_ACTION_MS = def("FRIEND_ACTION_MS", 2000);
 const FRIEND_TICK_MS = 500;
 
+// ---- Marketplace --------------------------------------------------------
+let DUMP_DISCOUNT             = def("DUMP_DISCOUNT", 0.5);
+let LISTING_AIM_FAST_MULT     = def("LISTING_AIM_FAST_MULT", 0.80);
+let LISTING_AIM_AT_MULT       = def("LISTING_AIM_AT_MULT",   1.00);
+let LISTING_AIM_HIGH_MULT     = def("LISTING_AIM_HIGH_MULT", 1.30);
+let LISTING_COOLDOWN_FAST_MIN = def("LISTING_COOLDOWN_FAST_MIN", 30);
+let LISTING_COOLDOWN_FAST_MAX = def("LISTING_COOLDOWN_FAST_MAX", 60);
+let LISTING_COOLDOWN_AT_MIN   = def("LISTING_COOLDOWN_AT_MIN",   60);
+let LISTING_COOLDOWN_AT_MAX   = def("LISTING_COOLDOWN_AT_MAX",   120);
+let LISTING_COOLDOWN_HIGH_MIN = def("LISTING_COOLDOWN_HIGH_MIN", 120);
+let LISTING_COOLDOWN_HIGH_MAX = def("LISTING_COOLDOWN_HIGH_MAX", 240);
+let LISTING_HIGH_SELL_ODDS    = def("LISTING_HIGH_SELL_ODDS",    0.5);
+const LISTING_TICK_MS = 2000;
+
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 
 // ---- State ---------------------------------------------------------------
@@ -654,6 +751,9 @@ const defaultState = () => ({
   marketVersion: MARKET_VERSION,
   setVersion: SET_VERSION,
   friends: [], // [{startAt, lastActionAt}] active passive helpers
+  listings: [],          // [{uid, rarity, cardId, foil, aim, askPrice, resolveAt, willResolve}]
+  listingAim: "at",      // "fast" | "at" | "high"
+  listingsUidCounter: 0,
 });
 
 function emptyInvById() {
@@ -844,6 +944,22 @@ function load() {
     parsed.friends = parsed.friends.filter(f =>
       f && typeof f.startAt === "number" && _now - f.startAt < FRIEND_SHIFT_MS
     );
+    // Marketplace migration: sorted bulk cards from the old system go back to
+    // the unsorted pile so the player can dump or re-sort (which now lists).
+    if (parsed.stock) {
+      SAND_BULK_RARITIES.forEach(r => {
+        const n = parsed.stock[r] || 0;
+        if (n > 0) {
+          parsed.unsorted[r] = (parsed.unsorted[r] || 0) + n;
+          parsed.stock[r] = 0;
+        }
+      });
+    }
+    if (!Array.isArray(parsed.listings)) parsed.listings = [];
+    if (typeof parsed.listingAim !== "string") parsed.listingAim = "at";
+    if (typeof parsed.listingsUidCounter !== "number") {
+      parsed.listingsUidCounter = parsed.listings.reduce((m, l) => Math.max(m, l.uid || 0), 0);
+    }
     return parsed;
   } catch { return null; }
 }
@@ -956,13 +1072,11 @@ function renderVault() {
   const grid = $("stock-rows");
   grid.innerHTML = "";
   [...RARITIES].reverse().forEach(rarity => {
-    const stock     = state.stock[rarity];
+    const stock     = state.stock[rarity] || 0;
     const unsorted  = state.unsorted ? (state.unsorted[rarity] || 0) : 0;
-    const stockF    = state.stockFoil[rarity];
-    const opened    = state.opened[rarity];
-    const openedF   = state.openedFoil[rarity];
-    const normalProceeds = inventoryValue(rarity, false);
-    const foilProceeds   = inventoryValue(rarity, true);
+    const stockF    = state.stockFoil[rarity] || 0;
+    const opened    = state.opened[rarity] || 0;
+    const openedF   = state.openedFoil[rarity] || 0;
     const isPriced     = !!marketKey(rarity, false);
     const isPricedFoil = !!marketKey(rarity, true);
     const priceLabel     = isPriced
@@ -971,16 +1085,10 @@ function renderVault() {
     const priceLabelFoil = isPricedFoil
       ? (stockF > 0 ? `~${usd(inventoryAvgPrice(rarity, true))} avg`  : "market")
       : `@ ${usd(foilPrice(rarity))}`;
-    const regularBtn = `<button class="sell-btn" data-rarity="${rarity}" data-foil="0" ${stock === 0 ? "disabled" : ""}>
-           ${stock === 0 ? "—" : `SELL ${stock} → ${usd(normalProceeds)}`}
-         </button>`;
-    const hasFoilUI = isPricedFoil || (stockF + openedF) > 0;
-    const foilBtn = hasFoilUI
-      ? `<button class="sell-btn foil" data-rarity="${rarity}" data-foil="1" ${stockF === 0 ? "disabled" : ""}>
-           ${stockF === 0 ? "— foils —" : `SELL ${stockF} foil → ${usd(foilProceeds)}`}
-         </button>`
-      : "";
-    const sellStack = foilBtn + regularBtn;
+    const isBulk = SAND_BULK_RARITIES.includes(rarity);
+    const stockLine = isBulk
+      ? `Unsorted: <b>${unsorted}</b> · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span>`
+      : `Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span>`;
     const row = document.createElement("div");
     row.className = `stock-row ${rarity}`;
     row.innerHTML = `
@@ -989,9 +1097,8 @@ function renderVault() {
         ${(stockF + openedF) > 0
           ? `<span class="foil-line">✨ Foils: <b>${stockF}</b> · lifetime <b>${openedF}</b> <span class="sell-price">${priceLabelFoil}</span></span>`
           : ""}
-        <span>${SAND_BULK_RARITIES.includes(rarity) ? `Sorted: <b>${stock}</b> · Unsorted: <b>${unsorted}</b>` : `Stock: <b>${stock}</b>`} · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span></span>
-      </div>
-      <div class="sell-stack">${sellStack}</div>`;
+        <span>${stockLine}</span>
+      </div>`;
     grid.appendChild(row);
   });
 }
@@ -1109,6 +1216,15 @@ function renderVaultGrid() {
         const cardNum = CARD_NUMBER_OFFSETS[rarity] + i;
         cell.textContent = String(cardNum).padStart(3, "0");
 
+        const listedCount = listedCountFor(rarity, i, foil);
+        if (listedCount > 0) {
+          cell.classList.add("listed");
+          const listedBadge = document.createElement("span");
+          listedBadge.className = "cell-listed";
+          listedBadge.textContent = listedCount > 1 ? "★" + listedCount : "★";
+          cell.appendChild(listedBadge);
+        }
+
         if (owned && priced) {
           const count = inv[i] || 0;
           if (count > 1) {
@@ -1124,9 +1240,12 @@ function renderVaultGrid() {
             priceLabel.textContent = compactUsd(price);
             cell.appendChild(priceLabel);
           }
-          cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — ${usd(price)} · own ${count}\nClick to sell one`;
+          const owns = count;
+          cell.title = owns > 0
+            ? `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — ${usd(price)} · own ${owns}${listedCount > 0 ? ` · ${listedCount} listed` : ""}\nClick to list one`
+            : `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — owned (set), 0 in stock${listedCount > 0 ? ` · ${listedCount} listed` : ""}`;
         } else if (owned) {
-          cell.title = `${RARITY_LABELS[rarity]} ${fullId} — owned (sold in bulk via row above)`;
+          cell.title = `${RARITY_LABELS[rarity]} ${fullId} — collected (bulk; sort to list, or dump unsorted pile)`;
         } else {
           cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — unowned`;
         }
@@ -1146,19 +1265,209 @@ function renderVaultGrid() {
   flashQueue = [];
 }
 
-function sellCard(rarity, id, foil) {
+// ---- Marketplace listings ----------------------------------------------
+function isBulkListing(l) {
+  return !l.foil && SAND_BULK_RARITIES.includes(l.rarity);
+}
+
+function listedCountFor(rarity, cardId, foil) {
+  if (!Array.isArray(state.listings)) return 0;
+  let n = 0;
+  for (const l of state.listings) {
+    if (l.rarity === rarity && l.foil === foil && l.cardId === cardId) n += 1;
+  }
+  return n;
+}
+
+function listingAimSpec(aim) {
+  switch (aim) {
+    case "fast": return { mult: LISTING_AIM_FAST_MULT, min: LISTING_COOLDOWN_FAST_MIN, max: LISTING_COOLDOWN_FAST_MAX, sellOdds: 1 };
+    case "high": return { mult: LISTING_AIM_HIGH_MULT, min: LISTING_COOLDOWN_HIGH_MIN, max: LISTING_COOLDOWN_HIGH_MAX, sellOdds: LISTING_HIGH_SELL_ODDS };
+    default:     return { mult: LISTING_AIM_AT_MULT,   min: LISTING_COOLDOWN_AT_MIN,   max: LISTING_COOLDOWN_AT_MAX,   sellOdds: 1 };
+  }
+}
+
+function basePriceFor(rarity, cardId, foil) {
   const mk = marketKey(rarity, foil);
-  if (!mk) return;
+  if (mk && state.market && state.market[mk] && cardId != null) {
+    return state.market[mk][cardId] || 0;
+  }
+  return foil ? foilPrice(rarity) : SELL_PRICE[rarity];
+}
+
+function makeListing(rarity, cardId, foil) {
+  const aim = state.listingAim || "at";
+  const spec = listingAimSpec(aim);
+  const ask = Math.max(0.01, Math.round(basePriceFor(rarity, cardId, foil) * spec.mult * 100) / 100);
+  const cooldownSec = spec.min + Math.random() * (spec.max - spec.min);
+  const uid = (state.listingsUidCounter || 0) + 1;
+  state.listingsUidCounter = uid;
+  return {
+    uid, rarity, cardId, foil, aim,
+    askPrice: ask,
+    resolveAt: Date.now() + cooldownSec * 1000,
+    willResolve: Math.random() < spec.sellOdds,
+  };
+}
+
+function listCard(rarity, cardId, foil) {
+  const mk = marketKey(rarity, foil);
+  if (!mk) return; // priced-only entry point
   const inv = state.invById[mk];
-  if (!inv || !inv[id]) return;
-  const price = Math.max(0.01, Math.round(state.market[mk][id] * 100) / 100);
-  state.coins += price;
-  inv[id] -= 1;
-  if (inv[id] <= 0) delete inv[id];
+  if (!inv || !inv[cardId]) return;
+  if (foil) {
+    const spec = listingAimSpec(state.listingAim || "at");
+    const ask = Math.max(0.01, Math.round(basePriceFor(rarity, cardId, foil) * spec.mult * 100) / 100);
+    const aimLbl = (state.listingAim || "at").toUpperCase();
+    if (!confirm(`List foil ${RARITY_LABELS[rarity].toLowerCase()} ${cardFullId(rarity, cardId)} at ${usd(ask)} (${aimLbl})?`)) return;
+  }
+  inv[cardId] -= 1;
+  if (inv[cardId] <= 0) delete inv[cardId];
   if (foil) state.stockFoil[rarity] -= 1;
   else      state.stock[rarity]     -= 1;
+  const listing = makeListing(rarity, cardId, foil);
+  if (!Array.isArray(state.listings)) state.listings = [];
+  state.listings.push(listing);
   renderAll(); save();
-  $("hint").textContent = `Sold ${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()} ${cardFullId(rarity, id)} for ${usd(price)}.`;
+  $("hint").textContent = `Listed ${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()} ${cardFullId(rarity, cardId)} @ ${usd(listing.askPrice)}.`;
+}
+
+function listBulkCard(rarity) {
+  // Sort funnels here: card was in unsorted, now becomes a listing directly.
+  const listing = makeListing(rarity, null, false);
+  if (!Array.isArray(state.listings)) state.listings = [];
+  state.listings.push(listing);
+}
+
+function cancelListing(uid) {
+  const idx = state.listings.findIndex(l => l.uid === uid);
+  if (idx < 0) return;
+  const l = state.listings[idx];
+  if (isBulkListing(l)) {
+    state.unsorted[l.rarity] = (state.unsorted[l.rarity] || 0) + 1;
+    syncPileWithStock();
+  } else {
+    const mk = marketKey(l.rarity, l.foil);
+    if (mk) {
+      state.invById[mk][l.cardId] = (state.invById[mk][l.cardId] || 0) + 1;
+      if (l.foil) state.stockFoil[l.rarity] += 1;
+      else        state.stock[l.rarity]     += 1;
+    }
+  }
+  state.listings.splice(idx, 1);
+  renderAll(); save();
+  $("hint").textContent = `Cancelled listing — card returned to inventory.`;
+}
+
+function dumpUnsorted() {
+  let total = 0, proceeds = 0;
+  SAND_BULK_RARITIES.forEach(r => {
+    const n = state.unsorted[r] || 0;
+    total += n;
+    proceeds += n * SELL_PRICE[r] * DUMP_DISCOUNT;
+  });
+  if (total === 0) return;
+  proceeds = Math.round(proceeds * 100) / 100;
+  if (!confirm(`Dump ${total} unsorted card${total > 1 ? "s" : ""} for ${usd(proceeds)}? (${Math.round(DUMP_DISCOUNT * 100)}% of listed price)`)) return;
+  state.coins += proceeds;
+  SAND_BULK_RARITIES.forEach(r => state.unsorted[r] = 0);
+  state.pile = [];
+  ensurePileBuckets();
+  renderAll(); save();
+  $("hint").textContent = `Dumped ${total} cards for ${usd(proceeds)}.`;
+}
+
+function resolveListings() {
+  if (!Array.isArray(state.listings) || state.listings.length === 0) return;
+  const now = Date.now();
+  let changed = false;
+  let lastMessage = null;
+  state.listings = state.listings.filter(l => {
+    if (now < l.resolveAt) return true;
+    if (l.willResolve) {
+      state.coins += l.askPrice;
+      lastMessage = `Sold ${l.foil ? "foil " : ""}${RARITY_LABELS[l.rarity].toLowerCase()}${l.cardId != null ? " " + cardFullId(l.rarity, l.cardId) : ""} @ ${usd(l.askPrice)}.`;
+    } else {
+      if (isBulkListing(l)) {
+        state.unsorted[l.rarity] = (state.unsorted[l.rarity] || 0) + 1;
+        syncPileWithStock();
+      } else {
+        const mk = marketKey(l.rarity, l.foil);
+        if (mk) {
+          state.invById[mk][l.cardId] = (state.invById[mk][l.cardId] || 0) + 1;
+          if (l.foil) state.stockFoil[l.rarity] += 1;
+          else        state.stock[l.rarity]     += 1;
+        }
+      }
+      lastMessage = `Listing expired — card returned.`;
+    }
+    changed = true;
+    return false;
+  });
+  if (changed) {
+    renderAll(); save();
+    if (lastMessage) $("hint").textContent = lastMessage;
+  }
+}
+
+function setListingAim(aim) {
+  if (aim !== "fast" && aim !== "at" && aim !== "high") return;
+  state.listingAim = aim;
+  renderAll(); save();
+}
+
+function renderListings() {
+  const wrap = $("listings-panel");
+  if (!wrap) return;
+  const aim = state.listingAim || "at";
+  const listings = Array.isArray(state.listings) ? state.listings : [];
+  const aimChip = (id, label, sub) =>
+    `<button type="button" class="aim-btn ${id === aim ? "active" : ""}" data-aim="${id}">
+       <span class="aim-lbl">${label}</span>
+       <span class="aim-sub">${sub}</span>
+     </button>`;
+  let html = `
+    <div class="listings-header">
+      <span>MARKETPLACE</span>
+      <span class="listings-count">${listings.length} listed</span>
+    </div>
+    <div class="aim-row">
+      ${aimChip("fast", "FAST",      `${Math.round(LISTING_AIM_FAST_MULT*100)}% · sure`)}
+      ${aimChip("at",   "AT MARKET", `${Math.round(LISTING_AIM_AT_MULT*100)}% · sure`)}
+      ${aimChip("high", "HIGH",      `${Math.round(LISTING_AIM_HIGH_MULT*100)}% · risky`)}
+    </div>`;
+  if (listings.length === 0) {
+    html += `<div class="listings-empty">Nothing listed. Sort to auto-list bulk; click a mythic or foil cell to list singles.</div>`;
+  } else {
+    html += `<div class="listings-grid">`;
+    listings.forEach(l => {
+      const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId) : RARITY_LABELS[l.rarity].toLowerCase();
+      const color = RARITY_COLOURS[l.rarity];
+      const cls = `listing-pill${l.foil ? " foil" : ""}`;
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="border-color:${color}" title="Click to cancel and return to inventory">`
+            + `<span class="lst-glyph" style="${l.foil ? "" : `color:${color}`}">${RARITY_GLYPHS[l.rarity]}</span>`
+            + `<span class="lst-id">${idLabel}</span>`
+            + `<span class="lst-price">${usd(l.askPrice)}</span>`
+            + `</button>`;
+    });
+    html += `</div>`;
+  }
+  wrap.innerHTML = html;
+}
+
+function renderDumpButton() {
+  const btn = $("dump-btn");
+  if (!btn) return;
+  let total = 0, proceeds = 0;
+  SAND_BULK_RARITIES.forEach(r => {
+    const n = state.unsorted[r] || 0;
+    total += n;
+    proceeds += n * SELL_PRICE[r] * DUMP_DISCOUNT;
+  });
+  btn.disabled = total === 0;
+  btn.textContent = total === 0
+    ? `DUMP PILE — empty`
+    : `DUMP ${total} → ${usd(Math.round(proceeds * 100) / 100)}`;
 }
 
 // ---- Sand simulation -----------------------------------------------------
@@ -1244,7 +1553,7 @@ function sortCards() {
                  : roll < state.unsorted.common + state.unsorted.uncommon ? "uncommon"
                  : "rare";
     state.unsorted[rarity] -= 1;
-    state.stock[rarity]    += 1;
+    listBulkCard(rarity); // sort = auto-list at current aim
     removeOneGrainByRarity(rarity);
   }
   renderAll(); save();
@@ -1453,6 +1762,19 @@ const DESIGN_FIELDS = [
   { group: "Market dynamics",  key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",         label: "Floor (× fund.)",              step: 0.01, min: 0 },
   { group: "Market dynamics",  key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",          label: "Ceiling (× fund.)",            step: 0.1,  min: 1 },
   { group: "Market dynamics",  key: "MARKET_TICK_MS",                  path: "MARKET_TICK_MS",            label: "Tick interval (seconds)",      step: 1,    min: 1, scale: 1000 },
+
+  // Marketplace
+  { group: "Marketplace",      key: "DUMP_DISCOUNT",                   path: "DUMP_DISCOUNT",             label: "Dump payout (× SELL_PRICE)",  step: 0.05, min: 0, max: 1 },
+  { group: "Marketplace",      key: "LISTING_AIM_FAST_MULT",           path: "LISTING_AIM_FAST_MULT",     label: "Fast: price × market",        step: 0.05, min: 0 },
+  { group: "Marketplace",      key: "LISTING_AIM_AT_MULT",             path: "LISTING_AIM_AT_MULT",       label: "At market: price × market",   step: 0.05, min: 0 },
+  { group: "Marketplace",      key: "LISTING_AIM_HIGH_MULT",           path: "LISTING_AIM_HIGH_MULT",     label: "High: price × market",        step: 0.05, min: 0 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_FAST_MIN",       path: "LISTING_COOLDOWN_FAST_MIN", label: "Fast cooldown min (sec)",     step: 1, min: 1 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_FAST_MAX",       path: "LISTING_COOLDOWN_FAST_MAX", label: "Fast cooldown max (sec)",     step: 1, min: 1 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_AT_MIN",         path: "LISTING_COOLDOWN_AT_MIN",   label: "At cooldown min (sec)",       step: 1, min: 1 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_AT_MAX",         path: "LISTING_COOLDOWN_AT_MAX",   label: "At cooldown max (sec)",       step: 1, min: 1 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_HIGH_MIN",       path: "LISTING_COOLDOWN_HIGH_MIN", label: "High cooldown min (sec)",     step: 1, min: 1 },
+  { group: "Marketplace",      key: "LISTING_COOLDOWN_HIGH_MAX",       path: "LISTING_COOLDOWN_HIGH_MAX", label: "High cooldown max (sec)",     step: 1, min: 1 },
+  { group: "Marketplace",      key: "LISTING_HIGH_SELL_ODDS",          path: "LISTING_HIGH_SELL_ODDS",    label: "High sell odds (0–1)",        step: 0.05, min: 0, max: 1 },
 ];
 
 function _resolvePath(root, path) {
@@ -1478,6 +1800,12 @@ function _liveDesignSnapshot() {
     FUND_MIN_MULT, FUND_RANGE,
     TICK_VOLATILITY, TICK_REVERT, TICK_FUND_DRIFT,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO, MARKET_TICK_MS,
+    DUMP_DISCOUNT,
+    LISTING_AIM_FAST_MULT, LISTING_AIM_AT_MULT, LISTING_AIM_HIGH_MULT,
+    LISTING_COOLDOWN_FAST_MIN, LISTING_COOLDOWN_FAST_MAX,
+    LISTING_COOLDOWN_AT_MIN, LISTING_COOLDOWN_AT_MAX,
+    LISTING_COOLDOWN_HIGH_MIN, LISTING_COOLDOWN_HIGH_MAX,
+    LISTING_HIGH_SELL_ODDS,
   };
 }
 function _readCurrent(path) {
@@ -1680,7 +2008,7 @@ function tickFriends() {
   else              { renderStaff(); }
 }
 
-function renderAll() { renderHeader(); renderVault(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderDumpButton(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -1729,22 +2057,6 @@ function ripOne() {
   $("hint").textContent = `Nice rip. ${state.packSupply} left.${tail}`;
 }
 
-function sellRarity(rarity, foil) {
-  const bucket = foil ? state.stockFoil : state.stock;
-  const qty    = bucket[rarity];
-  if (qty === 0) return;
-  const proceeds = Math.round(inventoryValue(rarity, foil) * 100) / 100;
-  state.coins += proceeds;
-  bucket[rarity] = 0;
-  const mk = marketKey(rarity, foil);
-  if (mk) {
-    state.invById[mk] = {};
-  }
-  // grains track unsorted pile; selling sorted stock doesn't touch them
-  renderAll(); save();
-  const label = `${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()}${qty > 1 ? "s" : ""}`;
-  $("hint").textContent = `Sold ${qty} ${label} for ${usd(proceeds)}.`;
-}
 
 function resetGame() {
   if (!confirm("Wipe everything and start over?")) return;
@@ -1759,18 +2071,21 @@ $("pack").addEventListener("click", ripOne);
 $("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
 $("buy-box").addEventListener("click",  () => buyPacks(BOX_SIZE,  boxCost(),  "a box (36 packs)"));
 $("buy-case").addEventListener("click", () => buyPacks(CASE_SIZE, caseCost(), "a case (216 packs)"));
-$("stock-rows").addEventListener("click", (e) => {
-  const btn = e.target.closest(".sell-btn");
-  if (btn && btn.dataset.rarity) sellRarity(btn.dataset.rarity, btn.dataset.foil === "1");
-});
 $("vault-grid").addEventListener("click", (e) => {
   const cell = e.target.closest(".collection-cell.priced.owned");
   if (!cell) return;
   const rarity = cell.dataset.rarity;
   const id     = parseInt(cell.dataset.id, 10);
   const foil   = cell.dataset.foil === "1";
-  sellCard(rarity, id, foil);
+  listCard(rarity, id, foil);
 });
+$("listings-panel").addEventListener("click", (e) => {
+  const aimBtn = e.target.closest(".aim-btn");
+  if (aimBtn && aimBtn.dataset.aim) { setListingAim(aimBtn.dataset.aim); return; }
+  const pill = e.target.closest(".listing-pill");
+  if (pill && pill.dataset.uid) cancelListing(parseInt(pill.dataset.uid, 10));
+});
+$("dump-btn").addEventListener("click", dumpUnsorted);
 $("sand-canvas").addEventListener("click", () => sortCards());
 $("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
 $("reset-btn").addEventListener("click", resetGame);
@@ -1787,6 +2102,8 @@ document.addEventListener("keydown", (e) => {
 setInterval(save, 5000);
 setInterval(tickMarket, MARKET_TICK_MS);
 setInterval(tickFriends, FRIEND_TICK_MS);
+setInterval(resolveListings, LISTING_TICK_MS);
+resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", drawSand);
 renderAll();
