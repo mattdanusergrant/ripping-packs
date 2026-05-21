@@ -55,23 +55,26 @@ Foil variants exist for every rarity (separate card identities).
 
 Newly pulled bulk cards drop into the sand canvas as **colored grains** — green for standard, blue for rare, rainbow-shimmer for foil standard. Each grain represents one card stacked physically in the pile.
 
-### Click-to-sort
+### Click-to-detonate
 
-Clicking the canvas removes 3–7 grains and moves those cards into your collection (assigning random IDs against `SET_SIZES[rarity]`). The collection cell for each landed card flashes.
+Sorting is purely positional — there's no "pull random cards from the top." Every sort is a click that detonates a grain in the pile.
 
-### Chain-crit (positional)
+1. Click → search a 4-cell (`SORT_CLICK_RADIUS_CELLS`) Manhattan diamond around the click for the nearest grain of any type. If none, the click does nothing.
+2. **Wave 0 (click AoE):** the seed grain plus its 4 orthogonal neighbors are destroyed. Every non-standard cell destroyed here is queued as a wave-1 detonator.
+3. **Wave N+1 (chain):** every queued detonator triggers its own type's blast:
+   - **Rare** → 4-orthogonal blast (same radius as the click AoE).
+   - **Foil Standard** → 8-cell "+" pattern: 1- and 2-cell reach along each cardinal axis (N/S/E/W). Foils explode bigger.
+4. Standards in any blast are consumed but don't propagate the chain.
+5. Each destruction spawns an **expanding pop** in the rarity's color on the canvas. Waves are spaced by `CHAIN_STEP_MS` (90ms) so each pop reads.
+6. **Every destroyed grain is fully sorted** — set progress, collection flash, market-key tracking, same as the old hand-sort.
+7. After the chain finishes, the pile gravity-settles: every surviving grain above a destroyed cell becomes a falling grain at its previous visual Y and physics-falls down to fill the gap.
 
-Crits aren't a multiplier — they're a local explosion event.
-
-1. Click → search a 2-cell (`SORT_CRIT_RADIUS_CELLS`) Manhattan diamond around the click for the nearest non-standard grain. If none, no crit.
-2. That **crit node** annihilates itself. On the next wave (CHAIN_STEP_MS = 90ms later), all 4 **orthogonal** neighbors annihilate (no diagonals). On the wave after that, every non-standard cell from the previous wave detonates *its* 4 orthogonals. And so on.
-3. Standards in any blast are consumed but don't propagate the chain. Non-standards do.
-4. Each destruction spawns an **expanding pop** in the rarity's color on the canvas — the chain visibly ripples outward one wave at a time.
-5. **Every destroyed grain is fully sorted** (set progress, collection flash, market-key tracking — same as a manual sort).
-6. After the chain finishes: the **regular 3–7 sort** runs as usual.
-7. The pile gravity-settles via the falling-grain physics: every surviving grain above a destroyed cell becomes a falling grain at its previous visual Y and physics-falls down to fill the gap.
-
-So a good crit click into a chain of orthogonally adjacent rares/foils ripples outward visibly, can sort 20+ cards in one click, and ends with a chunk of the pile physically tumbling down.
+Outcomes:
+- Click on a pure-standard area: just **5 cards** sorted (seed + 4 orthos).
+- Click on a lone rare: **5 cards**, no further chain.
+- Click on a lone foil: **9 cards** — the 5-cell click AoE plus 4 more cells the foil reaches at distance 2 along the axes.
+- Click into a chain of orthogonally-connected rares: ripples outward 5 cells per rare, no diagonals.
+- Click on a mixed cluster: the foil's "+" reach can pull in another non-standard several cells away that wouldn't be reachable from a rare alone.
 
 ### Unsorted cap
 

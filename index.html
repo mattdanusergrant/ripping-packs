@@ -827,7 +827,7 @@
   <div>
     <div id="sort-pile-header">
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
-      <span class="sort-hint" id="sort-hint">click to sort <span id="sort-range-label"></span></span>
+      <span class="sort-hint" id="sort-hint">click a grain to detonate</span>
     </div>
     <button id="dump-btn" type="button" disabled>DUMP PILE — $0</button>
     <canvas id="sand-canvas"></canvas>
@@ -877,10 +877,11 @@ function def(key, fallback) {
 let SELL_PRICE = def("SELL_PRICE", { standard: 0.01, rare: 0.05, epic: 5, legendary: 25, mythic: 100 });
 
 // ---- Sorting -------------------------------------------------------------
-// Tweak these to tune the sorting loop.
-let SORT_MIN             = def("SORT_MIN", 3);
-let SORT_MAX             = def("SORT_MAX", 7);
-let SORT_CRIT_RADIUS_CELLS = def("SORT_CRIT_RADIUS_CELLS", 2); // squares from the click to search for a crit-node seed
+// Sorting is purely positional: the player clicks the sand pile, the nearest
+// grain detonates plus its 4 orthogonal neighbors, then non-standard grains
+// caught in the blast chain-explode (rare = 4-ortho, foil = 8-cell "+" at
+// reach 2).
+let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 2000);
 
 let FOIL_MULTIPLIER       = def("FOIL_MULTIPLIER", 10);
@@ -2202,19 +2203,15 @@ function removeOneGrainByKey(key) {
   }
 }
 
-function rollSortBase() {
-  return SORT_MIN + Math.floor(Math.random() * (SORT_MAX - SORT_MIN + 1));
-}
-
-// Find the nearest non-standard grain in the pile within SORT_CRIT_RADIUS_CELLS
-// of the click. Returns {col, row} or null. Used as the seed for chain crits.
-function findCritNode(clickX, clickY) {
+// Find the nearest grain (of any type) in the pile within SORT_CLICK_RADIUS_CELLS
+// of the click. Returns {col, row} or null.
+function findClickedGrain(clickX, clickY) {
   const canvas = $("sand-canvas");
   if (!canvas) return null;
   const h = canvas.clientHeight || 90;
   const cx = Math.floor(clickX / SAND_CELL);
   const cy = Math.floor((h - clickY) / SAND_CELL);
-  const radius = SORT_CRIT_RADIUS_CELLS;
+  const radius = SORT_CLICK_RADIUS_CELLS;
   let bestCol = -1, bestRow = -1, bestDist = Infinity;
   for (let dc = -radius; dc <= radius; dc++) {
     const c = cx + dc;
@@ -2227,7 +2224,8 @@ function findCritNode(clickX, clickY) {
       const dist = Math.abs(dc) + Math.abs(dr);
       if (dist > radius) continue;
       const k = col[r];
-      if (k && k !== "standard" && k !== "__" && dist < bestDist) {
+      if (!k || k === "__") continue;
+      if (dist < bestDist) {
         bestDist = dist;
         bestCol = c;
         bestRow = r;
@@ -2237,8 +2235,6 @@ function findCritNode(clickX, clickY) {
   return bestCol < 0 ? null : { col: bestCol, row: bestRow };
 }
 
-// BFS chain explosion. Marks destroyed cells as "__" tombstones in state.pile
-// so callers can settle the pile afterward. Returns the destroyed grains in
 // Spawn a brief expanding pop at the canvas position of a destroyed cell.
 function spawnCritPop(col, row, key) {
   const canvas = $("sand-canvas");
@@ -2249,22 +2245,56 @@ function spawnCritPop(col, row, key) {
   critPops.push({ x, y, age: 0, maxAge: 14, color: grainColorFor(key) });
 }
 
-const CHAIN_ORTHO = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+// Per-key chain-blast offsets. The initial click AoE always uses CLICK_AOE
+// (4 orthos), regardless of seed type. Each non-standard destroyed then
+// detonates with this key-specific pattern next wave.
+const CLICK_AOE_OFFSETS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+function explosionOffsetsForKey(key) {
+  if (bulkIsFoil(key)) {
+    // Foils throw a long "+" — 2 cells along each cardinal axis (8 cells).
+    return [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [2, 0], [-2, 0], [0, 2], [0, -2],
+    ];
+  }
+  // Rares (and standards, though standards never become detonators) use the
+  // standard 4-ortho blast.
+  return [[1, 0], [-1, 0], [0, 1], [0, -1]];
+}
 
-// Wave-based chain detonation. Each wave fires one BFS level — the seed pops
-// alone, then its 4 orthogonal neighbors all pop together, then each non-std
-// neighbor's own 4 orthogonals, and so on. CHAIN_STEP_MS spaces the waves so
-// each pop is visible. The chain consumes destroyed grains as sorted cards
-// (sortOneOfKey) live, and calls onDone(totalDestroyed) when the chain ends.
+function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
+  offsets.forEach(([dc, dr]) => {
+    const nc = centerCol + dc, nr = centerRow + dr;
+    if (nc < 0 || nc >= state.pile.length) return;
+    const col = state.pile[nc];
+    if (!col || nr < 0 || nr >= col.length) return;
+    const k = col[nr];
+    if (!k || k === "__") return;
+    col[nr] = "__";
+    spawnCritPop(nc, nr, k);
+    sortOneOfKey(k);
+    refs.total += 1;
+    if (k !== "standard") outDetonators.push({ col: nc, row: nr, key: k });
+  });
+}
+
+// Wave-based chain detonation seeded from the player's click.
+// Wave 0:  destroy the seed + apply the click AoE (4 orthos around it).
+// Wave N+: every non-standard cell destroyed in the previous wave detonates
+//          with its own key's blast pattern (rare: 4 orthos, foil: 8-cell +).
+// Standards in any blast are consumed but don't propagate.
 function runChainCrit(startCol, startRow, onDone) {
   const seedKey = state.pile[startCol] && state.pile[startCol][startRow];
   if (!seedKey || seedKey === "__") { onDone(0); return; }
-  // Wave 0: seed alone.
+  const refs = { total: 0 };
+  let detonators = [];
+  // Wave 0 — destroy seed + click AoE around it.
   state.pile[startCol][startRow] = "__";
   spawnCritPop(startCol, startRow, seedKey);
   sortOneOfKey(seedKey);
-  let total = 1;
-  let detonators = [[startCol, startRow]]; // cells whose neighbors blow next wave
+  refs.total += 1;
+  if (seedKey !== "standard") detonators.push({ col: startCol, row: startRow, key: seedKey });
+  applyBlast(startCol, startRow, CLICK_AOE_OFFSETS, detonators, refs);
   startSandAnim();
   renderHeader();
   renderVault();
@@ -2273,22 +2303,10 @@ function runChainCrit(startCol, startRow, onDone) {
   renderSandPile();
 
   function step() {
-    if (detonators.length === 0) { onDone(total); return; }
+    if (detonators.length === 0) { onDone(refs.total); return; }
     const next = [];
-    detonators.forEach(([c, r]) => {
-      CHAIN_ORTHO.forEach(([dc, dr]) => {
-        const nc = c + dc, nr = r + dr;
-        if (nc < 0 || nc >= state.pile.length) return;
-        const col = state.pile[nc];
-        if (!col || nr < 0 || nr >= col.length) return;
-        const k = col[nr];
-        if (!k || k === "__") return;
-        col[nr] = "__";
-        spawnCritPop(nc, nr, k);
-        sortOneOfKey(k);
-        total += 1;
-        if (k !== "standard") next.push([nc, nr]);
-      });
+    detonators.forEach(d => {
+      applyBlast(d.col, d.row, explosionOffsetsForKey(d.key), next, refs);
     });
     startSandAnim();
     renderHeader();
@@ -2341,53 +2359,22 @@ function settlePileAfterChain() {
   startSandAnim();
 }
 
-function runRegularSort() {
-  const baseAmount = rollSortBase();
-  let regular = 0;
-  for (let i = 0; i < baseAmount; i++) {
-    const totals = SAND_BULK_KEYS.map(k => state.unsorted[k] || 0);
-    const sum = totals.reduce((a, b) => a + b, 0);
-    if (sum === 0) break;
-    let roll = Math.floor(Math.random() * sum);
-    let key = SAND_BULK_KEYS[SAND_BULK_KEYS.length - 1];
-    for (let j = 0; j < SAND_BULK_KEYS.length; j++) {
-      roll -= totals[j];
-      if (roll < 0) { key = SAND_BULK_KEYS[j]; break; }
-    }
-    if (sortOneOfKey(key)) {
-      removeOneGrainByKey(key);
-      regular += 1;
-    }
-  }
-  return regular;
-}
-
 function sortCards(opts) {
   ensureBulkInv();
   if (SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0) === 0) return;
-
-  const finish = (critCount, regular) => {
+  if (!opts || !opts.click) return;
+  const seed = findClickedGrain(opts.click.x, opts.click.y);
+  if (!seed) {
+    $("hint").textContent = "Click on the pile to sort.";
+    return;
+  }
+  runChainCrit(seed.col, seed.row, (total) => {
     settlePileAfterChain();
     renderAll(); save();
-    if (critCount > 0) {
-      $("hint").textContent = `✨ CRIT! Chain sorted ${critCount} + regular ${regular} = ${critCount + regular} cards.`;
-    } else {
-      $("hint").textContent = `Sorted ${regular} card${regular !== 1 ? "s" : ""}.`;
-    }
-  };
-
-  if (opts && opts.click) {
-    const node = findCritNode(opts.click.x, opts.click.y);
-    if (node) {
-      runChainCrit(node.col, node.row, (totalDestroyed) => {
-        const regular = runRegularSort();
-        finish(totalDestroyed, regular);
-      });
-      return;
-    }
-  }
-  const regular = runRegularSort();
-  finish(0, regular);
+    $("hint").textContent = total > 5
+      ? `✨ CHAIN! Sorted ${total} cards.`
+      : `Sorted ${total} card${total !== 1 ? "s" : ""}.`;
+  });
 }
 
 
@@ -2599,9 +2586,7 @@ const DESIGN_FIELDS = [
   { group: "Set sizes",        key: "SET_SIZES.mythic",                path: "SET_SIZES.mythic",          label: "Mythic card count",            step: 1, min: 1, int: true },
 
   // Sorting
-  { group: "Sorting",          key: "SORT_MIN",                        path: "SORT_MIN",                  label: "Sort min / click",             step: 1, min: 1, int: true },
-  { group: "Sorting",          key: "SORT_MAX",                        path: "SORT_MAX",                  label: "Sort max / click",             step: 1, min: 1, int: true },
-  { group: "Sorting",          key: "SORT_CRIT_RADIUS_CELLS",          path: "SORT_CRIT_RADIUS_CELLS",    label: "Crit click radius (cells)",    step: 1, min: 0, int: true },
+  { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
 
   // Staff
@@ -2649,7 +2634,7 @@ function _liveDesignSnapshot() {
     FOIL_MULTIPLIER, PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
     BASELINE,
     SET_SIZES,
-    SORT_MIN, SORT_MAX, SORT_CRIT_RADIUS_CELLS, UNSORTED_CAPACITY,
+    SORT_CLICK_RADIUS_CELLS, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
     SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
@@ -3262,7 +3247,6 @@ $("sand-canvas").addEventListener("click", (e) => {
   const y = e.clientY - rect.top;
   sortCards({ click: { x, y } });
 });
-$("sort-range-label").textContent = SORT_MIN === SORT_MAX ? `${SORT_MIN}` : `${SORT_MIN}-${SORT_MAX}`;
 $("reset-btn").addEventListener("click", resetGame);
 $("hire-homie").addEventListener("click", hireHomie);
 $("buy-sorter").addEventListener("click", buySorter);
