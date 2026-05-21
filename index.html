@@ -1390,12 +1390,6 @@ function listCard(rarity, cardId, foil) {
   if (!mk) return; // priced-only entry point
   const inv = state.invById[mk];
   if (!inv || !inv[cardId]) return;
-  if (foil) {
-    const spec = listingAimSpec(state.listingAim || "at");
-    const ask = Math.max(0.01, Math.round(basePriceFor(rarity, cardId, foil) * spec.mult * 100) / 100);
-    const aimLbl = (state.listingAim || "at").toUpperCase();
-    if (!confirm(`List foil ${RARITY_LABELS[rarity].toLowerCase()} ${cardFullId(rarity, cardId)} at ${usd(ask)} (${aimLbl})?`)) return;
-  }
   inv[cardId] -= 1;
   if (inv[cardId] <= 0) delete inv[cardId];
   if (foil) state.stockFoil[rarity] -= 1;
