@@ -261,13 +261,25 @@
     padding: 0 3px; line-height: 1.2;
     min-width: 12px; text-align: center;
   }
-  .collection-cell .cell-price {
-    position: absolute; left: 1px; right: 1px; bottom: 1px;
-    background: rgba(0,0,0,0.75); color: #fff;
-    font-size: 7px; font-weight: bold;
-    padding: 0 1px; border-radius: 2px; line-height: 1.25;
-    text-align: center; pointer-events: none;
+  /* Big centered sell value on priced + owned cells. */
+  .collection-cell .cell-value {
+    font-size: 12px; font-weight: bold; line-height: 1;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    letter-spacing: 0.2px;
+    pointer-events: none;
   }
+  .collection-cell.foil.owned .cell-value { color: #111; text-shadow: 0 1px 2px rgba(255,255,255,0.5); }
+  /* Tiny card # along the bottom edge. */
+  .collection-cell .cell-num {
+    position: absolute; left: 1px; right: 1px; bottom: 1px;
+    font-size: 6px; font-weight: bold;
+    color: rgba(255,255,255,0.7);
+    line-height: 1; text-align: center;
+    letter-spacing: 0.3px;
+    pointer-events: none;
+  }
+  .collection-cell.foil.owned .cell-num { color: rgba(0,0,0,0.7); }
   .collection-cell.flash {
     animation: card-pop 0.7s ease-out;
   }
@@ -756,6 +768,8 @@
     .collection-grid { gap: 3px; padding: 4px; }
     .collection-grid.cols-18 { grid-template-columns: repeat(18, 28px); }
     .collection-cell { width: 28px; font-size: 8px; }
+    .collection-cell .cell-value { font-size: 10px; }
+    .collection-cell .cell-num { font-size: 5px; }
     .stock-row { padding: 8px 10px; gap: 8px; }
     #hint { font-size: 0.8rem; }
   }
@@ -1759,7 +1773,7 @@ function buildCollectionRow(rarity, foil) {
     cell.dataset.foil   = foil ? "1" : "0";
     const fullId = cardFullId(rarity, i);
     const cardNum = CARD_NUMBER_OFFSETS[rarity] + i;
-    cell.textContent = String(cardNum).padStart(3, "0");
+    const cardNumStr = String(cardNum).padStart(3, "0");
 
     const listedCount = listedCountFor(rarity, i, foil);
     if (listedCount > 0) {
@@ -1780,16 +1794,27 @@ function buildCollectionRow(rarity, foil) {
       }
       const price = prices ? prices[i] : 0;
       if (count > 0) {
-        const priceLabel = document.createElement("span");
-        priceLabel.className = "cell-price";
-        priceLabel.textContent = compactUsd(price);
-        cell.appendChild(priceLabel);
+        // Marketplace-style: BIG centered price, tiny card # at bottom.
+        const valueEl = document.createElement("span");
+        valueEl.className = "cell-value";
+        valueEl.textContent = compactUsd(price);
+        cell.appendChild(valueEl);
+        const numEl = document.createElement("span");
+        numEl.className = "cell-num";
+        numEl.textContent = cardNumStr;
+        cell.appendChild(numEl);
+      } else {
+        // Owned (set completion), 0 in stock — show card # centered as before.
+        cell.textContent = cardNumStr;
       }
       const owns = count;
       cell.title = owns > 0
         ? `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — ${usd(price)} · own ${owns}${listedCount > 0 ? ` · ${listedCount} listed` : ""}\nClick to list one`
         : `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — owned (set), 0 in stock${listedCount > 0 ? ` · ${listedCount} listed` : ""}`;
     } else if (owned) {
+      // Bulk owned (standards / rares / foil standards): no individual sell
+      // price, so keep the card number centered like before.
+      cell.textContent = cardNumStr;
       const cnt = bulkInv ? (bulkInv[i] || 0) : 0;
       if (cnt > 1) {
         const badge = document.createElement("span");
@@ -1801,6 +1826,8 @@ function buildCollectionRow(rarity, foil) {
         ? `${RARITY_LABELS[rarity]} ${fullId} — own ${cnt} · craft a full ${RARITY_LABELS[rarity]} Set to sell`
         : `${RARITY_LABELS[rarity]} ${fullId} — collected`;
     } else {
+      // Unowned: card number serves as the cell identity.
+      cell.textContent = cardNumStr;
       cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — unowned`;
     }
 
