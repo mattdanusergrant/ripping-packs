@@ -401,6 +401,13 @@
   .stock-row.epic      { border-left-color: var(--epic);      box-shadow: 0 0 10px rgba(192,96,255,0.18); }
   .stock-row.legendary { border-left-color: var(--legendary); box-shadow: 0 0 12px rgba(255,216,77,0.20); }
   .stock-row.mythic    { border-left-color: var(--mythic);    box-shadow: 0 0 12px rgba(255,122,61,0.20); }
+  .stock-row.foil-row {
+    border-left-color: transparent;
+    border-image: linear-gradient(180deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d) 1;
+    border-left-width: 3px;
+    border-left-style: solid;
+    box-shadow: 0 0 10px rgba(101,214,255,0.20);
+  }
   .rarity-name { font-weight: bold; letter-spacing: 1px; font-size: 0.95rem; }
   .counts { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: var(--muted); }
   .counts b { color: var(--ink); font-size: 0.9rem; }
@@ -673,9 +680,9 @@
 
 <section id="vault">
   <h2>VAULT</h2>
-  <div id="stock-rows"></div>
   <div id="listings-panel"></div>
   <div id="vault-grid"></div>
+  <div id="stock-rows"></div>
 </section>
 
 <footer>10 cards/pack — 10 standards, one upgrades to rare+ at a random slot. Every slot then rolls foil and a chained tier upgrade.</footer>
@@ -1372,46 +1379,26 @@ function setActionsBlock(key) {
 function renderVault() {
   const grid = $("stock-rows");
   grid.innerHTML = "";
-  [...RARITIES].reverse().forEach(rarity => {
-    const stock     = state.stock[rarity] || 0;
-    const unsorted  = state.unsorted ? (state.unsorted[rarity] || 0) : 0;
-    const unsortedFoil = (rarity === "standard") ? (state.unsorted && state.unsorted.foilStandard || 0) : 0;
-    const stockF    = state.stockFoil[rarity] || 0;
-    const opened    = state.opened[rarity] || 0;
-    const openedF   = state.openedFoil[rarity] || 0;
-    const isPriced     = !!marketKey(rarity, false);
-    const isPricedFoil = !!marketKey(rarity, true);
-    const priceLabel     = isPriced
-      ? (stock  > 0 ? `~${usd(inventoryAvgPrice(rarity, false))} avg` : "market")
-      : `@ ${usd(SELL_PRICE[rarity])}`;
-    const priceLabelFoil = isPricedFoil
-      ? (stockF > 0 ? `~${usd(inventoryAvgPrice(rarity, true))} avg`  : "market")
-      : (rarity === "standard"
-          ? `bulk · craft set`
-          : `@ ${usd(foilPrice(rarity))}`);
-    const isBulk = SAND_BULK_RARITIES.includes(rarity);
-    const stockLine = isBulk
-      ? `Unsorted: <b>${unsorted}</b> · Sorted: <b>${stock}</b> · lifetime <b>${opened}</b>`
-      : `Stock: <b>${stock}</b> · lifetime <b>${opened}</b> <span class="sell-price">${priceLabel}</span>`;
-    const foilLineExtra = (rarity === "standard")
-      ? ` · Unsorted: <b>${unsortedFoil}</b>`
-      : "";
-
-    let setBlock = "";
-    if (isBulk) setBlock += setActionsBlock(rarity);
-    // Standard row also exposes the foil-standard set track.
-    if (rarity === "standard") setBlock += setActionsBlock("foilStandard");
+  // Three rows, one per bulk track: Rare, Foil Standard, Standard.
+  const rows = [
+    { key: "rare",         label: "RARE",          glyph: RARITY_GLYPHS.rare,     color: RARITY_COLOURS.rare,     foilLabel: false },
+    { key: "foilStandard", label: "FOIL STANDARD", glyph: "✨",                   color: RARITY_COLOURS.standard, foilLabel: true  },
+    { key: "standard",     label: "STANDARD",      glyph: RARITY_GLYPHS.standard, color: RARITY_COLOURS.standard, foilLabel: false },
+  ];
+  rows.forEach(({ key, label, glyph, color, foilLabel }) => {
+    const baseRarity = bulkBaseRarity(key);
+    const isFoil = bulkIsFoil(key);
+    const unsorted = (state.unsorted && state.unsorted[key]) || 0;
+    const sorted   = isFoil ? (state.stockFoil[baseRarity] || 0) : (state.stock[baseRarity] || 0);
+    const lifetime = isFoil ? (state.openedFoil[baseRarity] || 0) : (state.opened[baseRarity] || 0);
 
     const row = document.createElement("div");
-    row.className = `stock-row ${rarity}`;
+    row.className = `stock-row ${baseRarity}` + (foilLabel ? " foil-row" : "");
     row.innerHTML = `
-      <div class="rarity-name" style="color:${RARITY_COLOURS[rarity]}">${RARITY_GLYPHS[rarity]} ${RARITY_LABELS[rarity]}</div>
+      <div class="rarity-name" style="color:${color}">${glyph} ${label}</div>
       <div class="counts">
-        ${(stockF + openedF + unsortedFoil) > 0
-          ? `<span class="foil-line">✨ Foils: <b>${stockF}</b>${foilLineExtra} · lifetime <b>${openedF}</b> <span class="sell-price">${priceLabelFoil}</span></span>`
-          : ""}
-        <span>${stockLine}</span>
-        ${setBlock}
+        <span>Unsorted: <b>${unsorted}</b> · Sorted: <b>${sorted}</b> · lifetime <b>${lifetime}</b></span>
+        ${setActionsBlock(key)}
       </div>`;
     grid.appendChild(row);
   });
