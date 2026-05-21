@@ -117,7 +117,9 @@
   .collection-row { display: flex; flex-direction: column; gap: 4px; }
   .collection-supercol-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    /* Track widths roughly proportional to set sizes (mythic:1 / legendary:5 / epic:10),
+       with a floor on mythic so the label doesn't get squashed. */
+    grid-template-columns: minmax(72px, 1fr) 3fr 6fr;
     gap: 10px;
     align-items: start;
   }
