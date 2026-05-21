@@ -668,7 +668,7 @@ let RARE_PLUS_WEIGHTS    = def("RARE_PLUS_WEIGHTS", {
 // and sets can be added without colliding with existing data.
 const GAME_ID = 1;
 const SET_ID  = 1;
-let SET_SIZES = def("SET_SIZES", { common: 80, uncommon: 60, rare: 40, epic: 25, legendary: 15, mythic: 10 });
+let SET_SIZES = def("SET_SIZES", { common: 60, uncommon: 40, rare: 20, epic: 15, legendary: 10, mythic: 5 });
 // Card numbers are globally unique within a set, across rarities. Derived
 // from SET_SIZES so changing one auto-shifts the others.
 function computeCardOffsets(sizes) {
@@ -679,7 +679,7 @@ function computeCardOffsets(sizes) {
 }
 let CARD_NUMBER_OFFSETS = computeCardOffsets(SET_SIZES);
 let TOTAL_SET_CARDS     = RARITIES.reduce((s, r) => s + (SET_SIZES[r] || 0), 0);
-const SET_VERSION = 4; // bump when SET_SIZES change so old saves get migrated
+const SET_VERSION = 5; // bump when SET_SIZES change so old saves get migrated
 
 function cardFullId(rarity, idx, game, set) {
   const g = game ?? GAME_ID;
