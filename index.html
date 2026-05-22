@@ -234,17 +234,16 @@
     color: var(--muted); font-weight: normal; font-size: 0.65rem;
   }
   .collection-grid {
-    /* Flex (not grid) so cells stay at a fixed size regardless of how many
-       fit on a line — a row with one mythic doesn't stretch the cell huge. */
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
     background: rgba(0,0,0,0.22); border-radius: 6px; padding: 6px;
   }
-  /* Standard rows lock to 18 columns × 2 rows. */
-  .collection-grid.cols-18 {
+  /* Combined foil + non-foil grid: setSize columns × 2 rows. Top row = foil,
+     bottom = non-foil. --cols is set inline per rarity. */
+  .collection-grid.combined {
     display: grid;
-    grid-template-columns: repeat(18, 18px);
+    grid-template-columns: repeat(var(--cols, 18), 18px);
     justify-content: start;
   }
   .collection-cell {
@@ -265,12 +264,14 @@
     color: #fff;
     box-shadow: 0 0 4px color-mix(in srgb, var(--cell-color, #fff) 50%, transparent);
   }
-  .collection-cell.priced.owned { cursor: pointer; }
-  .collection-cell.priced.owned:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(0,0,0,0.55),
-                0 0 10px color-mix(in srgb, var(--cell-color, #fff) 70%, transparent);
-    z-index: 4;
+  /* Unowned foil cells get a faint rainbow border so the top row of each
+     combined grid (foil) is identifiable even with nothing collected. */
+  .collection-cell.foil:not(.owned) {
+    border-color: transparent;
+    background:
+      linear-gradient(rgba(255,255,255,0.025), rgba(255,255,255,0.025)) padding-box,
+      linear-gradient(135deg, rgba(255,126,179,0.55), rgba(101,214,255,0.55), rgba(184,255,90,0.55), rgba(255,216,77,0.55)) border-box;
+    border: 1px solid transparent;
   }
   .collection-cell.foil.owned {
     background: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3);
@@ -752,7 +753,7 @@
     .buy-btn .cost { font-size: 0.8rem; margin-top: 2px; }
     .buy-btn .save { font-size: 0.55rem; }
     .collection-grid { gap: 3px; padding: 4px; }
-    .collection-grid.cols-18 { grid-template-columns: repeat(18, 16px); }
+    .collection-grid.combined { grid-template-columns: repeat(var(--cols, 18), 16px); }
     .collection-cell { width: 16px; }
     .stock-row { padding: 8px 10px; gap: 8px; }
     #hint { font-size: 0.8rem; }
@@ -1830,10 +1831,25 @@ function showHits(pulls, meta = {}) {
 // Cards just acquired in the latest rip are tagged here for one-shot VFX.
 let flashQueue = []; // [{rarity, id, foil, fresh}]
 
-function buildCollectionRow(rarity, foil) {
-  const setSize = SET_SIZES[rarity];
+function buildCollectionCell(rarity, i, foil) {
   const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
-  const ownedSet = new Set(ownedList);
+  const owned = ownedList.includes(i);
+  const cell = document.createElement("div");
+  cell.className = "collection-cell"
+    + (owned ? " owned" : "")
+    + (foil  ? " foil"  : "");
+  cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
+  const flashed = flashQueue.find(f =>
+    f.rarity === rarity && f.id === i && f.foil === foil
+  );
+  if (flashed) cell.classList.add(flashed.fresh ? "flash-fresh" : "flash");
+  return cell;
+}
+
+function buildCollectionRow(rarity) {
+  const setSize = SET_SIZES[rarity];
+  const foilOwned    = state.ownedFoil[rarity] || [];
+  const nonFoilOwned = state.owned[rarity]     || [];
 
   const row = document.createElement("div");
   row.className = "collection-row";
@@ -1841,29 +1857,18 @@ function buildCollectionRow(rarity, foil) {
   label.className = "collection-row-label";
   label.style.color = RARITY_COLOURS[rarity];
   label.innerHTML = `
-    <span>${foil ? "✨ FOIL " : ""}${RARITY_LABELS[rarity].toUpperCase()}</span>
-    <span class="row-count">${ownedList.length} / ${setSize}</span>`;
+    <span>${RARITY_LABELS[rarity].toUpperCase()}</span>
+    <span class="row-count">✨ ${foilOwned.length}/${setSize} · ${nonFoilOwned.length}/${setSize}</span>`;
   row.appendChild(label);
 
+  // Combined grid: setSize columns × 2 rows. Top row = foil cells, bottom row
+  // = non-foil cells. The CSS column count is driven by --cols so each rarity
+  // gets exactly its setSize columns, no flex-wrap surprises.
   const grid = document.createElement("div");
-  const lock18 = SET_SIZES[rarity] === 18 || SET_SIZES[rarity] === 36;
-  grid.className = "collection-grid" + (lock18 ? " cols-18" : "");
-  // Cells are display-only: a colored square for owned, dim outline for
-  // unowned. No card #, no price, no count, no listed badge. Listing is
-  // exclusively done by crafting Sets.
-  for (let i = 1; i <= setSize; i++) {
-    const cell = document.createElement("div");
-    const owned = ownedSet.has(i);
-    cell.className = "collection-cell"
-      + (owned ? " owned" : "")
-      + (foil  ? " foil"  : "");
-    cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
-    const flashed = flashQueue.find(f =>
-      f.rarity === rarity && f.id === i && f.foil === foil
-    );
-    if (flashed) cell.classList.add(flashed.fresh ? "flash-fresh" : "flash");
-    grid.appendChild(cell);
-  }
+  grid.className = "collection-grid combined";
+  grid.style.setProperty("--cols", setSize);
+  for (let i = 1; i <= setSize; i++) grid.appendChild(buildCollectionCell(rarity, i, true));
+  for (let i = 1; i <= setSize; i++) grid.appendChild(buildCollectionCell(rarity, i, false));
   row.appendChild(grid);
   return row;
 }
@@ -1886,14 +1891,12 @@ function renderVaultGrid() {
   ["mythic", "legendary", "epic", "rare"].forEach(rarity => {
     const col = document.createElement("div");
     col.className = "collection-supercol";
-    col.appendChild(buildCollectionRow(rarity, true));
-    col.appendChild(buildCollectionRow(rarity, false));
+    col.appendChild(buildCollectionRow(rarity));
     topRow.appendChild(col);
   });
   wrap.appendChild(topRow);
 
-  wrap.appendChild(buildCollectionRow("standard", true));
-  wrap.appendChild(buildCollectionRow("standard", false));
+  wrap.appendChild(buildCollectionRow("standard"));
 
   flashQueue = [];
 }
