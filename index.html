@@ -1012,7 +1012,7 @@ function setItemKey(key) {
 function bulkBaseRarity(key) { return key === "foilStandard" ? "standard" : key; }
 function bulkIsFoil(key) { return key === "foilStandard"; }
 function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
-const MARKET_VERSION = 12; // bump to force regeneration when baselines change
+const MARKET_VERSION = 13; // bump to force regeneration when baselines change
 let BASELINE = def("BASELINE", {
   epic:             5,
   legendary:        25,
@@ -1032,14 +1032,16 @@ let BASELINE = def("BASELINE", {
   foilLegendarySet:   10000,
   foilMythicSet:      20000,
 });
-let FUND_MIN_MULT     = def("FUND_MIN_MULT", 0.4);
-let FUND_RANGE        = def("FUND_RANGE", 2.2);
-let TICK_VOLATILITY   = def("TICK_VOLATILITY", 0.05);
-let TICK_REVERT       = def("TICK_REVERT", 0.07);
-let TICK_FUND_DRIFT   = def("TICK_FUND_DRIFT", 0.005);
-let PRICE_FLOOR_RATIO = def("PRICE_FLOOR_RATIO", 0.12);
-let PRICE_CEIL_RATIO  = def("PRICE_CEIL_RATIO", 7);
-let MARKET_TICK_MS    = def("MARKET_TICK_MS", 7000);
+// Market inventory model: each market key + id has a virtual NPC inventory.
+// Price is computed lazily from that inventory (no periodic ticker). Selling
+// a listing pumps inventory up (price drops); NPCs slowly absorb inventory
+// over real time (price recovers). MARKET_TARGET_STOCK is the equilibrium —
+// when held, price = baseline. Half of target = 2× baseline. 5× target =
+// 1/5 baseline. Clamped to floor/ceil ratios.
+let MARKET_TARGET_STOCK = def("MARKET_TARGET_STOCK", 5);
+let MARKET_DECAY_RATE   = def("MARKET_DECAY_RATE", 0.05); // cards/sec consumed by NPCs
+let PRICE_FLOOR_RATIO   = def("PRICE_FLOOR_RATIO", 0.2);
+let PRICE_CEIL_RATIO    = def("PRICE_CEIL_RATIO", 7);
 
 function marketKey(rarity, foil) {
   if (!foil) {
@@ -1113,8 +1115,11 @@ const defaultState = () => ({
   setsCelebratedFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
   invById:      emptyInvById(),
   bulkInvById:  { standard: {}, rare: {}, foilStandard: {} }, // per-id counts for sortable bulk
-  market:       null, // {key: per-card live prices}, populated by initMarket
-  marketFund:   null, // same shape, fundamental values
+  // Per (key, id), the NPC inventory level. Drives prices via marketPriceFor.
+  // Starts at MARKET_TARGET_STOCK when first accessed (lazy default) so the
+  // initial price equals BASELINE[key].
+  marketInv:        {},
+  marketInvUpdated: {},
   marketVersion: MARKET_VERSION,
   setVersion: SET_VERSION,
   boxesOwned: 1,  // sealed boxes, used to crack open or hire homies (1 free)
@@ -1140,44 +1145,46 @@ function marketKeySize(k) {
   return meta ? SET_SIZES[meta.rarity] : 0;
 }
 
-function initMarket() {
-  state.market     = {};
-  state.marketFund = {};
-  MARKET_KEYS.forEach(k => {
-    const baseline = BASELINE[k];
-    const size = marketKeySize(k);
-    const fund = [0]; // index 0 unused
-    const live = [0];
-    for (let i = 1; i <= size; i++) {
-      const f = baseline * (FUND_MIN_MULT + Math.random() * FUND_RANGE);
-      fund.push(f);
-      live.push(f);
-    }
-    state.marketFund[k] = fund;
-    state.market[k]     = live;
-  });
+// Lazy-decay the NPC inventory for (key, id) up to the current real time.
+// Called automatically inside marketPriceFor / npcAbsorbSale; no periodic
+// ticker. Inventory starts at MARKET_TARGET_STOCK when first accessed so
+// prices begin at baseline.
+function decayMarketInv(key, id, now) {
+  if (!state.marketInv)        state.marketInv        = {};
+  if (!state.marketInvUpdated) state.marketInvUpdated = {};
+  if (!state.marketInv[key])        state.marketInv[key]        = {};
+  if (!state.marketInvUpdated[key]) state.marketInvUpdated[key] = {};
+  const cur = state.marketInv[key][id] != null
+    ? state.marketInv[key][id]
+    : MARKET_TARGET_STOCK;
+  const last = state.marketInvUpdated[key][id] != null
+    ? state.marketInvUpdated[key][id]
+    : now;
+  const elapsed = Math.max(0, (now - last) / 1000);
+  const decayed = Math.max(0, cur - elapsed * MARKET_DECAY_RATE);
+  state.marketInv[key][id]        = decayed;
+  state.marketInvUpdated[key][id] = now;
+  return decayed;
 }
 
-function tickMarket() {
-  if (!state.market) return;
-  MARKET_KEYS.forEach(k => {
-    const live = state.market[k];
-    const fund = state.marketFund[k];
-    const size = marketKeySize(k);
-    for (let i = 1; i <= size; i++) {
-      // Slowly drift the fundamental too
-      fund[i] *= 1 + (Math.random() - 0.5) * 2 * TICK_FUND_DRIFT;
-      const f = fund[i];
-      const noise = (Math.random() - 0.5) * 2 * TICK_VOLATILITY;
-      const revert = ((f - live[i]) / f) * TICK_REVERT;
-      let p = live[i] * (1 + noise + revert);
-      p = Math.max(p, f * PRICE_FLOOR_RATIO);
-      p = Math.min(p, f * PRICE_CEIL_RATIO);
-      live[i] = p;
-    }
-  });
-  renderVault();
-  renderVaultGrid();
+// Current market price for a (key, id). Lazy — only computes when asked.
+function marketPriceFor(key, id) {
+  const baseline = BASELINE[key];
+  if (!baseline) return 0;
+  const inv = decayMarketInv(key, id, Date.now());
+  const raw = baseline * (MARKET_TARGET_STOCK / Math.max(1, inv));
+  const floor = baseline * PRICE_FLOOR_RATIO;
+  const ceil  = baseline * PRICE_CEIL_RATIO;
+  return Math.max(floor, Math.min(ceil, raw));
+}
+
+// A listing just sold — NPC absorbed one unit of (key, id). Decay first,
+// then bump inventory, which pushes the price for subsequent sales down.
+function npcAbsorbSale(key, id) {
+  const now = Date.now();
+  decayMarketInv(key, id, now);
+  state.marketInv[key][id] = (state.marketInv[key][id] || 0) + 1;
+  state.marketInvUpdated[key][id] = now;
 }
 
 
@@ -1192,7 +1199,6 @@ function pickRandomIds(rarity, n) {
   return all.slice(0, Math.min(n, size)).sort((a, b) => a - b);
 }
 let state = load() || defaultState();
-if (!state.market) initMarket();
 
 function load() {
   try {
@@ -1297,10 +1303,17 @@ function load() {
       parsed.setVersion = SET_VERSION;
     }
     if (parsed.marketVersion !== MARKET_VERSION) {
-      parsed.market = null;
-      parsed.marketFund = null;
+      // Wipe the legacy ticker-based market state. The new inventory model
+      // lazy-defaults to MARKET_TARGET_STOCK on first read, so empty objects
+      // make every price start at baseline.
+      delete parsed.market;
+      delete parsed.marketFund;
+      parsed.marketInv = {};
+      parsed.marketInvUpdated = {};
       parsed.marketVersion = MARKET_VERSION;
     }
+    if (!parsed.marketInv)        parsed.marketInv        = {};
+    if (!parsed.marketInvUpdated) parsed.marketInvUpdated = {};
     if (!parsed.unsorted) {
       // Treat existing bulk stock as unsorted so the pile stays intact
       parsed.unsorted = {
@@ -1633,9 +1646,7 @@ function setActionsBlock(key) {
   for (let i = 1; i <= size; i++) if ((inv[i] || 0) > 0) uniqueOwned += 1;
   const ready = uniqueOwned >= size;
   const setsOwned = (state.invById[track.itemKey] && state.invById[track.itemKey][1]) || 0;
-  const setPrice = (state.market && state.market[track.itemKey])
-    ? state.market[track.itemKey][1]
-    : BASELINE[track.itemKey];
+  const setPrice = marketPriceFor(track.itemKey, 1);
   const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
   const craftLabel = ready ? `CRAFT ${setName} SET` : `${setName} ${uniqueOwned}/${size}`;
   const slotsFull = listingSlotsFull();
@@ -1764,7 +1775,7 @@ function buildCollectionRow(rarity, foil) {
   const ownedSet = new Set(ownedList);
   const mk = marketKey(rarity, foil);
   const inv = mk ? (state.invById[mk] || {}) : null;
-  const prices = mk ? state.market[mk] : null;
+  const priceFor = mk ? ((i) => marketPriceFor(mk, i)) : null;
   // Cells for bulk tracks read counts from bulkInvById. Foil standards are
   // bulk too, so they share this path.
   let bulkInv = null;
@@ -1822,7 +1833,7 @@ function buildCollectionRow(rarity, foil) {
         badge.textContent = "×" + count;
         cell.appendChild(badge);
       }
-      const price = prices ? prices[i] : 0;
+      const price = priceFor ? priceFor(i) : 0;
       if (count > 0) {
         const valueEl = document.createElement("span");
         valueEl.className = "cell-value";
@@ -1919,9 +1930,7 @@ function rollListingCooldown() {
 
 function basePriceFor(rarity, cardId, foil) {
   const mk = marketKey(rarity, foil);
-  if (mk && state.market && state.market[mk] && cardId != null) {
-    return state.market[mk][cardId] || 0;
-  }
+  if (mk && cardId != null) return marketPriceFor(mk, cardId);
   return foil ? foilPrice(rarity) : SELL_PRICE[rarity];
 }
 
@@ -2065,7 +2074,7 @@ function listSetItem(key) {
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
-  const basePrice = (state.market && state.market[itemKey]) ? (state.market[itemKey][1] || BASELINE[itemKey]) : BASELINE[itemKey];
+  const basePrice = marketPriceFor(itemKey, 1);
   const ask = Math.max(0.01, Math.round(basePrice * 100) / 100);
   const cooldownSec = rollListingCooldown();
   const uid = (state.listingsUidCounter || 0) + 1;
@@ -2142,6 +2151,10 @@ function resolveListings() {
     if (now < l.resolveAt) return true;
     if (l.willResolve) {
       state.coins += l.askPrice;
+      // NPC absorbs one unit into market inventory — drops the price of the
+      // next sale of this exact (key, id). Works for both set items and
+      // per-id priced cards (l.rarity is the market key in either case).
+      if (BASELINE[l.rarity] != null) npcAbsorbSale(l.rarity, l.cardId || 1);
       if (isSetListing(l)) {
         const meta = setItemMeta(l.rarity);
         lastMessage = `Sold ${meta.foil ? "FOIL " : ""}${RARITY_LABELS[meta.baseRarity]} SET @ ${usd(l.askPrice)}.`;
@@ -2724,14 +2737,10 @@ const DESIGN_FIELDS = [
   { group: "Staff",            key: "SORTER_LEVEL_MAX",                path: "SORTER_LEVEL_MAX",          label: "Sorter max level",             step: 1,   min: 1, int: true },
 
   // Market dynamics
-  { group: "Market dynamics",  key: "FUND_MIN_MULT",                   path: "FUND_MIN_MULT",             label: "Fund. min mult",               step: 0.05, min: 0 },
-  { group: "Market dynamics",  key: "FUND_RANGE",                      path: "FUND_RANGE",                label: "Fund. range",                  step: 0.05, min: 0 },
-  { group: "Market dynamics",  key: "TICK_VOLATILITY",                 path: "TICK_VOLATILITY",           label: "Per-tick noise",               step: 0.005, min: 0 },
-  { group: "Market dynamics",  key: "TICK_REVERT",                     path: "TICK_REVERT",               label: "Mean-reversion pull",          step: 0.005, min: 0 },
-  { group: "Market dynamics",  key: "TICK_FUND_DRIFT",                 path: "TICK_FUND_DRIFT",           label: "Fundamental drift",            step: 0.001, min: 0 },
-  { group: "Market dynamics",  key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",         label: "Floor (× fund.)",              step: 0.01, min: 0 },
-  { group: "Market dynamics",  key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",          label: "Ceiling (× fund.)",            step: 0.1,  min: 1 },
-  { group: "Market dynamics",  key: "MARKET_TICK_MS",                  path: "MARKET_TICK_MS",            label: "Tick interval (seconds)",      step: 1,    min: 1, scale: 1000 },
+  { group: "Market dynamics",  key: "MARKET_TARGET_STOCK",             path: "MARKET_TARGET_STOCK",       label: "Target NPC stock (= baseline)", step: 0.5,  min: 0.5 },
+  { group: "Market dynamics",  key: "MARKET_DECAY_RATE",               path: "MARKET_DECAY_RATE",         label: "NPC absorption (cards / sec)", step: 0.01, min: 0 },
+  { group: "Market dynamics",  key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",         label: "Floor (× baseline)",           step: 0.01, min: 0 },
+  { group: "Market dynamics",  key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",          label: "Ceiling (× baseline)",         step: 0.1,  min: 1 },
 
   // Marketplace
   { group: "Marketplace",      key: "DUMP_DISCOUNT",                   path: "DUMP_DISCOUNT",             label: "Dump payout (× SELL_PRICE)",  step: 0.05, min: 0, max: 1 },
@@ -2762,9 +2771,8 @@ function _liveDesignSnapshot() {
     HOMIE_COST, HOMIE_PACK_MS,
     SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
-    FUND_MIN_MULT, FUND_RANGE,
-    TICK_VOLATILITY, TICK_REVERT, TICK_FUND_DRIFT,
-    PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO, MARKET_TICK_MS,
+    MARKET_TARGET_STOCK, MARKET_DECAY_RATE,
+    PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO,
     DUMP_DISCOUNT,
     LISTING_COOLDOWN_MIN, LISTING_COOLDOWN_MAX, LISTING_SLOTS,
   };
@@ -2873,9 +2881,7 @@ function applyDesignAndReload() {
   const overrides = readFormOverrides();
   const sizesChanged  = !!(overrides.SET_SIZES && Object.keys(overrides.SET_SIZES).length);
   const marketChanged = sizesChanged
-    || (overrides.BASELINE && Object.keys(overrides.BASELINE).length)
-    || "FUND_MIN_MULT" in overrides
-    || "FUND_RANGE" in overrides;
+    || (overrides.BASELINE && Object.keys(overrides.BASELINE).length);
   if (state && typeof state === "object") {
     if (sizesChanged)  state.setVersion    = -1;
     if (marketChanged) state.marketVersion = -1;
@@ -3419,7 +3425,6 @@ function ripOne() {
 function resetGame() {
   if (!confirm("Wipe everything and start over?")) return;
   state = defaultState();
-  initMarket(); // defaultState() leaves market: null — populate before any render
   save();
   renderAll();
   $("hint").textContent = "Fresh start. A box on the house — start ripping!";
@@ -3485,7 +3490,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("design-modal").hidden) closeDesignPanel();
 });
 setInterval(save, 5000);
-setInterval(tickMarket, MARKET_TICK_MS);
 setInterval(tickHomies, HOMIE_TICK_MS);
 setInterval(tickSorters, SORTER_TICK_MS);
 setInterval(resolveListings, LISTING_TICK_MS);

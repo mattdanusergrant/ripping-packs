@@ -248,17 +248,31 @@ Market baselines (drift around these, configurable). Foils are priced one tier a
 
 ---
 
-## 12. Market Simulation
+## 12. Market Simulation — NPC inventory model
 
-A simple mean-reverting random walk per market key:
+Prices are driven by simulated NPC supply, not a periodic ticker.
 
-- Each `MARKET_TICK_MS` (7s default), every priced card ID has its `state.market[key][id]` price adjusted toward its `state.marketFund[key][id]` fundamental.
-- Tick volatility: `TICK_VOLATILITY` (default 0.05) — proportional shock per tick
-- Mean reversion strength: `TICK_REVERT` (default 0.07)
-- Floor / ceiling clamped to `PRICE_FLOOR_RATIO × baseline` / `PRICE_CEIL_RATIO × baseline`
-- Fundamentals drift slowly via `TICK_FUND_DRIFT`
+Each priced (key, id) — every per-id mythic/foil card and every set item — has a virtual NPC inventory level `state.marketInv[key][id]`. The price is computed lazily whenever it's read:
 
-Price drift is visible: list a card now or wait for a high tick. Average inventory value is shown in the vault rows ("~$2.85 avg") when you hold multiple of a priced card.
+```
+price = baseline × (MARKET_TARGET_STOCK / max(1, currentInv))
+       clamped to [baseline × PRICE_FLOOR_RATIO, baseline × PRICE_CEIL_RATIO]
+```
+
+Defaults: `MARKET_TARGET_STOCK = 5`, `PRICE_FLOOR_RATIO = 0.2`, `PRICE_CEIL_RATIO = 7`. So:
+- **5 in NPC stock** → price = baseline
+- **1 in NPC stock** → price = 5× baseline (rare, expensive)
+- **25 in NPC stock** → price = 0.2× baseline (flooded, cheap)
+
+Events that move inventory:
+
+- **Listing sells (player → NPC)** → `marketInv[key][id] += 1`. The very next sale of that same id fetches less.
+- **NPC absorption** → no real ticker. When the next price is read, `decayMarketInv` lazily subtracts `elapsed_seconds × MARKET_DECAY_RATE` from the inventory (default 0.05/sec → 1 card absorbed per 20s of real time).
+- **Listing cancelled / new pull** → market unaffected.
+
+The lazy-compute pattern means prices only update when the game reads them — `renderVault` doesn't tear down buttons on a 7-second ticker anymore.
+
+Dramaturgy: flood the market with foil epics in a session and prices visibly tank. Take a break, come back later, NPCs have absorbed the surplus, prices have recovered. Permanent crashes are impossible (decay eventually wins), but short-term swings are real.
 
 ---
 
