@@ -124,7 +124,7 @@ Set listings get a stacked-cards illusion via offset shadows. Foil listings shim
 
 ### Pricing & cooldown
 
-Every listing posts at **1× current market price**. Resolve cooldown is uniform in `[LISTING_COOLDOWN_MIN, LISTING_COOLDOWN_MAX]` (default 20–40s). Every listing eventually sells.
+Every listing posts at **1× current market price**. Resolve cooldown is uniform in `[LISTING_COOLDOWN_MIN, LISTING_COOLDOWN_MAX]` (default 10–20s). Every listing eventually sells.
 
 Click a listing tile to **cancel and return** the card/set to inventory.
 
