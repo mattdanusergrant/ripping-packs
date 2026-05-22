@@ -2182,19 +2182,11 @@ function renderDumpButton() {
 }
 
 // ---- Sand simulation -----------------------------------------------------
-// SAND_CELL and SAND_GRAIN are dynamic — updateSandSizing() resizes them on
-// init and on every window resize so the canvas always fits ~TARGET_SAND_COLS
-// columns regardless of viewport width. Click hit-boxes scale with the cells.
-const TARGET_SAND_COLS = 50;
-let SAND_CELL  = 7;
-let SAND_GRAIN = 5;
-function updateSandSizing() {
-  const c = $("sand-canvas");
-  if (!c) return;
-  const w = c.clientWidth || 300;
-  SAND_CELL  = Math.max(4, Math.floor(w / TARGET_SAND_COLS));
-  SAND_GRAIN = Math.max(3, SAND_CELL - 2);
-}
+// Fixed grain size. The old 7/5 dimensions fit ~87 columns at the default
+// canvas width; 12/10 puts the same canvas around ~50 columns so the
+// grains are big enough to click comfortably.
+const SAND_CELL  = 12;
+const SAND_GRAIN = 10;
 // Grain colors by bulk-key. Foil standard rotates through a rainbow each frame.
 const SAND_COLOR = { standard: "#5ad06a", rare: "#5aa8ff", foilStandard: "#ffffff" };
 function grainColorFor(key) {
@@ -3423,7 +3415,6 @@ window.addEventListener("beforeunload", save);
 window.addEventListener("resize", () => {
   // Canvas column count is derived from width; if it changed, rebuild the
   // pile so out-of-range grains don't get stranded out of view.
-  updateSandSizing();
   ensurePileBuckets();
   rebuildPileFromStock();
   drawSand();
@@ -3440,7 +3431,6 @@ window.addEventListener("keydown", (e) => {
   if (!/^[a-zA-Z]$/.test(e.key)) return;
   handleTypingKey(e.key);
 });
-updateSandSizing();
 renderAll();
 renderTypingZone();
 </script>
