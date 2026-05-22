@@ -44,7 +44,9 @@
     100% { transform: scale(1);   box-shadow: 0 0 0 rgba(255,126,179,0); }
   }
 
-  #shop, #vault { background: var(--panel); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  /* Each half scrolls as a unit when the viewport gets too short; the two
+     halves still scroll independently of each other. */
+  #shop, #vault { background: var(--panel); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; }
   #shop h2, #vault h2 { margin: 0; letter-spacing: 1px; font-size: 1rem; }
 
   .buy-buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -532,7 +534,7 @@
     font-size: 1.1rem;
   }
 
-  #stock-rows { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 4px; }
+  #stock-rows { display: flex; flex-direction: column; gap: 10px; }
   .stock-row {
     background: var(--panel-light); border-radius: 8px; padding: 12px 14px;
     display: grid; grid-template-columns: 0.9fr 1fr; align-items: center; gap: 12px;
