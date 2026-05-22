@@ -83,10 +83,15 @@
     letter-spacing: 2px; text-transform: uppercase;
   }
   #typing-word {
-    display: flex; gap: 5px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 1.5rem; font-weight: bold; line-height: 1;
+    font-weight: bold; line-height: 1;
   }
+  .typ-line {
+    display: flex; gap: 5px;
+  }
+  .typ-line.current  { font-size: 1.5rem; }
+  .typ-line.preview { font-size: 0.85rem; opacity: 0.55; }
   .typ-letter {
     display: inline-block;
     min-width: 0.7em;
@@ -96,6 +101,7 @@
     padding: 1px 2px;
     transition: color 0.12s ease, transform 0.08s ease;
   }
+  .typ-line.preview .typ-letter { color: rgba(255,255,255,0.45); border-bottom-color: transparent; }
   .typ-letter.done { color: var(--gold); }
   .typ-letter.next {
     color: #fff;
@@ -3216,30 +3222,51 @@ const TYPING_WORDS = [
   "box", "spread", "lucky", "hot", "fresh", "shred",
   "sort", "homie", "sorter", "rip", "go",
 ];
-let typingState = { word: "", index: 0 };
-function pickTypingWord() {
+let typingState = { word: "", nextWord: "", index: 0 };
+function pickTypingWord(...avoid) {
   let next;
-  do { next = TYPING_WORDS[Math.floor(Math.random() * TYPING_WORDS.length)]; }
-  while (next === typingState.word && TYPING_WORDS.length > 1);
+  let tries = 0;
+  do { next = TYPING_WORDS[Math.floor(Math.random() * TYPING_WORDS.length)]; tries += 1; }
+  while (avoid.includes(next) && tries < 8 && TYPING_WORDS.length > avoid.length);
   return next;
 }
 function ensureTypingWord() {
-  if (!typingState.word) { typingState.word = pickTypingWord(); typingState.index = 0; }
+  if (!typingState.word) {
+    typingState.word = pickTypingWord();
+    typingState.index = 0;
+  }
+  if (!typingState.nextWord) {
+    typingState.nextWord = pickTypingWord(typingState.word);
+  }
 }
 function renderTypingZone() {
-  const el = $("typing-word");
-  if (!el) return;
+  const wrap = $("typing-word");
+  if (!wrap) return;
   ensureTypingWord();
-  el.innerHTML = "";
+  wrap.innerHTML = "";
+  // Current word — bigger / brighter, with per-letter state classes.
+  const cur = document.createElement("div");
+  cur.className = "typ-line current";
   for (let i = 0; i < typingState.word.length; i++) {
     const span = document.createElement("span");
     let cls = "typ-letter";
-    if (i < typingState.index)      cls += " done";
+    if (i < typingState.index)        cls += " done";
     else if (i === typingState.index) cls += " next";
     span.className = cls;
     span.textContent = typingState.word[i].toUpperCase();
-    el.appendChild(span);
+    cur.appendChild(span);
   }
+  wrap.appendChild(cur);
+  // Next word — smaller and dimmed, a preview row beneath.
+  const nxt = document.createElement("div");
+  nxt.className = "typ-line preview";
+  for (let i = 0; i < typingState.nextWord.length; i++) {
+    const span = document.createElement("span");
+    span.className = "typ-letter dim";
+    span.textContent = typingState.nextWord[i].toUpperCase();
+    nxt.appendChild(span);
+  }
+  wrap.appendChild(nxt);
 }
 function handleTypingKey(rawKey) {
   if (!rawKey || rawKey.length !== 1) return;
@@ -3250,9 +3277,9 @@ function handleTypingKey(rawKey) {
   const before = state.packsOpened;
   ripOne();
   if (state.packsOpened === before) return; // rip refused (no supply / full pile)
-  const el = $("typing-word");
-  if (el) {
-    const span = el.children[typingState.index];
+  const curLine = $("typing-word").querySelector(".typ-line.current");
+  if (curLine) {
+    const span = curLine.children[typingState.index];
     if (span) {
       span.classList.remove("next");
       span.classList.add("done", "hit");
@@ -3261,13 +3288,14 @@ function handleTypingKey(rawKey) {
   }
   typingState.index += 1;
   if (typingState.index >= typingState.word.length) {
-    setTimeout(() => {
-      typingState.word = pickTypingWord();
-      typingState.index = 0;
-      renderTypingZone();
-    }, 280);
-  } else if (el) {
-    const next = el.children[typingState.index];
+    // Advance immediately — no beat. The next word slides up to current and a
+    // new next is picked, so chaining words doesn't drop keystrokes.
+    typingState.word = typingState.nextWord;
+    typingState.nextWord = pickTypingWord(typingState.word);
+    typingState.index = 0;
+    renderTypingZone();
+  } else if (curLine) {
+    const next = curLine.children[typingState.index];
     if (next) next.classList.add("next");
   }
 }
