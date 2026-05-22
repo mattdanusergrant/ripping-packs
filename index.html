@@ -215,10 +215,10 @@
   .collection-row { display: flex; flex-direction: column; gap: 4px; }
   .collection-supercol-row {
     display: grid;
-    /* Mythic gets just enough room for the "✨ FOIL MYTHIC 0 / 1" header on
-       one line; legendary and epic share the rest in a 2:3 ratio matching
-       their 6- and 9-card set sizes. */
-    grid-template-columns: 150px 2fr 3fr;
+    /* Mythic / Legendary / Epic / Rare all share one strip now. Each column
+       auto-sizes to fit its 18px-wide cell grid + label; rare takes the
+       remainder so the row stretches edge-to-edge. */
+    grid-template-columns: auto auto auto 1fr;
     gap: 10px;
     align-items: start;
   }
@@ -1878,11 +1878,12 @@ function renderVaultGrid() {
   title.textContent = "COLLECTION · SERIES I";
   wrap.appendChild(title);
 
-  // Top tiers (mythic / legendary / epic) share one horizontal strip so the
-  // small sets don't waste vertical room. Rare and standard get full width.
+  // Mythic / Legendary / Epic / Rare share one horizontal strip — the small
+  // sets fit naturally next to rare's 18-card row. Standard alone gets the
+  // full width below since its row is the same length as rare's.
   const topRow = document.createElement("div");
   topRow.className = "collection-supercol-row";
-  ["mythic", "legendary", "epic"].forEach(rarity => {
+  ["mythic", "legendary", "epic", "rare"].forEach(rarity => {
     const col = document.createElement("div");
     col.className = "collection-supercol";
     col.appendChild(buildCollectionRow(rarity, true));
@@ -1891,10 +1892,8 @@ function renderVaultGrid() {
   });
   wrap.appendChild(topRow);
 
-  ["rare", "standard"].forEach(rarity => {
-    wrap.appendChild(buildCollectionRow(rarity, true));
-    wrap.appendChild(buildCollectionRow(rarity, false));
-  });
+  wrap.appendChild(buildCollectionRow("standard", true));
+  wrap.appendChild(buildCollectionRow("standard", false));
 
   flashQueue = [];
 }
