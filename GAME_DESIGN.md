@@ -219,15 +219,15 @@ Every crafted set can either be **listed** for cash or **vaulted** for CLOUT. Va
 
 **Unlocks (`CLOUT_BONUSES`):**
 
-| Level | Bonus                |
-|------:|----------------------|
-| 2     | +1 marketplace slot  |
-| 3     | +1 max sorter        |
-| 5     | +2 marketplace slots |
-| 7     | +1 max sorter        |
-| 10    | +3 marketplace slots |
+| Level | Bonus                                |
+|------:|--------------------------------------|
+| 2     | +1 marketplace slot · +5 marks       |
+| 3     | +1 max sorter · +5 marks             |
+| 5     | +2 marketplace slots · +10 marks     |
+| 7     | +1 max sorter · +10 marks            |
+| 10    | +3 marketplace slots · +20 marks     |
 
-So a Lv-10 player runs **16 listing slots** (vs 10 base) and **5 sorters** (vs 3 base). Effective caps recompute live — no migration needed when crossing a threshold.
+So a Lv-10 player runs **16 listing slots** (vs 10 base), **5 sorters** (vs 3 base), and can stage **60 marked grains** in one paint (vs 10 base). Effective caps recompute live — no migration needed when crossing a threshold.
 
 A `Lv N · X CLOUT · Y to next` chip lives in the page header and pops with a pink flash on level-up. The vault button on each set track is magenta to visually separate it from the gold LIST action.
 

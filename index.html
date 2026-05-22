@@ -417,7 +417,20 @@
     font-size: 0.72rem; color: var(--muted); letter-spacing: 1px;
     margin-bottom: 4px;
   }
-  #sort-pile-header .sort-hint { color: var(--gold); font-size: 0.68rem; }
+  #sort-pile-header .sort-hint { color: var(--gold); font-size: 0.68rem; display: inline-flex; align-items: center; gap: 6px; }
+  .marked-counter {
+    background: rgba(245,197,66,0.15);
+    border: 1px solid rgba(245,197,66,0.4);
+    border-radius: 8px;
+    padding: 1px 6px;
+    color: var(--gold);
+    font-weight: bold;
+  }
+  .marked-counter.full {
+    background: rgba(255,126,179,0.18);
+    border-color: rgba(255,126,179,0.55);
+    color: #ff7eb3;
+  }
   #dump-btn {
     background: transparent; color: #ff7eb3;
     border: 1px solid rgba(255,126,179,0.45); border-radius: 6px;
@@ -844,7 +857,10 @@
   <div>
     <div id="sort-pile-header">
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
-      <span class="sort-hint" id="sort-hint">hover to mark · click to detonate</span>
+      <span class="sort-hint" id="sort-hint">
+        <span id="marked-counter" class="marked-counter">0 / 10</span>
+        hover to mark · click to detonate
+      </span>
     </div>
     <button id="dump-btn" type="button" disabled>DUMP PILE — $0</button>
     <canvas id="sand-canvas"></canvas>
@@ -1106,24 +1122,26 @@ function cloutToNextLevel() {
 }
 // Each entry contributes deltas to the bonuses once the player hits its level.
 const CLOUT_BONUSES = [
-  { level: 2,  listingSlots: 1 },
-  { level: 3,  sorterMax: 1 },
-  { level: 5,  listingSlots: 2 },
-  { level: 7,  sorterMax: 1 },
-  { level: 10, listingSlots: 3 },
+  { level: 2,  listingSlots: 1, maxHighlights: 5 },
+  { level: 3,  sorterMax: 1,    maxHighlights: 5 },
+  { level: 5,  listingSlots: 2, maxHighlights: 10 },
+  { level: 7,  sorterMax: 1,    maxHighlights: 10 },
+  { level: 10, listingSlots: 3, maxHighlights: 20 },
 ];
 function cumulativeCloutBonuses(level) {
-  const out = { listingSlots: 0, sorterMax: 0 };
+  const out = { listingSlots: 0, sorterMax: 0, maxHighlights: 0 };
   CLOUT_BONUSES.forEach(b => {
     if (b.level <= level) {
-      if (b.listingSlots) out.listingSlots += b.listingSlots;
-      if (b.sorterMax)    out.sorterMax    += b.sorterMax;
+      if (b.listingSlots)  out.listingSlots  += b.listingSlots;
+      if (b.sorterMax)     out.sorterMax     += b.sorterMax;
+      if (b.maxHighlights) out.maxHighlights += b.maxHighlights;
     }
   });
   return out;
 }
-function listingSlotsEffective() { return LISTING_SLOTS + cumulativeCloutBonuses(currentCloutLevel()).listingSlots; }
-function sorterMaxEffective()    { return SORTER_MAX    + cumulativeCloutBonuses(currentCloutLevel()).sorterMax; }
+function listingSlotsEffective()  { return LISTING_SLOTS  + cumulativeCloutBonuses(currentCloutLevel()).listingSlots; }
+function sorterMaxEffective()     { return SORTER_MAX     + cumulativeCloutBonuses(currentCloutLevel()).sorterMax; }
+function maxHighlightsEffective() { return MAX_HIGHLIGHTS + cumulativeCloutBonuses(currentCloutLevel()).maxHighlights; }
 
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 
@@ -2285,6 +2303,8 @@ let HOVER_DWELL_MS    = def("HOVER_DWELL_MS", 40);
 // Hover cursor radius (in cells) — the area dwelled over gets marked when
 // the timer fires. Default ~1 cell. Upgradeable later via CLOUT.
 let HOVER_RADIUS_CELLS = def("HOVER_RADIUS_CELLS", 0.7);
+// Hard cap on the marked-grain set. Upgraded via CLOUT_BONUSES.maxHighlights.
+let MAX_HIGHLIGHTS = def("MAX_HIGHLIGHTS", 10);
 let markedGrains = new Set();  // "col,row" strings
 let hoverCell = null;
 let hoverTimer = null;
@@ -2639,6 +2659,7 @@ function spawnSandFromPulls(pulls) {
 }
 
 function drawSand() {
+  updateMarkedCounter();
   const canvas = $("sand-canvas");
   const w = canvas.clientWidth  || 300;
   const h = canvas.clientHeight || 90;
@@ -2745,6 +2766,13 @@ function startSandAnim() {
   requestAnimationFrame(stepSandAnim);
 }
 
+function updateMarkedCounter() {
+  const el = $("marked-counter");
+  if (!el) return;
+  const cap = maxHighlightsEffective();
+  el.textContent = `${markedGrains.size} / ${cap}`;
+  el.classList.toggle("full", markedGrains.size >= cap);
+}
 function renderSandPile() {
   syncPileWithStock();
   const unsortedCount = unsortedTotal();
@@ -2753,6 +2781,7 @@ function renderSandPile() {
     el.textContent = `${unsortedCount} / ${UNSORTED_CAPACITY}`;
     el.style.color = unsortedCount >= UNSORTED_CAPACITY ? "#ff7a3d" : "";
   }
+  updateMarkedCounter();
   ensurePileBuckets();
   drawSand();
   // If shimmer grains are sitting in the pile, keep the animation loop alive
@@ -2857,6 +2886,7 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_DWELL_MS",                  path: "HOVER_DWELL_MS",            label: "Paint dwell time (ms)",        step: 10, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
+  { group: "Sorting",          key: "MAX_HIGHLIGHTS",                  path: "MAX_HIGHLIGHTS",            label: "Max marked grains (base)",     step: 1, min: 1, int: true },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
 
   // Staff
@@ -2900,7 +2930,7 @@ function _liveDesignSnapshot() {
     FOIL_MULTIPLIER, PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
     BASELINE,
     SET_SIZES,
-    SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, UNSORTED_CAPACITY,
+    SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
     SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
@@ -3616,9 +3646,12 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
   if (hoverTimer) clearTimeout(hoverTimer);
   hoverCell = { col: c, row: r };
   hoverTimer = setTimeout(() => {
-    cellsWithinRadius(cursorPos.x, cursorPos.y).forEach(({ col, row }) => {
-      markedGrains.add(col + "," + row);
-    });
+    const cap = maxHighlightsEffective();
+    const cells = cellsWithinRadius(cursorPos.x, cursorPos.y);
+    for (let i = 0; i < cells.length; i++) {
+      if (markedGrains.size >= cap) break;
+      markedGrains.add(cells[i].col + "," + cells[i].row);
+    }
     hoverCell = null;
     hoverTimer = null;
     drawSand();
