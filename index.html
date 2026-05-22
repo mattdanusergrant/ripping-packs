@@ -984,15 +984,15 @@ function setItemKey(key) {
 function bulkBaseRarity(key) { return key === "foilStandard" ? "standard" : key; }
 function bulkIsFoil(key) { return key === "foilStandard"; }
 function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
-const MARKET_VERSION = 10; // bump to force regeneration when baselines change
+const MARKET_VERSION = 11; // bump to force regeneration when baselines change
 let BASELINE = def("BASELINE", {
   epic:             5,
   legendary:        25,
   mythic:           100,
-  foilRare:         1.5,
-  foilEpic:         50,
-  foilLegendary:    250,
-  foilMythic:       1000,
+  foilRare:         30,
+  foilEpic:         250,
+  foilLegendary:    1000,
+  foilMythic:       4000,
   standardSet:      30,
   rareSet:          200,
   foilStandardSet:  120,

@@ -232,9 +232,9 @@ Bulk dump prices (`SELL_PRICE`, ×`FOIL_MULTIPLIER` for foils):
 - Foil Standard: $0.10
 - Foil Rare bulk: not applicable (foil rares are per-id priced)
 
-Market baselines (drift around these, configurable):
+Market baselines (drift around these, configurable). Foils are priced one tier above the non-foil tier above them — a foil epic ($250) outvalues a non-foil mythic ($100), reflecting its ~4× rarity:
 - Epic: $5, Legendary: $25, Mythic: $100
-- Foil Rare: $1.5, Foil Epic: $50, Foil Legendary: $250, Foil Mythic: $1000
+- Foil Rare: $30, Foil Epic: $250, Foil Legendary: $1,000, Foil Mythic: $4,000
 - Standard Set: $30, Rare Set: $200, Foil Standard Set: $120
 
 ---
