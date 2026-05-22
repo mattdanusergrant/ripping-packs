@@ -2263,11 +2263,23 @@ function renderDumpButton() {
 }
 
 // ---- Sand simulation -----------------------------------------------------
-// Fixed grain size. The old 7/5 dimensions fit ~87 columns at the default
-// canvas width; 12/10 puts the same canvas around ~50 columns so the
-// grains are big enough to click comfortably.
-const SAND_CELL  = 12;
-const SAND_GRAIN = 10;
+// Grid is locked to SAND_COLS × SAND_ROWS = 50 × 40 = 2000 cells, matching
+// UNSORTED_CAPACITY. Cell dimensions scale with the canvas so the grid
+// always fills the visible area regardless of viewport width or height.
+const SAND_COLS = 50;
+const SAND_ROWS = 40;
+let SAND_CELL_W = 12;
+let SAND_CELL_H = 12;
+let SAND_GRAIN  = 10;
+function updateSandSizing() {
+  const c = $("sand-canvas");
+  if (!c) return;
+  const w = c.clientWidth  || 600;
+  const h = c.clientHeight || 320;
+  SAND_CELL_W = w / SAND_COLS;
+  SAND_CELL_H = h / SAND_ROWS;
+  SAND_GRAIN  = Math.max(2, Math.min(SAND_CELL_W, SAND_CELL_H) - 1);
+}
 // Grain colors by bulk-key. Foil standard rotates through a rainbow each frame.
 // Grain palette is intentionally separate from the brand RARITY_COLOURS used
 // on cells / pills. Standards stay green; rares pop with a deep saturated
@@ -2290,10 +2302,7 @@ let sandAnimRunning = false;
 let critPops = [];      // {x, y, age, maxAge, color} — chain-explosion VFX
 const CHAIN_STEP_MS = 90; // delay between chain waves so each pop reads
 
-function sandColCount() {
-  const c = $("sand-canvas");
-  return Math.max(1, Math.floor((c.clientWidth || 300) / SAND_CELL));
-}
+function sandColCount() { return SAND_COLS; }
 
 function ensurePileBuckets() {
   const cols = sandColCount();
@@ -2315,8 +2324,20 @@ function pickFillColumn(cols) {
   fallingGrains.forEach(g => {
     if (g.col >= 0 && g.col < cols) heights[g.col] += 1;
   });
+  // Skip columns already at the SAND_ROWS cap (40). With UNSORTED_CAPACITY
+  // = SAND_COLS × SAND_ROWS = 2000, the rip check stops new pulls before
+  // every column fills, so we usually have plenty of headroom.
   let minH = Infinity;
-  for (let c = 0; c < cols; c++) if (heights[c] < minH) minH = heights[c];
+  for (let c = 0; c < cols; c++) {
+    if (heights[c] >= SAND_ROWS) continue;
+    if (heights[c] < minH) minH = heights[c];
+  }
+  if (minH === Infinity) {
+    // All columns at cap (rare edge case). Fall back to a random column so
+    // the grain still gets placed somewhere — UNSORTED_CAPACITY should
+    // already prevent this in normal play.
+    return Math.floor(Math.random() * cols);
+  }
   const candidates = [];
   for (let c = 0; c < cols; c++) if (heights[c] === minH) candidates.push(c);
   return candidates[Math.floor(Math.random() * candidates.length)];
@@ -2346,8 +2367,8 @@ function findClickedGrain(clickX, clickY) {
   const canvas = $("sand-canvas");
   if (!canvas) return null;
   const h = canvas.clientHeight || 90;
-  const cx = Math.floor(clickX / SAND_CELL);
-  const cy = Math.floor((h - clickY) / SAND_CELL);
+  const cx = Math.floor(clickX / SAND_CELL_W);
+  const cy = Math.floor((h - clickY) / SAND_CELL_H);
   const radius = SORT_CLICK_RADIUS_CELLS;
   let bestCol = -1, bestRow = -1, bestDist = Infinity;
   for (let dc = -radius; dc <= radius; dc++) {
@@ -2377,8 +2398,8 @@ function spawnCritPop(col, row, key) {
   const canvas = $("sand-canvas");
   if (!canvas) return;
   const h = canvas.clientHeight || 90;
-  const x = col * SAND_CELL + 1 + SAND_GRAIN / 2;
-  const y = h - (row + 1) * SAND_CELL + 1 + SAND_GRAIN / 2;
+  const x = col * SAND_CELL_W + SAND_CELL_W / 2;
+  const y = h - (row + 1) * SAND_CELL_H + SAND_CELL_H / 2;
   critPops.push({ x, y, age: 0, maxAge: 14, color: grainColorFor(key) });
 }
 
@@ -2493,7 +2514,7 @@ function settlePileAfterChain() {
     survivors.forEach(s => {
       fallingGrains.push({
         col: c,
-        y: h - (s.row + 1) * SAND_CELL,
+        y: h - (s.row + 1) * SAND_CELL_H,
         vy: 0,
         key: s.key,
       });
@@ -2534,7 +2555,7 @@ function spawnSandFromPulls(pulls) {
   bulk.forEach(({ k }, i) => {
     fallingGrains.push({
       col: pickFillColumn(cols),
-      y: -SAND_CELL - i * (SAND_CELL * 1.6) - Math.random() * 5,
+      y: -SAND_CELL_H - i * (SAND_CELL_H * 1.6) - Math.random() * 5,
       vy: 0,
       key: k,
     });
@@ -2555,26 +2576,26 @@ function drawSand() {
     const stack = state.pile[c];
     for (let r = 0; r < stack.length; r++) {
       if (stack[r] === "__") continue; // chain-explosion tombstone, not yet settled
-      const x = c * SAND_CELL + 1;
-      const y = h - (r + 1) * SAND_CELL + 1;
+      const cx = c * SAND_CELL_W + SAND_CELL_W / 2;
+      const cy = h - (r + 1) * SAND_CELL_H + SAND_CELL_H / 2;
       ctx.fillStyle = grainColorFor(stack[r]);
       ctx.beginPath();
-      ctx.arc(x + SAND_GRAIN / 2, y + SAND_GRAIN / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
+      ctx.arc(cx, cy, SAND_GRAIN / 2, 0, Math.PI * 2);
       ctx.fill();
     }
   }
   fallingGrains.forEach(g => {
-    const x = g.col * SAND_CELL + 1;
+    const cx = g.col * SAND_CELL_W + SAND_CELL_W / 2;
     ctx.fillStyle = grainColorFor(g.key);
     ctx.beginPath();
-    ctx.arc(x + SAND_GRAIN / 2, g.y + SAND_GRAIN / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
+    ctx.arc(cx, g.y + SAND_CELL_H / 2, SAND_GRAIN / 2, 0, Math.PI * 2);
     ctx.fill();
   });
   // Crit-pop VFX — expanding rings that fade with age.
   if (critPops.length > 0) {
     critPops.forEach(p => {
       const t = p.age / p.maxAge;
-      const r = SAND_GRAIN / 2 + t * SAND_CELL * 1.4;
+      const r = SAND_GRAIN / 2 + t * Math.min(SAND_CELL_W, SAND_CELL_H) * 1.4;
       ctx.globalAlpha = Math.max(0, 1 - t);
       ctx.fillStyle = p.color;
       ctx.beginPath();
@@ -2593,7 +2614,7 @@ function stepSandAnim() {
     g.vy = Math.min(g.vy + 0.55, 11);
     g.y += g.vy;
     const stackH = (state.pile[g.col] || []).length;
-    const landY = h - (stackH + 1) * SAND_CELL;
+    const landY = h - (stackH + 1) * SAND_CELL_H;
     if (g.y >= landY) {
       g.y = landY;
       state.pile[g.col].push(g.key);
@@ -3505,10 +3526,10 @@ setInterval(() => {
 resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", () => {
-  // Canvas column count is derived from width; if it changed, rebuild the
-  // pile so out-of-range grains don't get stranded out of view.
+  // Cell dimensions scale with canvas size; recompute so clicks + drawing
+  // line up with the new grid.
+  updateSandSizing();
   ensurePileBuckets();
-  rebuildPileFromStock();
   drawSand();
 });
 window.addEventListener("keydown", (e) => {
@@ -3523,6 +3544,7 @@ window.addEventListener("keydown", (e) => {
   if (!/^[a-zA-Z]$/.test(e.key)) return;
   handleTypingKey(e.key);
 });
+updateSandSizing();
 renderAll();
 renderTypingZone();
 </script>
