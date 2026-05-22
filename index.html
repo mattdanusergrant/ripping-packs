@@ -230,9 +230,6 @@
     display: flex; justify-content: space-between; align-items: baseline;
     font-size: 0.7rem; font-weight: bold; letter-spacing: 1.5px;
   }
-  .collection-row-label .row-count {
-    color: var(--muted); font-weight: normal; font-size: 0.65rem;
-  }
   .collection-grid {
     display: flex;
     flex-wrap: wrap;
@@ -245,6 +242,16 @@
     display: grid;
     grid-template-columns: repeat(var(--cols, 18), 18px);
     justify-content: start;
+  }
+  /* Mythic supercol shrinks to half-width: 9px cells instead of 18px.
+     Sub-tier rarities (legendary / epic / rare / standard) stay at full
+     size so the cards stay readable. */
+  .collection-grid.combined[data-rarity="mythic"] {
+    grid-template-columns: repeat(var(--cols, 3), 9px);
+    gap: 2px;
+  }
+  .collection-grid.combined[data-rarity="mythic"] .collection-cell {
+    width: 9px;
   }
   .collection-cell {
     position: relative;
@@ -1848,17 +1855,13 @@ function buildCollectionCell(rarity, i, foil) {
 
 function buildCollectionRow(rarity) {
   const setSize = SET_SIZES[rarity];
-  const foilOwned    = state.ownedFoil[rarity] || [];
-  const nonFoilOwned = state.owned[rarity]     || [];
 
   const row = document.createElement("div");
   row.className = "collection-row";
   const label = document.createElement("div");
   label.className = "collection-row-label";
   label.style.color = RARITY_COLOURS[rarity];
-  label.innerHTML = `
-    <span>${RARITY_LABELS[rarity].toUpperCase()}</span>
-    <span class="row-count">✨ ${foilOwned.length}/${setSize} · ${nonFoilOwned.length}/${setSize}</span>`;
+  label.innerHTML = `<span>${RARITY_LABELS[rarity].toUpperCase()}</span>`;
   row.appendChild(label);
 
   // Combined grid: setSize columns × 2 rows. Top row = foil cells, bottom row
@@ -1866,6 +1869,7 @@ function buildCollectionRow(rarity) {
   // gets exactly its setSize columns, no flex-wrap surprises.
   const grid = document.createElement("div");
   grid.className = "collection-grid combined";
+  grid.dataset.rarity = rarity;
   grid.style.setProperty("--cols", setSize);
   for (let i = 1; i <= setSize; i++) grid.appendChild(buildCollectionCell(rarity, i, true));
   for (let i = 1; i <= setSize; i++) grid.appendChild(buildCollectionCell(rarity, i, false));
