@@ -243,15 +243,11 @@
     grid-template-columns: repeat(var(--cols, 18), 18px);
     justify-content: start;
   }
-  /* Mythic supercol shrinks to half-width: 9px cells instead of 18px.
-     Sub-tier rarities (legendary / epic / rare / standard) stay at full
-     size so the cards stay readable. */
-  .collection-grid.combined[data-rarity="mythic"] {
-    grid-template-columns: repeat(var(--cols, 3), 9px);
-    gap: 2px;
-  }
-  .collection-grid.combined[data-rarity="mythic"] .collection-cell {
-    width: 9px;
+  /* Standard's 36-card set lays out as 18 cols × 4 rows (2 rows foil top,
+     2 rows non-foil bottom) instead of 36 wide × 2 rows, so the standard
+     strip stays within the column width. */
+  .collection-grid.combined[data-rarity="standard"] {
+    grid-template-columns: repeat(18, 18px);
   }
   .collection-cell {
     position: relative;
@@ -927,7 +923,7 @@ let RARE_PLUS_WEIGHTS     = def("RARE_PLUS_WEIGHTS", {
 // and sets can be added without colliding with existing data.
 const GAME_ID = 1;
 const SET_ID  = 1;
-let SET_SIZES = def("SET_SIZES", { standard: 18, rare: 18, epic: 9, legendary: 6, mythic: 3 });
+let SET_SIZES = def("SET_SIZES", { standard: 36, rare: 18, epic: 9, legendary: 6, mythic: 3 });
 // Card numbers are globally unique within a set, across rarities. Derived
 // from SET_SIZES so changing one auto-shifts the others.
 function computeCardOffsets(sizes) {
@@ -938,7 +934,7 @@ function computeCardOffsets(sizes) {
 }
 let CARD_NUMBER_OFFSETS = computeCardOffsets(SET_SIZES);
 let TOTAL_SET_CARDS     = RARITIES.reduce((s, r) => s + (SET_SIZES[r] || 0), 0);
-const SET_VERSION = 9; // bump when SET_SIZES change so old saves get migrated
+const SET_VERSION = 10; // bump when SET_SIZES change so old saves get migrated
 
 function cardFullId(rarity, idx, game, set) {
   const g = game ?? GAME_ID;
@@ -1008,11 +1004,10 @@ let BASELINE = def("BASELINE", {
   foilLegendary:    1000,
   foilMythic:       4000,
   // Bulk-set baselines stay explicit — standards/rares/foil-standards have
-  // no per-card market price for the multiplier to act on. Standard + foil
-  // standard halved alongside SET_SIZES.standard 36 → 18.
-  standardSet:        15,
+  // no per-card market price for the multiplier to act on.
+  standardSet:        30,
   rareSet:            200,
-  foilStandardSet:    60,
+  foilStandardSet:    120,
 });
 // Priced-set baselines (epicSet, legendarySet, mythicSet, foilRare/Epic/Leg/Mythic
 // Sets) are derived from the per-card baseline × SET_CRAFT_MULTIPLIER × set
