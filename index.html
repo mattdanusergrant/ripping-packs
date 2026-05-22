@@ -1655,41 +1655,34 @@ function setActionsBlock(key) {
 function renderVault() {
   const grid = $("stock-rows");
   grid.innerHTML = "";
-  // One row per craft track. Bulk tracks (standard/rare/foilStandard) show
-  // Unsorted + Sorted + lifetime; priced tracks (everything else) show
-  // Stock + lifetime. Rows for rarities the player hasn't seen yet stay
-  // hidden until they pull or own at least one.
-  CRAFT_TRACK_KEYS.forEach(key => {
-    const track = craftTrack(key);
-    if (!track) return;
-    const baseRarity = track.baseRarity;
-    const isFoil = track.foil;
-    const lifetime = isFoil ? (state.openedFoil[baseRarity] || 0) : (state.opened[baseRarity] || 0);
-    const sorted   = isFoil ? (state.stockFoil[baseRarity]  || 0) : (state.stock[baseRarity]      || 0);
-    const setsOwned = (state.invById[track.itemKey] && state.invById[track.itemKey][1]) || 0;
+  // One row per rarity, mythic → standard top to bottom. Each row holds the
+  // foil track's craft + list buttons on top of the non-foil track's craft +
+  // list buttons. Rarities the player has never touched stay hidden until
+  // they pull or own anything for that rarity (foil or non-foil).
+  [...RARITIES].reverse().forEach(rarity => {
+    const foilKey    = "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1);
+    const nonFoilKey = rarity;
+    const foilTrack    = craftTrack(foilKey);
+    const nonFoilTrack = craftTrack(nonFoilKey);
+    if (!foilTrack || !nonFoilTrack) return;
 
-    // Skip rarities the player hasn't touched yet to keep the vault tight.
-    if (lifetime === 0 && sorted === 0 && setsOwned === 0) return;
+    const foilLifetime = state.openedFoil[rarity] || 0;
+    const lifetime     = state.opened[rarity]     || 0;
+    const foilSets     = (state.invById[foilTrack.itemKey]    && state.invById[foilTrack.itemKey][1])    || 0;
+    const nonFoilSets  = (state.invById[nonFoilTrack.itemKey] && state.invById[nonFoilTrack.itemKey][1]) || 0;
+    if (foilLifetime === 0 && lifetime === 0 && foilSets === 0 && nonFoilSets === 0) return;
 
-    const glyph = isFoil ? "✨" : RARITY_GLYPHS[baseRarity];
-    const color = RARITY_COLOURS[baseRarity];
-    const label = (isFoil ? "FOIL " : "") + RARITY_LABELS[baseRarity];
-
-    let countsLine;
-    if (track.source === "bulk") {
-      const unsorted = (state.unsorted && state.unsorted[key]) || 0;
-      countsLine = `Unsorted: <b>${unsorted}</b> · Sorted: <b>${sorted}</b> · lifetime <b>${lifetime}</b>`;
-    } else {
-      countsLine = `Stock: <b>${sorted}</b> · lifetime <b>${lifetime}</b>`;
-    }
+    const color = RARITY_COLOURS[rarity];
+    const glyph = RARITY_GLYPHS[rarity];
+    const label = RARITY_LABELS[rarity];
 
     const row = document.createElement("div");
-    row.className = `stock-row ${baseRarity}` + (isFoil ? " foil-row" : "");
+    row.className = `stock-row ${rarity}`;
     row.innerHTML = `
       <div class="rarity-name" style="color:${color}">${glyph} ${label}</div>
       <div class="counts">
-        <span>${countsLine}</span>
-        ${setActionsBlock(key)}
+        ${setActionsBlock(foilKey)}
+        ${setActionsBlock(nonFoilKey)}
       </div>`;
     grid.appendChild(row);
   });
