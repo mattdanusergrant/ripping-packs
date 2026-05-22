@@ -24,7 +24,7 @@ BUY → RIP → SORT → CRAFT → LIST → SELL → BUY ...
 4. **Craft** Standard / Rare / Foil Standard sets when you've collected one of every card in that rarity.
 5. **List** crafted sets (and unique mythic / non-standard foil pulls) on the marketplace, max 10 active listings.
 6. **Sell** — each listing resolves on its own cooldown for the current market price.
-7. **Reinvest** profits into more packs, Sorters ($1k each, permanent), or Homies ($20 + 1 box, temporary).
+7. **Reinvest** profits into more packs, Sorters ($500 each, permanent), or Homies ($20 + 1 box, temporary).
 
 ---
 
@@ -201,7 +201,7 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 
 ### Buy Sorter — permanent two-stage sorting machine
 
-- **Cost:** $1,000 each, max **3** per save
+- **Cost:** $500 each, max **3** per save
 - **Two buffers:** `input` (raw, manually loaded from the pile) and `output` (processed, ready to collect). The sorter only moves cards from `input` → `output`; it never reaches into the pile on its own.
 - **Manual LOAD:** Click the blue **LOAD** button to scoop the entire bottom row of the sand pile into the sorter's input. LOAD is **all-or-nothing** — it requires both a *complete* bottom row (a live grain in every column) AND enough free combined capacity to fit the whole row. The button's `title` attribute names the failing constraint when disabled. Each loaded grain leaves a tombstone in the pile, and the rest of the pile gravity-settles down by one row.
 - **Tick:** Every `sorterInterval(level)` ms the sorter pops one grain from input (weighted by what's loaded) into output. With input empty, the sorter idles.
