@@ -964,27 +964,55 @@ function cardFullId(rarity, idx, game, set) {
 // ---- Market -------------------------------------------------------------
 // Mythics and all foils have per-ID live prices that drift over time.
 // Standards and rares are tracked per-card but only become liquid once a
-// full set is crafted into a "Standard Set" / "Rare Set" item, which is
-// market-priced like other priced inventory.
+// full set is crafted into a Set item. Every rarity (bulk or priced) has
+// its own craftable Set item, market-priced like other priced inventory.
 const MARKET_KEYS = [
   "epic", "legendary", "mythic",
   "foilRare", "foilEpic", "foilLegendary", "foilMythic",
-  "standardSet", "rareSet", "foilStandardSet",
+  "standardSet", "rareSet", "epicSet", "legendarySet", "mythicSet",
+  "foilStandardSet", "foilRareSet", "foilEpicSet", "foilLegendarySet", "foilMythicSet",
 ];
-const SET_ITEM_KEYS = ["standardSet", "rareSet", "foilStandardSet"];
+const SET_ITEM_KEYS = [
+  "standardSet", "rareSet", "epicSet", "legendarySet", "mythicSet",
+  "foilStandardSet", "foilRareSet", "foilEpicSet", "foilLegendarySet", "foilMythicSet",
+];
 // Bulk *keys* (not rarities) — three sortable buckets feed the unsorted pile.
 const SAND_BULK_RARITIES = ["standard", "rare"];
 const SAND_BULK_KEYS = ["standard", "rare", "foilStandard"];
+// All 10 craft-track keys, in display order (standard → mythic, non-foil paired
+// with foil per rarity). The first three are sourced from the bulk per-id
+// buffer (post-sort); the remaining seven are sourced from the priced
+// inventory (invById) directly.
+const CRAFT_TRACK_KEYS = [
+  "standard", "foilStandard",
+  "rare",     "foilRare",
+  "epic",     "foilEpic",
+  "legendary","foilLegendary",
+  "mythic",   "foilMythic",
+];
+function craftTrack(key) {
+  switch (key) {
+    case "standard":      return { baseRarity: "standard",  foil: false, source: "bulk",   itemKey: "standardSet",      mk: null };
+    case "rare":          return { baseRarity: "rare",      foil: false, source: "bulk",   itemKey: "rareSet",          mk: null };
+    case "foilStandard":  return { baseRarity: "standard",  foil: true,  source: "bulk",   itemKey: "foilStandardSet",  mk: null };
+    case "epic":          return { baseRarity: "epic",      foil: false, source: "priced", itemKey: "epicSet",          mk: "epic" };
+    case "legendary":     return { baseRarity: "legendary", foil: false, source: "priced", itemKey: "legendarySet",     mk: "legendary" };
+    case "mythic":        return { baseRarity: "mythic",    foil: false, source: "priced", itemKey: "mythicSet",        mk: "mythic" };
+    case "foilRare":      return { baseRarity: "rare",      foil: true,  source: "priced", itemKey: "foilRareSet",      mk: "foilRare" };
+    case "foilEpic":      return { baseRarity: "epic",      foil: true,  source: "priced", itemKey: "foilEpicSet",      mk: "foilEpic" };
+    case "foilLegendary": return { baseRarity: "legendary", foil: true,  source: "priced", itemKey: "foilLegendarySet", mk: "foilLegendary" };
+    case "foilMythic":    return { baseRarity: "mythic",    foil: true,  source: "priced", itemKey: "foilMythicSet",    mk: "foilMythic" };
+    default: return null;
+  }
+}
 function setItemKey(key) {
-  if (key === "standard")     return "standardSet";
-  if (key === "rare")         return "rareSet";
-  if (key === "foilStandard") return "foilStandardSet";
-  return null;
+  const t = craftTrack(key);
+  return t ? t.itemKey : null;
 }
 function bulkBaseRarity(key) { return key === "foilStandard" ? "standard" : key; }
 function bulkIsFoil(key) { return key === "foilStandard"; }
 function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
-const MARKET_VERSION = 11; // bump to force regeneration when baselines change
+const MARKET_VERSION = 12; // bump to force regeneration when baselines change
 let BASELINE = def("BASELINE", {
   epic:             5,
   legendary:        25,
@@ -993,9 +1021,16 @@ let BASELINE = def("BASELINE", {
   foilEpic:         250,
   foilLegendary:    1000,
   foilMythic:       4000,
-  standardSet:      30,
-  rareSet:          200,
-  foilStandardSet:  120,
+  standardSet:        30,
+  rareSet:            200,
+  epicSet:            80,
+  legendarySet:       250,
+  mythicSet:          500,
+  foilStandardSet:    120,
+  foilRareSet:        900,
+  foilEpicSet:        4000,
+  foilLegendarySet:   10000,
+  foilMythicSet:      20000,
 });
 let FUND_MIN_MULT     = def("FUND_MIN_MULT", 0.4);
 let FUND_RANGE        = def("FUND_RANGE", 2.2);
@@ -1590,26 +1625,26 @@ function renderHeader() {
 }
 
 function setActionsBlock(key) {
-  ensureBulkInv();
-  const baseRarity = bulkBaseRarity(key);
-  const isFoil = bulkIsFoil(key);
-  const size = SET_SIZES[baseRarity] || 0;
-  const inv = state.bulkInvById[key] || {};
+  const track = craftTrack(key);
+  if (!track) return "";
+  const size = SET_SIZES[track.baseRarity] || 0;
+  const inv = trackInventory(key, track);
   let uniqueOwned = 0;
   for (let i = 1; i <= size; i++) if ((inv[i] || 0) > 0) uniqueOwned += 1;
   const ready = uniqueOwned >= size;
-  const sk = setItemKey(key);
-  const setsOwned = (state.invById[sk] && state.invById[sk][1]) || 0;
-  const setPrice = (state.market && state.market[sk]) ? state.market[sk][1] : BASELINE[sk];
-  const setName = (isFoil ? "FOIL " : "") + RARITY_LABELS[baseRarity];
+  const setsOwned = (state.invById[track.itemKey] && state.invById[track.itemKey][1]) || 0;
+  const setPrice = (state.market && state.market[track.itemKey])
+    ? state.market[track.itemKey][1]
+    : BASELINE[track.itemKey];
+  const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
   const craftLabel = ready ? `CRAFT ${setName} SET` : `${setName} ${uniqueOwned}/${size}`;
   const slotsFull = listingSlotsFull();
   const canList = setsOwned > 0 && !slotsFull;
   const listLabel = setsOwned === 0
     ? "—"
     : (slotsFull ? "SLOTS FULL" : `LIST 1 (~${usd(setPrice)})`);
-  const craftCls = "set-craft-btn" + (isFoil ? " foil" : "");
-  const listCls  = "set-list-btn"  + (isFoil ? " foil" : "");
+  const craftCls = "set-craft-btn" + (track.foil ? " foil" : "");
+  const listCls  = "set-list-btn"  + (track.foil ? " foil" : "");
   return `
     <div class="set-actions">
       <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"}>${craftLabel}</button>
@@ -1620,25 +1655,40 @@ function setActionsBlock(key) {
 function renderVault() {
   const grid = $("stock-rows");
   grid.innerHTML = "";
-  // Three rows, one per bulk track: Rare, Foil Standard, Standard.
-  const rows = [
-    { key: "rare",         label: "RARE",          glyph: RARITY_GLYPHS.rare,     color: RARITY_COLOURS.rare,     foilLabel: false },
-    { key: "foilStandard", label: "FOIL STANDARD", glyph: "✨",                   color: RARITY_COLOURS.standard, foilLabel: true  },
-    { key: "standard",     label: "STANDARD",      glyph: RARITY_GLYPHS.standard, color: RARITY_COLOURS.standard, foilLabel: false },
-  ];
-  rows.forEach(({ key, label, glyph, color, foilLabel }) => {
-    const baseRarity = bulkBaseRarity(key);
-    const isFoil = bulkIsFoil(key);
-    const unsorted = (state.unsorted && state.unsorted[key]) || 0;
-    const sorted   = isFoil ? (state.stockFoil[baseRarity] || 0) : (state.stock[baseRarity] || 0);
+  // One row per craft track. Bulk tracks (standard/rare/foilStandard) show
+  // Unsorted + Sorted + lifetime; priced tracks (everything else) show
+  // Stock + lifetime. Rows for rarities the player hasn't seen yet stay
+  // hidden until they pull or own at least one.
+  CRAFT_TRACK_KEYS.forEach(key => {
+    const track = craftTrack(key);
+    if (!track) return;
+    const baseRarity = track.baseRarity;
+    const isFoil = track.foil;
     const lifetime = isFoil ? (state.openedFoil[baseRarity] || 0) : (state.opened[baseRarity] || 0);
+    const sorted   = isFoil ? (state.stockFoil[baseRarity]  || 0) : (state.stock[baseRarity]      || 0);
+    const setsOwned = (state.invById[track.itemKey] && state.invById[track.itemKey][1]) || 0;
+
+    // Skip rarities the player hasn't touched yet to keep the vault tight.
+    if (lifetime === 0 && sorted === 0 && setsOwned === 0) return;
+
+    const glyph = isFoil ? "✨" : RARITY_GLYPHS[baseRarity];
+    const color = RARITY_COLOURS[baseRarity];
+    const label = (isFoil ? "FOIL " : "") + RARITY_LABELS[baseRarity];
+
+    let countsLine;
+    if (track.source === "bulk") {
+      const unsorted = (state.unsorted && state.unsorted[key]) || 0;
+      countsLine = `Unsorted: <b>${unsorted}</b> · Sorted: <b>${sorted}</b> · lifetime <b>${lifetime}</b>`;
+    } else {
+      countsLine = `Stock: <b>${sorted}</b> · lifetime <b>${lifetime}</b>`;
+    }
 
     const row = document.createElement("div");
-    row.className = `stock-row ${baseRarity}` + (foilLabel ? " foil-row" : "");
+    row.className = `stock-row ${baseRarity}` + (isFoil ? " foil-row" : "");
     row.innerHTML = `
       <div class="rarity-name" style="color:${color}">${glyph} ${label}</div>
       <div class="counts">
-        <span>Unsorted: <b>${unsorted}</b> · Sorted: <b>${sorted}</b> · lifetime <b>${lifetime}</b></span>
+        <span>${countsLine}</span>
         ${setActionsBlock(key)}
       </div>`;
     grid.appendChild(row);
@@ -1952,14 +2002,36 @@ function trackBulkCard(key, id) {
 }
 
 function isSetListing(l) {
-  return l && (l.rarity === "standardSet" || l.rarity === "rareSet" || l.rarity === "foilStandardSet");
+  return !!(l && isSetItemKey(l.rarity));
+}
+// Decode a set item key (like "foilEpicSet") into { baseRarity, foil }.
+function setItemMeta(itemKey) {
+  if (!itemKey || !itemKey.endsWith("Set")) return null;
+  const stem = itemKey.slice(0, -3);              // e.g. "foilEpic" or "epic"
+  const foil = stem.startsWith("foil");
+  const rarStem = foil ? stem.slice(4) : stem;     // "Epic" or "epic"
+  const baseRarity = rarStem.charAt(0).toLowerCase() + rarStem.slice(1);
+  return { baseRarity, foil };
+}
+
+// Returns the per-id inventory map for a craft track. Bulk tracks use the
+// track key directly (state.bulkInvById[key]); priced tracks use the market
+// key (state.invById[track.mk]).
+function trackInventory(key, track) {
+  if (!track) return null;
+  if (track.source === "bulk") {
+    ensureBulkInv();
+    return state.bulkInvById[key] || {};
+  }
+  return state.invById[track.mk] || {};
 }
 
 function canCraftSet(key) {
-  ensureBulkInv();
-  const size = SET_SIZES[bulkBaseRarity(key)] || 0;
+  const track = craftTrack(key);
+  if (!track) return false;
+  const size = SET_SIZES[track.baseRarity] || 0;
   if (!size) return false;
-  const inv = state.bulkInvById[key];
+  const inv = trackInventory(key, track);
   for (let i = 1; i <= size; i++) {
     if ((inv[i] || 0) < 1) return false;
   }
@@ -1967,28 +2039,26 @@ function canCraftSet(key) {
 }
 
 function craftSet(key) {
-  if (!setItemKey(key)) return;
+  const track = craftTrack(key);
+  if (!track) return;
   if (!canCraftSet(key)) return;
-  const baseRarity = bulkBaseRarity(key);
-  const isFoil = bulkIsFoil(key);
-  const size = SET_SIZES[baseRarity];
-  const inv = state.bulkInvById[key];
+  const size = SET_SIZES[track.baseRarity];
+  const inv = trackInventory(key, track);
+  const ownedList = track.foil ? state.ownedFoil[track.baseRarity] : state.owned[track.baseRarity];
   for (let i = 1; i <= size; i++) {
     inv[i] -= 1;
     if (inv[i] <= 0) {
       delete inv[i];
-      const ownedList = bulkOwnedList(key);
       const idx = ownedList.indexOf(i);
       if (idx >= 0) ownedList.splice(idx, 1);
     }
   }
-  if (isFoil) state.stockFoil[baseRarity] = Math.max(0, (state.stockFoil[baseRarity] || 0) - size);
-  else        state.stock[baseRarity]     = Math.max(0, (state.stock[baseRarity]     || 0) - size);
-  const itemKey = setItemKey(key);
-  if (!state.invById[itemKey]) state.invById[itemKey] = {};
-  state.invById[itemKey][1] = (state.invById[itemKey][1] || 0) + 1;
+  if (track.foil) state.stockFoil[track.baseRarity] = Math.max(0, (state.stockFoil[track.baseRarity] || 0) - size);
+  else            state.stock[track.baseRarity]     = Math.max(0, (state.stock[track.baseRarity]     || 0) - size);
+  if (!state.invById[track.itemKey]) state.invById[track.itemKey] = {};
+  state.invById[track.itemKey][1] = (state.invById[track.itemKey][1] || 0) + 1;
   renderAll(); save();
-  $("hint").textContent = `Crafted a ${isFoil ? "FOIL " : ""}${RARITY_LABELS[baseRarity]} SET. Ready to list.`;
+  $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
 }
 
 function listSetItem(key) {
@@ -2080,9 +2150,8 @@ function resolveListings() {
     if (l.willResolve) {
       state.coins += l.askPrice;
       if (isSetListing(l)) {
-        const isFoil = l.rarity === "foilStandardSet";
-        const setRarity = l.rarity === "rareSet" ? "rare" : "standard";
-        lastMessage = `Sold ${isFoil ? "FOIL " : ""}${RARITY_LABELS[setRarity]} SET @ ${usd(l.askPrice)}.`;
+        const meta = setItemMeta(l.rarity);
+        lastMessage = `Sold ${meta.foil ? "FOIL " : ""}${RARITY_LABELS[meta.baseRarity]} SET @ ${usd(l.askPrice)}.`;
       } else {
         lastMessage = `Sold ${l.foil ? "foil " : ""}${RARITY_LABELS[l.rarity].toLowerCase()}${l.cardId != null ? " " + cardFullId(l.rarity, l.cardId) : ""} @ ${usd(l.askPrice)}.`;
       }
@@ -2136,12 +2205,11 @@ function renderListings() {
     <div class="listings-grid">`;
   listings.forEach(l => {
     if (isSetListing(l)) {
-      const isFoilSet = l.rarity === "foilStandardSet";
-      const setRarity = l.rarity === "rareSet" ? "rare" : "standard";
-      const color = RARITY_COLOURS[setRarity];
-      const cls = "listing-card set" + (isFoilSet ? " foil" : "");
-      const glyph = isFoilSet ? "✨" : RARITY_GLYPHS[setRarity];
-      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${(isFoilSet ? "FOIL " : "") + RARITY_LABELS[setRarity]} SET · ${usd(l.askPrice)}\nClick to cancel">`
+      const meta = setItemMeta(l.rarity);
+      const color = RARITY_COLOURS[meta.baseRarity];
+      const cls = "listing-card set" + (meta.foil ? " foil" : "");
+      const glyph = meta.foil ? "✨" : RARITY_GLYPHS[meta.baseRarity];
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${(meta.foil ? "FOIL " : "") + RARITY_LABELS[meta.baseRarity]} SET · ${usd(l.askPrice)}\nClick to cancel">`
             + `<span class="lst-glyph">${glyph}</span>`
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
@@ -2632,7 +2700,14 @@ const DESIGN_FIELDS = [
   { group: "Market baselines", key: "BASELINE.foilMythic",             path: "BASELINE.foilMythic",           label: "Foil mythic baseline ($)",     step: 5,    min: 0 },
   { group: "Market baselines", key: "BASELINE.standardSet",            path: "BASELINE.standardSet",          label: "Standard Set baseline ($)",      step: 1,    min: 0 },
   { group: "Market baselines", key: "BASELINE.rareSet",                path: "BASELINE.rareSet",              label: "Rare Set baseline ($)",          step: 5,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.epicSet",                path: "BASELINE.epicSet",              label: "Epic Set baseline ($)",          step: 5,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.legendarySet",            path: "BASELINE.legendarySet",         label: "Legendary Set baseline ($)",     step: 10,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.mythicSet",               path: "BASELINE.mythicSet",            label: "Mythic Set baseline ($)",        step: 25,   min: 0 },
   { group: "Market baselines", key: "BASELINE.foilStandardSet",        path: "BASELINE.foilStandardSet",      label: "Foil Standard Set baseline ($)", step: 1,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilRareSet",            path: "BASELINE.foilRareSet",          label: "Foil Rare Set baseline ($)",     step: 25,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilEpicSet",            path: "BASELINE.foilEpicSet",          label: "Foil Epic Set baseline ($)",     step: 50,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilLegendarySet",       path: "BASELINE.foilLegendarySet",     label: "Foil Legendary Set baseline ($)", step: 100,  min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilMythicSet",          path: "BASELINE.foilMythicSet",        label: "Foil Mythic Set baseline ($)",   step: 250,  min: 0 },
 
   // Set sizes
   { group: "Set sizes",        key: "SET_SIZES.standard",              path: "SET_SIZES.standard",        label: "Standard card count",          step: 1, min: 1, int: true },

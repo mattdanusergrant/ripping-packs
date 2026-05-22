@@ -96,13 +96,22 @@ When `bulkInvById[key]` holds at least 1 of every card ID in a rarity, a glowing
 
 ### Set baselines (market items)
 
-| Set                | Baseline $ | Notes                          |
-|--------------------|-----------:|--------------------------------|
-| Standard Set       | 30         | 36 unique standards            |
-| Rare Set           | 200        | 18 unique rares                |
-| Foil Standard Set  | 120        | 36 unique foil standards       |
+Every rarity (bulk and priced, foil and non-foil) has its own craftable Set item — 10 tracks total. Bulk Sets consume cards from `bulkInvById`; priced Sets consume from the per-id `invById`. Each Set item is market-priced and listed via the marketplace just like any other priced item.
 
-Set items drift on the same volatile market as other priced inventory (mean-reverting fundamental + tick volatility, configurable in the Game Design panel).
+| Set                  | Set size | Baseline $ |
+|----------------------|---------:|-----------:|
+| Standard Set         | 36       | $30        |
+| Rare Set             | 18       | $200       |
+| Epic Set             | 9        | $80        |
+| Legendary Set        | 6        | $250       |
+| Mythic Set           | 3        | $500       |
+| Foil Standard Set    | 36       | $120       |
+| Foil Rare Set        | 18       | $900       |
+| Foil Epic Set        | 9        | $4,000     |
+| Foil Legendary Set   | 6        | $10,000    |
+| Foil Mythic Set      | 3        | $20,000    |
+
+Set items drift on the same volatile market as other priced inventory (mean-reverting fundamental + tick volatility, configurable in the Game Design panel). Baselines are roughly 2× the raw card-sum value of the contents — crafting destroys the individuals, so the Set has to outprice selling them à la carte to be worth the trade.
 
 ---
 
