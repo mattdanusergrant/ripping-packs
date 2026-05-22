@@ -844,7 +844,7 @@
   <div>
     <div id="sort-pile-header">
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
-      <span class="sort-hint" id="sort-hint">click a grain to detonate</span>
+      <span class="sort-hint" id="sort-hint">hover to mark · click to detonate</span>
     </div>
     <button id="dump-btn" type="button" disabled>DUMP PILE — $0</button>
     <canvas id="sand-canvas"></canvas>
@@ -2278,6 +2278,21 @@ let sandAnimRunning = false;
 let critPops = [];      // {x, y, age, maxAge, color} — chain-explosion VFX
 const CHAIN_STEP_MS = 90; // delay between chain waves so each pop reads
 
+// Paint-mode selection: hovering a grain slowly highlights it; clicking the
+// canvas detonates everything currently highlighted. A frantic sweep moves
+// faster than HOVER_DWELL_MS so no grain gets marked — slow down to mark.
+let HOVER_DWELL_MS = def("HOVER_DWELL_MS", 80);
+let markedGrains = new Set();  // "col,row" strings
+let hoverCell = null;
+let hoverTimer = null;
+function clearMarkedGrains() {
+  if (markedGrains.size === 0 && !hoverCell) return;
+  markedGrains.clear();
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+  hoverCell = null;
+  drawSand();
+}
+
 function sandColCount() { return SAND_COLS; }
 
 function ensurePileBuckets() {
@@ -2499,14 +2514,68 @@ function settlePileAfterChain() {
   startSandAnim();
 }
 
+// Detonate a set of pre-marked cells. Wave 0 destroys every marked cell
+// simultaneously; any non-standard among them queues for wave 1 chain.
+// No click AoE applied around the marks — the player picked the exact set.
+function runChainCritFromMarks(seedCells, onDone) {
+  const refs = { total: 0 };
+  const detonators = [];
+  seedCells.forEach(({ col, row }) => {
+    const col0 = state.pile[col]; if (!col0) return;
+    const k = col0[row]; if (!k || k === "__") return;
+    if ((state.unsorted[k] || 0) <= 0) return;
+    col0[row] = "__";
+    spawnCritPop(col, row, k);
+    sortOneOfKey(k);
+    refs.total += 1;
+    if (k !== "standard") detonators.push({ col, row, key: k });
+  });
+  if (refs.total === 0) { onDone(0); return; }
+  chainBusy = true;
+  const finish = (n) => { chainBusy = false; onDone(n); };
+  startSandAnim();
+  renderHeader(); renderVault(); renderVaultGrid(); renderSetProgress(); renderSandPile();
+  let queue = detonators;
+  function step() {
+    if (queue.length === 0) { finish(refs.total); return; }
+    const next = [];
+    queue.forEach(d => applyBlast(d.col, d.row, explosionOffsetsForKey(d.key), next, refs));
+    startSandAnim();
+    renderHeader(); renderVault(); renderVaultGrid(); renderSetProgress(); renderSandPile();
+    queue = next;
+    setTimeout(step, CHAIN_STEP_MS);
+  }
+  setTimeout(step, CHAIN_STEP_MS);
+}
+
 function sortCards(opts) {
   ensureBulkInv();
   if (chainBusy) return; // a chain is mid-animation; drop the click
   if (SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0) === 0) return;
   if (!opts || !opts.click) return;
+
+  // Paint mode: if grains are marked, detonate them all together (no click
+  // AoE) and skip the single-seed find. The click position is irrelevant.
+  if (markedGrains.size > 0) {
+    const seeds = Array.from(markedGrains).map(k => {
+      const [c, r] = k.split(",").map(Number);
+      return { col: c, row: r };
+    });
+    clearMarkedGrains();
+    runChainCritFromMarks(seeds, (total) => {
+      settlePileAfterChain();
+      renderAll(); save();
+      $("hint").textContent = total > 5
+        ? `✨ CHAIN! Sorted ${total} cards from ${seeds.length} marks.`
+        : `Sorted ${total} card${total !== 1 ? "s" : ""}.`;
+    });
+    return;
+  }
+
+  // Single-click fallback: nearest-grain seed + click AoE (current behavior).
   const seed = findClickedGrain(opts.click.x, opts.click.y);
   if (!seed) {
-    $("hint").textContent = "Click on the pile to sort.";
+    $("hint").textContent = "Click on the pile to sort, or hover to paint.";
     return;
   }
   runChainCrit(seed.col, seed.row, (total) => {
@@ -2578,6 +2647,19 @@ function drawSand() {
       ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+    });
+  }
+  // Marked grains (paint-mode selection) — gold halo around each.
+  if (markedGrains.size > 0) {
+    ctx.strokeStyle = "rgba(245,197,66,0.92)";
+    ctx.lineWidth = 1.5;
+    markedGrains.forEach(key => {
+      const [mc, mr] = key.split(",").map(Number);
+      const cx = mc * SAND_CELL_W + SAND_CELL_W / 2;
+      const cy = h - (mr + 1) * SAND_CELL_H + SAND_CELL_H / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, SAND_GRAIN / 2 + 1.5, 0, Math.PI * 2);
+      ctx.stroke();
     });
   }
 }
@@ -2731,6 +2813,7 @@ const DESIGN_FIELDS = [
 
   // Sorting
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
+  { group: "Sorting",          key: "HOVER_DWELL_MS",                  path: "HOVER_DWELL_MS",            label: "Paint dwell time (ms)",        step: 10, min: 0, int: true },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
 
   // Staff
@@ -2774,7 +2857,7 @@ function _liveDesignSnapshot() {
     FOIL_MULTIPLIER, PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
     BASELINE,
     SET_SIZES,
-    SORT_CLICK_RADIUS_CELLS, UNSORTED_CAPACITY,
+    SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
     SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
@@ -3461,6 +3544,44 @@ $("sand-canvas").addEventListener("click", (e) => {
   const y = e.clientY - rect.top;
   sortCards({ click: { x, y } });
 });
+// Hover-paint: dwell over a grain for HOVER_DWELL_MS to add it to the marked
+// set. Fast sweeps cancel the dwell timer before it fires so nothing marks.
+$("sand-canvas").addEventListener("mousemove", (e) => {
+  if (chainBusy) return;
+  const canvas = $("sand-canvas");
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  const h = canvas.clientHeight || 90;
+  const c = Math.floor(x / SAND_CELL_W);
+  const r = Math.floor((h - y) / SAND_CELL_H);
+  // Must hover over a live grain (not off-pile, not a tombstone).
+  const k = state.pile[c] && state.pile[c][r];
+  if (!k || k === "__") {
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+    hoverCell = null;
+    return;
+  }
+  const cellKey = c + "," + r;
+  if (markedGrains.has(cellKey)) return; // already marked
+  if (hoverCell && hoverCell.col === c && hoverCell.row === r) return; // still dwelling on same cell
+  if (hoverTimer) clearTimeout(hoverTimer);
+  hoverCell = { col: c, row: r };
+  hoverTimer = setTimeout(() => {
+    markedGrains.add(cellKey);
+    hoverCell = null;
+    hoverTimer = null;
+    drawSand();
+  }, HOVER_DWELL_MS);
+});
+$("sand-canvas").addEventListener("mouseleave", () => {
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+  hoverCell = null;
+});
+$("sand-canvas").addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  clearMarkedGrains();
+});
 $("reset-btn").addEventListener("click", resetGame);
 $("hire-homie").addEventListener("click", hireHomie);
 $("buy-sorter").addEventListener("click", buySorter);
@@ -3513,6 +3634,7 @@ window.addEventListener("keydown", (e) => {
   if (modal && !modal.hidden) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  if (e.key === "Escape") { clearMarkedGrains(); return; }
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (!e.key || e.key.length !== 1) return;
   if (!/^[a-zA-Z]$/.test(e.key)) return;
