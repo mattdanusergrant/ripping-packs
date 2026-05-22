@@ -416,7 +416,12 @@
   .sorter-load:disabled, .sorter-collect:disabled, .sorter-upgrade:disabled { opacity: 0.4; cursor: not-allowed; }
 
   #sand-canvas {
-    display: block; width: 100%; height: 320px;
+    /* Fixed 500×400 = 50×40 grid of 10×10 square cells. Centered in the
+       column; doesn't widen with the viewport. */
+    display: block;
+    width: 500px; height: 400px;
+    max-width: 100%;
+    margin: 0 auto;
     background: rgba(0,0,0,0.18); border-radius: 6px;
     cursor: pointer;
   }
@@ -750,7 +755,7 @@
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
-    #sand-canvas { height: 220px; }
+    #sand-canvas { width: 100%; height: auto; aspect-ratio: 5 / 4; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
     .buy-btn .qty { font-size: 0.6rem; }
