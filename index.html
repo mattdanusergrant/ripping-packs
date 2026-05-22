@@ -1677,12 +1677,6 @@ function renderVault() {
     const nonFoilTrack = craftTrack(nonFoilKey);
     if (!foilTrack || !nonFoilTrack) return;
 
-    const foilLifetime = state.openedFoil[rarity] || 0;
-    const lifetime     = state.opened[rarity]     || 0;
-    const foilSets     = (state.invById[foilTrack.itemKey]    && state.invById[foilTrack.itemKey][1])    || 0;
-    const nonFoilSets  = (state.invById[nonFoilTrack.itemKey] && state.invById[nonFoilTrack.itemKey][1]) || 0;
-    if (foilLifetime === 0 && lifetime === 0 && foilSets === 0 && nonFoilSets === 0) return;
-
     const color = RARITY_COLOURS[rarity];
     const glyph = RARITY_GLYPHS[rarity];
     const label = RARITY_LABELS[rarity];
