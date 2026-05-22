@@ -129,7 +129,7 @@ A 10-slot, single-tier market. Each slot holds one listing — either a priced s
 
 ### Listing tiles
 
-Listings render as 60px miniature trading cards:
+Listings render as 30px miniature trading cards:
 - Rarity-tinted background + border + glow
 - Small rarity glyph in the top-left corner
 - **Big centered price** (compact format — `$42`, `$1.5k`, `$25k`)
@@ -155,16 +155,9 @@ When 10 slots are full:
 
 ## 6b. Collection cells
 
-The collection grid mirrors the marketplace tile language. Every cell — owned or unowned, priced or bulk — shares the same silhouette and footer.
+The collection grid is now a pure visual progression tracker — 18px-wide cells that display only ownership, nothing else. No card numbers, no prices, no count badges, no listed stars. Owned cells fill with the rarity color (and shimmer for foils); unowned cells stay as faint outlines. Newly-collected cells animate via the existing card-pop flash.
 
-- **Card number** is the tiny 6px label along the bottom edge of *every* cell, regardless of ownership.
-- **Centered big value** appears only on **priced owned cells with stock > 0** (mythics + foil rare / epic / legendary / mythic). It's the `compactUsd` of the current per-id market price.
-- **Top-right ×N badge** counts duplicates (priced owned and bulk owned alike).
-- **Top-left ★ badge** marks cards you currently have listed.
-- **Foil cells** shimmer with the rainbow gradient; value + card # flip to dark text for contrast.
-- **Click** a priced-owned cell to list one at the current market price (subject to the 10-slot cap).
-
-Bulk owned, unowned, and owned-zero-stock cells have empty centers — the cell color, the badges, and the bottom card # carry all the info those cells need.
+**Listing singles is gone.** The only way to monetize cards is to complete a rarity's Set and craft + list that Set via the marketplace. So mythics, foil rares, foil epics, etc. all funnel through Set crafting now — no more impulse-listing a lucky pull.
 
 ---
 

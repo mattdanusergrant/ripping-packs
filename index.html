@@ -227,19 +227,17 @@
   /* Standard rows lock to 18 columns × 2 rows. */
   .collection-grid.cols-18 {
     display: grid;
-    grid-template-columns: repeat(18, 36px);
+    grid-template-columns: repeat(18, 18px);
     justify-content: start;
   }
   .collection-cell {
     position: relative;
-    width: 36px;
+    width: 18px;
     aspect-ratio: 5 / 7;
     flex: 0 0 auto;
-    border-radius: 3px;
-    border: 1.5px solid rgba(255,255,255,0.10);
+    border-radius: 2px;
+    border: 1px solid rgba(255,255,255,0.10);
     background: rgba(255,255,255,0.02);
-    color: rgba(255,255,255,0.18);
-    font-size: 9px; font-weight: bold;
     display: flex; align-items: center; justify-content: center;
     user-select: none;
     transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
@@ -264,34 +262,6 @@
     color: #111;
     text-shadow: 0 0 2px rgba(255,255,255,0.7);
   }
-  .collection-cell .cell-count {
-    position: absolute; top: -3px; right: -3px;
-    background: #111; color: #fff;
-    border: 1px solid rgba(255,255,255,0.35);
-    border-radius: 8px;
-    font-size: 8px; font-weight: bold;
-    padding: 0 3px; line-height: 1.2;
-    min-width: 12px; text-align: center;
-  }
-  /* Big centered sell value on priced + owned cells. */
-  .collection-cell .cell-value {
-    font-size: 12px; font-weight: bold; line-height: 1;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
-    letter-spacing: 0.2px;
-    pointer-events: none;
-  }
-  .collection-cell.foil.owned .cell-value { color: #111; text-shadow: 0 1px 2px rgba(255,255,255,0.5); }
-  /* Tiny card # along the bottom edge. */
-  .collection-cell .cell-num {
-    position: absolute; left: 1px; right: 1px; bottom: 1px;
-    font-size: 6px; font-weight: bold;
-    color: rgba(255,255,255,0.7);
-    line-height: 1; text-align: center;
-    letter-spacing: 0.3px;
-    pointer-events: none;
-  }
-  .collection-cell.foil.owned .cell-num { color: rgba(0,0,0,0.7); }
   .collection-cell.flash {
     animation: card-pop 0.7s ease-out;
   }
@@ -465,10 +435,10 @@
   /* Listings render as miniature cards, matching the collection-cell look. */
   .listing-card {
     position: relative;
-    width: 60px;
+    width: 30px;
     aspect-ratio: 5 / 7;
-    border-radius: 4px;
-    border: 1.5px solid var(--cell-color, #fff);
+    border-radius: 3px;
+    border: 1px solid var(--cell-color, #fff);
     background: color-mix(in srgb, var(--cell-color, #fff) 28%, var(--panel-light));
     color: #fff;
     display: flex; flex-direction: column;
@@ -509,55 +479,42 @@
   }
   /* Glyph: tiny top-left corner. */
   .listing-card .lst-glyph {
-    position: absolute; top: 3px; left: 4px;
-    font-size: 0.7rem; line-height: 1; opacity: 0.85;
+    position: absolute; top: 1px; left: 2px;
+    font-size: 0.5rem; line-height: 1; opacity: 0.85;
     text-shadow: 0 1px 2px rgba(0,0,0,0.6);
   }
-  /* Price: centerpiece. Big bold text drawn from the rarity color so it pops
-     against the tinted card background. */
+  /* Price: centerpiece. */
   .listing-card .lst-price {
-    font-size: 1.05rem; font-weight: bold; line-height: 1;
+    font-size: 0.62rem; font-weight: bold; line-height: 1;
     color: #fff;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.7);
-    letter-spacing: 0.5px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    letter-spacing: 0;
   }
   .listing-card.foil .lst-price { color: #111; text-shadow: 0 1px 2px rgba(255,255,255,0.55); }
   /* Card ID: tiny bottom strip. */
   .listing-card .lst-id {
-    position: absolute; left: 2px; right: 2px; bottom: 2px;
-    font-size: 0.5rem; letter-spacing: 0.6px;
+    position: absolute; left: 1px; right: 1px; bottom: 1px;
+    font-size: 0.38rem; letter-spacing: 0.3px;
     opacity: 0.75;
     text-align: center;
   }
   .listing-card .lst-cd {
-    position: absolute; top: -5px; right: -5px;
+    position: absolute; top: -4px; right: -4px;
     background: var(--gold); color: #111;
-    border-radius: 8px; font-size: 0.5rem; font-weight: bold;
-    padding: 1px 4px; line-height: 1.2;
-    box-shadow: 0 0 4px rgba(0,0,0,0.45);
+    border-radius: 6px; font-size: 0.42rem; font-weight: bold;
+    padding: 0 3px; line-height: 1.2;
+    box-shadow: 0 0 3px rgba(0,0,0,0.45);
   }
   /* Empty-slot placeholders make the cap visible at a glance. */
   .listing-slot-empty {
-    width: 60px;
+    width: 30px;
     aspect-ratio: 5 / 7;
-    border-radius: 4px;
-    border: 1.5px dashed rgba(255,255,255,0.18);
+    border-radius: 3px;
+    border: 1px dashed rgba(255,255,255,0.18);
     background: rgba(255,255,255,0.025);
     display: flex; align-items: center; justify-content: center;
     color: rgba(255,255,255,0.22);
     font-size: 1.1rem;
-  }
-
-  .collection-cell.listed {
-    box-shadow: 0 0 0 2px rgba(245,197,66,0.55) inset;
-  }
-  .collection-cell .cell-listed {
-    position: absolute; top: -3px; left: -3px;
-    background: var(--gold); color: #1a1530;
-    border-radius: 8px;
-    font-size: 8px; font-weight: bold;
-    padding: 0 3px; line-height: 1.2;
-    min-width: 12px; text-align: center;
   }
 
   #stock-rows { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 4px; }
@@ -762,10 +719,8 @@
     .buy-btn .cost { font-size: 0.8rem; margin-top: 2px; }
     .buy-btn .save { font-size: 0.55rem; }
     .collection-grid { gap: 3px; padding: 4px; }
-    .collection-grid.cols-18 { grid-template-columns: repeat(18, 28px); }
-    .collection-cell { width: 28px; font-size: 8px; }
-    .collection-cell .cell-value { font-size: 10px; }
-    .collection-cell .cell-num { font-size: 5px; }
+    .collection-grid.cols-18 { grid-template-columns: repeat(18, 16px); }
+    .collection-cell { width: 16px; }
     .stock-row { padding: 8px 10px; gap: 8px; }
     #hint { font-size: 0.8rem; }
   }
@@ -1785,17 +1740,6 @@ function buildCollectionRow(rarity, foil) {
   const setSize = SET_SIZES[rarity];
   const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
   const ownedSet = new Set(ownedList);
-  const mk = marketKey(rarity, foil);
-  const inv = mk ? (state.invById[mk] || {}) : null;
-  const priceFor = mk ? ((i) => marketPriceFor(mk, i)) : null;
-  // Cells for bulk tracks read counts from bulkInvById. Foil standards are
-  // bulk too, so they share this path.
-  let bulkInv = null;
-  if (!foil && SAND_BULK_RARITIES.includes(rarity)) {
-    bulkInv = (state.bulkInvById && state.bulkInvById[rarity]) || {};
-  } else if (foil && rarity === "standard") {
-    bulkInv = (state.bulkInvById && state.bulkInvById.foilStandard) || {};
-  }
 
   const row = document.createElement("div");
   row.className = "collection-row";
@@ -1808,76 +1752,18 @@ function buildCollectionRow(rarity, foil) {
   row.appendChild(label);
 
   const grid = document.createElement("div");
-  // Lock to 18 columns for any rarity with an 18-card row so sibling rows
-  // (standard + rare today) align consistently regardless of viewport width.
   const lock18 = SET_SIZES[rarity] === 18 || SET_SIZES[rarity] === 36;
   grid.className = "collection-grid" + (lock18 ? " cols-18" : "");
+  // Cells are display-only: a colored square for owned, dim outline for
+  // unowned. No card #, no price, no count, no listed badge. Listing is
+  // exclusively done by crafting Sets.
   for (let i = 1; i <= setSize; i++) {
     const cell = document.createElement("div");
     const owned = ownedSet.has(i);
-    const priced = !!mk;
     cell.className = "collection-cell"
-      + (owned  ? " owned"  : "")
-      + (foil   ? " foil"   : "")
-      + (priced ? " priced" : "");
+      + (owned ? " owned" : "")
+      + (foil  ? " foil"  : "");
     cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
-    cell.dataset.rarity = rarity;
-    cell.dataset.id     = i;
-    cell.dataset.foil   = foil ? "1" : "0";
-    const fullId = cardFullId(rarity, i);
-    const cardNum = CARD_NUMBER_OFFSETS[rarity] + i;
-    const cardNumStr = String(cardNum).padStart(3, "0");
-
-    const listedCount = listedCountFor(rarity, i, foil);
-    if (listedCount > 0) {
-      cell.classList.add("listed");
-      const listedBadge = document.createElement("span");
-      listedBadge.className = "cell-listed";
-      listedBadge.textContent = listedCount > 1 ? "★" + listedCount : "★";
-      cell.appendChild(listedBadge);
-    }
-
-    if (owned && priced) {
-      const count = inv[i] || 0;
-      if (count > 1) {
-        const badge = document.createElement("span");
-        badge.className = "cell-count";
-        badge.textContent = "×" + count;
-        cell.appendChild(badge);
-      }
-      const price = priceFor ? priceFor(i) : 0;
-      if (count > 0) {
-        const valueEl = document.createElement("span");
-        valueEl.className = "cell-value";
-        valueEl.textContent = compactUsd(price);
-        cell.appendChild(valueEl);
-      }
-      const owns = count;
-      cell.title = owns > 0
-        ? `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — ${usd(price)} · own ${owns}${listedCount > 0 ? ` · ${listedCount} listed` : ""}\nClick to list one`
-        : `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — owned (set), 0 in stock${listedCount > 0 ? ` · ${listedCount} listed` : ""}`;
-    } else if (owned) {
-      const cnt = bulkInv ? (bulkInv[i] || 0) : 0;
-      if (cnt > 1) {
-        const badge = document.createElement("span");
-        badge.className = "cell-count";
-        badge.textContent = "×" + cnt;
-        cell.appendChild(badge);
-      }
-      cell.title = bulkInv
-        ? `${RARITY_LABELS[rarity]} ${fullId} — own ${cnt} · craft a full ${RARITY_LABELS[rarity]} Set to sell`
-        : `${RARITY_LABELS[rarity]} ${fullId} — collected`;
-    } else {
-      cell.title = `${foil ? "Foil " : ""}${RARITY_LABELS[rarity]} ${fullId} — unowned`;
-    }
-
-    // Card number always lives at the bottom of every cell, regardless of
-    // ownership / pricing / count.
-    const numEl = document.createElement("span");
-    numEl.className = "cell-num";
-    numEl.textContent = cardNumStr;
-    cell.appendChild(numEl);
-
     const flashed = flashQueue.find(f =>
       f.rarity === rarity && f.id === i && f.foil === foil
     );
@@ -1927,15 +1813,6 @@ function isBulkListing(l) {
   return !l.foil && SAND_BULK_RARITIES.includes(l.rarity);
 }
 
-function listedCountFor(rarity, cardId, foil) {
-  if (!Array.isArray(state.listings)) return 0;
-  let n = 0;
-  for (const l of state.listings) {
-    if (l.rarity === rarity && l.foil === foil && l.cardId === cardId) n += 1;
-  }
-  return n;
-}
-
 function rollListingCooldown() {
   return LISTING_COOLDOWN_MIN + Math.random() * Math.max(0, LISTING_COOLDOWN_MAX - LISTING_COOLDOWN_MIN);
 }
@@ -1967,26 +1844,6 @@ function listingSlotsFree() {
 }
 function listingSlotsFull() {
   return activeListingCount() >= LISTING_SLOTS;
-}
-
-function listCard(rarity, cardId, foil) {
-  const mk = marketKey(rarity, foil);
-  if (!mk) return; // priced-only entry point
-  if (listingSlotsFull()) {
-    $("hint").textContent = `All ${LISTING_SLOTS} listing slots full — cancel one first.`;
-    return;
-  }
-  const inv = state.invById[mk];
-  if (!inv || !inv[cardId]) return;
-  inv[cardId] -= 1;
-  if (inv[cardId] <= 0) delete inv[cardId];
-  if (foil) state.stockFoil[rarity] -= 1;
-  else      state.stock[rarity]     -= 1;
-  const listing = makeListing(rarity, cardId, foil);
-  if (!Array.isArray(state.listings)) state.listings = [];
-  state.listings.push(listing);
-  renderAll(); save();
-  $("hint").textContent = `Listed ${foil ? "foil " : ""}${RARITY_LABELS[rarity].toLowerCase()} ${cardFullId(rarity, cardId)} @ ${usd(listing.askPrice)}.`;
 }
 
 function ensureBulkInv() {
@@ -3466,14 +3323,8 @@ $("pack").addEventListener("click", ripOne);
 $("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
 $("buy-box").addEventListener("click",  () => buyBoxes(1, boxCost(),  "1 sealed box"));
 $("buy-case").addEventListener("click", () => buyBoxes(Math.max(1, Math.round(CASE_SIZE / BOX_SIZE)), caseCost(), `a case (${Math.round(CASE_SIZE / BOX_SIZE)} sealed boxes)`));
-$("vault-grid").addEventListener("click", (e) => {
-  const cell = e.target.closest(".collection-cell.priced.owned");
-  if (!cell) return;
-  const rarity = cell.dataset.rarity;
-  const id     = parseInt(cell.dataset.id, 10);
-  const foil   = cell.dataset.foil === "1";
-  listCard(rarity, id, foil);
-});
+// Collection cells are display-only now — listing is exclusively done via
+// the Set-craft pipeline. No click handler on #vault-grid.
 $("listings-panel").addEventListener("click", (e) => {
   const card = e.target.closest(".listing-card");
   if (card && card.dataset.uid) cancelListing(parseInt(card.dataset.uid, 10));
