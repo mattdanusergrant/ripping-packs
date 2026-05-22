@@ -1139,34 +1139,6 @@ function tickMarket() {
   renderVaultGrid();
 }
 
-function inventoryValue(rarity, foil) {
-  const mk = marketKey(rarity, foil);
-  if (!mk) {
-    const bucket = foil ? state.stockFoil : state.stock;
-    const price = foil ? foilPrice(rarity) : SELL_PRICE[rarity];
-    return bucket[rarity] * price;
-  }
-  const inv = state.invById[mk];
-  const prices = state.market[mk];
-  let total = 0;
-  for (const id in inv) {
-    total += inv[id] * prices[id];
-  }
-  return total;
-}
-
-function inventoryAvgPrice(rarity, foil) {
-  const mk = marketKey(rarity, foil);
-  if (!mk) return foil ? foilPrice(rarity) : SELL_PRICE[rarity];
-  const inv = state.invById[mk];
-  const prices = state.market[mk];
-  let total = 0, count = 0;
-  for (const id in inv) {
-    total += inv[id] * prices[id];
-    count += inv[id];
-  }
-  return count === 0 ? 0 : total / count;
-}
 
 function pickRandomIds(rarity, n) {
   const size = SET_SIZES[rarity];
@@ -1441,7 +1413,7 @@ function load() {
       // stockFoil.standard becomes the sorted-foil-standard count.
       parsed.stockFoil.standard = Object.values(parsed.bulkInvById.foilStandard).reduce((s, n) => s + n, 0);
     }
-    delete parsed.invById.foilStandard;
+    if (parsed.invById && parsed.invById.foilStandard) delete parsed.invById.foilStandard;
     // Any active per-id foil-standard listings get cancelled back to the
     // unsorted pile — they no longer exist as a market item.
     if (Array.isArray(parsed.listings)) {
@@ -1454,6 +1426,15 @@ function load() {
         }
       });
       parsed.listings = kept;
+    }
+    // Tombstones ("__") only exist mid-chain. If the save was written
+    // mid-animation (autosave during chain), drop them — state.unsorted was
+    // already decremented when they were tombstoned, so we just clean the
+    // pile so future LOAD/click logic isn't permanently blocked.
+    if (Array.isArray(parsed.pile)) {
+      parsed.pile = parsed.pile.map(col =>
+        Array.isArray(col) ? col.filter(k => k && k !== "__") : []
+      );
     }
     return parsed;
   } catch (e) {
@@ -2075,6 +2056,10 @@ function dumpUnsorted() {
   SAND_BULK_KEYS.forEach(k => state.unsorted[k] = 0);
   state.pile = [];
   ensurePileBuckets();
+  // Drop any still-falling grains too — otherwise they'd land in the now-empty
+  // pile after the dump, only to be wiped by the next syncPileWithStock.
+  fallingGrains = [];
+  critPops = [];
   renderAll(); save();
   $("hint").textContent = `Dumped ${total} cards for ${usd(proceeds)}.`;
 }
@@ -2202,6 +2187,7 @@ function grainColorFor(key) {
   }
   return SAND_COLOR[key] || "#b8b8c8";
 }
+let chainBusy = false;  // true while a chain explosion is animating waves
 let fallingGrains = []; // {col, y, vy, key}
 let sandAnimRunning = false;
 let critPops = [];      // {x, y, age, maxAge, color} — chain-explosion VFX
@@ -2239,24 +2225,6 @@ function syncPileWithStock() {
   const unsortedBulk = SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
   if (totalPileGrains() + fallingGrains.length !== unsortedBulk) {
     rebuildPileFromStock();
-  }
-}
-
-function removeOneGrainByKey(key) {
-  const fi = fallingGrains.findIndex(g => g.key === key);
-  if (fi !== -1) { fallingGrains.splice(fi, 1); return; }
-  const ordered = state.pile
-    .map((col, c) => ({ c, h: col.length }))
-    .sort((a, b) => b.h - a.h);
-  for (const { c } of ordered) {
-    const col = state.pile[c];
-    if (col.length > 0 && col[col.length - 1] === key) { col.pop(); return; }
-  }
-  for (const { c } of ordered) {
-    const col = state.pile[c];
-    for (let r = col.length - 1; r >= 0; r--) {
-      if (col[r] === key) { col.splice(r, 1); return; }
-    }
   }
 }
 
@@ -2327,6 +2295,9 @@ function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
     if (!col || nr < 0 || nr >= col.length) return;
     const k = col[nr];
     if (!k || k === "__") return;
+    // Refuse if state.unsorted has nothing left of this key — keeps the pile
+    // and the counters from drifting if they were out of sync.
+    if ((state.unsorted[k] || 0) <= 0) return;
     col[nr] = "__";
     spawnCritPop(nc, nr, k);
     sortOneOfKey(k);
@@ -2343,6 +2314,9 @@ function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
 function runChainCrit(startCol, startRow, onDone) {
   const seedKey = state.pile[startCol] && state.pile[startCol][startRow];
   if (!seedKey || seedKey === "__") { onDone(0); return; }
+  if ((state.unsorted[seedKey] || 0) <= 0) { onDone(0); return; }
+  chainBusy = true;
+  const finish = (n) => { chainBusy = false; onDone(n); };
   const refs = { total: 0 };
   let detonators = [];
   // Wave 0 — destroy seed + click AoE around it.
@@ -2360,7 +2334,7 @@ function runChainCrit(startCol, startRow, onDone) {
   renderSandPile();
 
   function step() {
-    if (detonators.length === 0) { onDone(refs.total); return; }
+    if (detonators.length === 0) { finish(refs.total); return; }
     const next = [];
     detonators.forEach(d => {
       applyBlast(d.col, d.row, explosionOffsetsForKey(d.key), next, refs);
@@ -2418,6 +2392,7 @@ function settlePileAfterChain() {
 
 function sortCards(opts) {
   ensureBulkInv();
+  if (chainBusy) return; // a chain is mid-animation; drop the click
   if (SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0) === 0) return;
   if (!opts || !opts.click) return;
   const seed = findClickedGrain(opts.click.x, opts.click.y);
@@ -3025,6 +3000,7 @@ function previewLoadGrains(s) {
 }
 
 function loadSorter(uid) {
+  if (chainBusy) return; // wait for an in-progress chain to finish settling
   const s = (state.sorters || []).find(x => x.uid === uid);
   if (!s) return;
   ensureBulkInv();
@@ -3329,6 +3305,7 @@ function ripOne() {
 function resetGame() {
   if (!confirm("Wipe everything and start over?")) return;
   state = defaultState();
+  initMarket(); // defaultState() leaves market: null — populate before any render
   save();
   renderAll();
   $("hint").textContent = "Fresh start. A box on the house — start ripping!";
@@ -3404,7 +3381,13 @@ setInterval(() => {
 }, 1000);
 resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
-window.addEventListener("resize", drawSand);
+window.addEventListener("resize", () => {
+  // Canvas column count is derived from width; if it changed, rebuild the
+  // pile so out-of-range grains don't get stranded out of view.
+  ensurePileBuckets();
+  rebuildPileFromStock();
+  drawSand();
+});
 window.addEventListener("keydown", (e) => {
   // Don't hijack keys when the design modal is open, the user is in an
   // input/textarea, or a modifier is held.

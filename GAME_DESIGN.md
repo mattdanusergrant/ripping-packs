@@ -20,7 +20,7 @@ BUY → RIP → SORT → CRAFT → LIST → SELL → BUY ...
 
 1. **Buy** packs, sealed boxes, or cases from the shop.
 2. **Rip** a pack — either by clicking the booster or by typing the on-screen prompt word.
-3. **Sort** the unsorted pile by clicking the sand canvas. Each click sorts 3–7 cards (a *crit* near a non-standard grain triples it).
+3. **Sort** the unsorted pile by clicking the sand canvas — every click detonates the nearest grain plus a 4-orthogonal AoE, and any non-standard caught in the blast chain-explodes (rares trigger another 4-ortho blast, foils trigger an 8-cell "+" reaching 2 cells along each axis).
 4. **Craft** Standard / Rare / Foil Standard sets when you've collected one of every card in that rarity.
 5. **List** crafted sets (and unique mythic / non-standard foil pulls) on the marketplace, max 10 active listings.
 6. **Sell** — each listing resolves on its own cooldown for the current market price.
@@ -112,13 +112,15 @@ A 10-slot, single-tier market. Each slot holds one listing — either a priced s
 
 ### Listing tiles
 
-Listings render as mini-cards matching the collection cell silhouette. They show:
+Listings render as 60px miniature trading cards:
 - Rarity-tinted background + border + glow
-- Glyph and card ID (or `SET`)
-- Gold askPrice strip along the bottom
+- Small rarity glyph in the top-left corner
+- **Big centered price** (compact format — `$42`, `$1.5k`, `$25k`)
+- Tiny card ID along the bottom (or `SET` for crafted sets)
 - Gold countdown badge in the top-right
+- Full unabbreviated price + rarity label in the `title` attribute for hover
 
-Set listings get a stacked-cards illusion via offset shadows. Foil listings shimmer. Empty slots render as dashed `+` placeholders.
+Set listings get a stacked-cards illusion via offset shadows. Foil listings shimmer with a rainbow gradient. Empty slots render as dashed `+` placeholders so the slot cap is visible.
 
 ### Pricing & cooldown
 
@@ -131,6 +133,21 @@ Click a listing tile to **cancel and return** the card/set to inventory.
 When 10 slots are full:
 - The collection-grid click-to-list path shows "All 10 listing slots full" and refuses
 - The vault's `LIST` buttons swap to `SLOTS FULL` text and disable
+
+---
+
+## 6b. Collection cells
+
+The collection grid mirrors the marketplace tile language. Every cell — owned or unowned, priced or bulk — shares the same silhouette and footer.
+
+- **Card number** is the tiny 6px label along the bottom edge of *every* cell, regardless of ownership.
+- **Centered big value** appears only on **priced owned cells with stock > 0** (mythics + foil rare / epic / legendary / mythic). It's the `compactUsd` of the current per-id market price.
+- **Top-right ×N badge** counts duplicates (priced owned and bulk owned alike).
+- **Top-left ★ badge** marks cards you currently have listed.
+- **Foil cells** shimmer with the rainbow gradient; value + card # flip to dark text for contrast.
+- **Click** a priced-owned cell to list one at the current market price (subject to the 10-slot cap).
+
+Bulk owned, unowned, and owned-zero-stock cells have empty centers — the cell color, the badges, and the bottom card # carry all the info those cells need.
 
 ---
 
@@ -169,22 +186,22 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 
 - **Cost:** $1,000 each, max **3** per save
 - **Two buffers:** `input` (raw, manually loaded from the pile) and `output` (processed, ready to collect). The sorter only moves cards from `input` → `output`; it never reaches into the pile on its own.
-- **Manual LOAD:** Click the blue **LOAD** button to scoop the entire bottom row of the sand pile (up to remaining sorter capacity) into the sorter's input. Each loaded grain leaves a tombstone in the pile, and the rest of the pile gravity-settles down by one row.
+- **Manual LOAD:** Click the blue **LOAD** button to scoop the entire bottom row of the sand pile into the sorter's input. LOAD is **all-or-nothing** — it requires both a *complete* bottom row (a live grain in every column) AND enough free combined capacity to fit the whole row. The button's `title` attribute names the failing constraint when disabled. Each loaded grain leaves a tombstone in the pile, and the rest of the pile gravity-settles down by one row.
 - **Tick:** Every `sorterInterval(level)` ms the sorter pops one grain from input (weighted by what's loaded) into output. With input empty, the sorter idles.
 - **Buffer cap:** 500 at Lv 1 (+10 per level). Counted across input + output combined. When at cap, LOAD refuses until you collect.
 - **Manual COLLECT:** Click the gold-glowing **COLLECT** button to flush output into the collection — set-progress + flash animations fire as the cards land.
 
 ### Sorter upgrades
 
-| Level | Interval | Buffer | Upgrade cost |
-|------:|---------:|-------:|-------------:|
-| 1     | 2000 ms  | 20     | —            |
-| 2     | 1000 ms  | 30     | $500         |
-| 3     |  667 ms  | 40     | $2,000       |
-| 4     |  500 ms  | 50     | $4,500       |
-| 5     |  400 ms  | 60     | $8,000       |
+| Level | Interval | Capacity | Upgrade cost |
+|------:|---------:|---------:|-------------:|
+| 1     | 2000 ms  | 500      | —            |
+| 2     | 1000 ms  | 510      | $500         |
+| 3     |  667 ms  | 520      | $2,000       |
+| 4     |  500 ms  | 530      | $4,500       |
+| 5     |  400 ms  | 540      | $8,000       |
 
-Floor on interval is 250ms; `SORTER_LEVEL_MAX = 5`. Cost grows as `SORTER_UPGRADE_BASE × level²`.
+Floor on interval is 250ms; `SORTER_LEVEL_MAX = 5`. Upgrades are rate-focused — capacity grows by only +10 per level since 500 is already enough for many bottom-row loads in a row. Upgrade cost = `SORTER_UPGRADE_BASE × level²` ($500 base).
 
 ---
 
