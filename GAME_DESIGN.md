@@ -98,20 +98,28 @@ When `bulkInvById[key]` holds at least 1 of every card ID in a rarity, a glowing
 
 Every rarity (bulk and priced, foil and non-foil) has its own craftable Set item — 10 tracks total. Bulk Sets consume cards from `bulkInvById`; priced Sets consume from the per-id `invById`. Each Set item is market-priced and listed via the marketplace just like any other priced item.
 
-| Set                  | Set size | Baseline $ |
-|----------------------|---------:|-----------:|
-| Standard Set         | 36       | $30        |
-| Rare Set             | 18       | $200       |
-| Epic Set             | 9        | $80        |
-| Legendary Set        | 6        | $250       |
-| Mythic Set           | 3        | $500       |
-| Foil Standard Set    | 36       | $120       |
-| Foil Rare Set        | 18       | $900       |
-| Foil Epic Set        | 9        | $4,000     |
-| Foil Legendary Set   | 6        | $10,000    |
-| Foil Mythic Set      | 3        | $20,000    |
+Bulk-set baselines (Standard / Rare / Foil Standard) are explicit — those rarities have no per-card market price for a multiplier to act on.
 
-Set items drift on the same volatile market as other priced inventory (mean-reverting fundamental + tick volatility, configurable in the Game Design panel). Baselines are roughly 2× the raw card-sum value of the contents — crafting destroys the individuals, so the Set has to outprice selling them à la carte to be worth the trade.
+Priced-set baselines are **derived** at boot via `SET_CRAFT_MULTIPLIER` (default `1.15`):
+
+```
+BASELINE[setKey] = SET_SIZES[baseRarity] × BASELINE[cardKey] × SET_CRAFT_MULTIPLIER
+```
+
+| Set                  | Set size | Formula            | Baseline $ |
+|----------------------|---------:|--------------------|-----------:|
+| Standard Set         | 36       | explicit           | $30        |
+| Rare Set             | 18       | explicit           | $200       |
+| Foil Standard Set    | 36       | explicit           | $120       |
+| Epic Set             | 9        | 9 × $5 × 1.15      | $51.75     |
+| Legendary Set        | 6        | 6 × $25 × 1.15     | $172.50    |
+| Mythic Set           | 3        | 3 × $100 × 1.15    | $345       |
+| Foil Rare Set        | 18       | 18 × $30 × 1.15    | $621       |
+| Foil Epic Set        | 9        | 9 × $250 × 1.15    | $2,587.50  |
+| Foil Legendary Set   | 6        | 6 × $1,000 × 1.15  | $6,900     |
+| Foil Mythic Set      | 3        | 3 × $4,000 × 1.15  | $13,800    |
+
+So crafting a priced set sells for **+15% over the sum of singles**. Small premium → encourages set completion without making crafting strictly better than spot-selling. Bump `SET_CRAFT_MULTIPLIER` in the design panel to change the slope. Bumping a per-card baseline automatically bumps the set baseline that depends on it.
 
 ---
 
