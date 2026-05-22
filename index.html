@@ -2281,16 +2281,46 @@ const CHAIN_STEP_MS = 90; // delay between chain waves so each pop reads
 // Paint-mode selection: hovering a grain slowly highlights it; clicking the
 // canvas detonates everything currently highlighted. A frantic sweep moves
 // faster than HOVER_DWELL_MS so no grain gets marked — slow down to mark.
-let HOVER_DWELL_MS = def("HOVER_DWELL_MS", 80);
+let HOVER_DWELL_MS    = def("HOVER_DWELL_MS", 40);
+// Hover cursor radius (in cells) — the area dwelled over gets marked when
+// the timer fires. Default ~1 cell. Upgradeable later via CLOUT.
+let HOVER_RADIUS_CELLS = def("HOVER_RADIUS_CELLS", 0.7);
 let markedGrains = new Set();  // "col,row" strings
 let hoverCell = null;
 let hoverTimer = null;
+let cursorPos = null;          // { x, y } in canvas-local coords; null when off-pile
 function clearMarkedGrains() {
   if (markedGrains.size === 0 && !hoverCell) return;
   markedGrains.clear();
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
   hoverCell = null;
   drawSand();
+}
+// Cells live (non-tombstone, non-empty) within HOVER_RADIUS_CELLS of (px, py).
+function cellsWithinRadius(px, py) {
+  const canvas = $("sand-canvas");
+  if (!canvas) return [];
+  const h = canvas.clientHeight || 90;
+  const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
+  const pxR  = HOVER_RADIUS_CELLS * unit;
+  const cx = Math.floor(px / SAND_CELL_W);
+  const cy = Math.floor((h - py) / SAND_CELL_H);
+  const dc = Math.ceil(HOVER_RADIUS_CELLS);
+  const out = [];
+  for (let c = cx - dc; c <= cx + dc; c++) {
+    if (c < 0 || c >= SAND_COLS) continue;
+    const col = state.pile[c]; if (!col) continue;
+    for (let r = cy - dc; r <= cy + dc; r++) {
+      if (r < 0 || r >= col.length) continue;
+      const k = col[r];
+      if (!k || k === "__") continue;
+      const ccx = c * SAND_CELL_W + SAND_CELL_W / 2;
+      const ccy = h - (r + 1) * SAND_CELL_H + SAND_CELL_H / 2;
+      const d = Math.hypot(px - ccx, py - ccy);
+      if (d <= pxR) out.push({ col: c, row: r });
+    }
+  }
+  return out;
 }
 
 function sandColCount() { return SAND_COLS; }
@@ -2662,6 +2692,18 @@ function drawSand() {
       ctx.stroke();
     });
   }
+  // Cursor indicator — shows the area the next dwell will mark. Tracks the
+  // mouse while hovering the canvas; HOVER_RADIUS_CELLS sets the size and
+  // is upgrade-friendly for later progression unlocks.
+  if (cursorPos) {
+    const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
+    const pxR = HOVER_RADIUS_CELLS * unit;
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cursorPos.x, cursorPos.y, pxR, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 function stepSandAnim() {
@@ -2814,6 +2856,7 @@ const DESIGN_FIELDS = [
   // Sorting
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_DWELL_MS",                  path: "HOVER_DWELL_MS",            label: "Paint dwell time (ms)",        step: 10, min: 0, int: true },
+  { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
 
   // Staff
@@ -2857,7 +2900,7 @@ function _liveDesignSnapshot() {
     FOIL_MULTIPLIER, PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
     BASELINE,
     SET_SIZES,
-    SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, UNSORTED_CAPACITY,
+    SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
     SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
@@ -3547,36 +3590,46 @@ $("sand-canvas").addEventListener("click", (e) => {
 // Hover-paint: dwell over a grain for HOVER_DWELL_MS to add it to the marked
 // set. Fast sweeps cancel the dwell timer before it fires so nothing marks.
 $("sand-canvas").addEventListener("mousemove", (e) => {
-  if (chainBusy) return;
   const canvas = $("sand-canvas");
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
+  cursorPos = { x, y };
+  if (chainBusy) { drawSand(); return; }
   const h = canvas.clientHeight || 90;
   const c = Math.floor(x / SAND_CELL_W);
   const r = Math.floor((h - y) / SAND_CELL_H);
-  // Must hover over a live grain (not off-pile, not a tombstone).
+  // Cursor must be over a live grain (not off-pile, not a tombstone) to
+  // start dwell. The actual *marked* set is computed from the radius when
+  // the timer fires, so the cursor center grain is the anchor.
   const k = state.pile[c] && state.pile[c][r];
   if (!k || k === "__") {
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
     hoverCell = null;
+    drawSand();
     return;
   }
-  const cellKey = c + "," + r;
-  if (markedGrains.has(cellKey)) return; // already marked
-  if (hoverCell && hoverCell.col === c && hoverCell.row === r) return; // still dwelling on same cell
+  if (hoverCell && hoverCell.col === c && hoverCell.row === r) {
+    drawSand();
+    return; // still on same anchor cell — timer continues
+  }
   if (hoverTimer) clearTimeout(hoverTimer);
   hoverCell = { col: c, row: r };
   hoverTimer = setTimeout(() => {
-    markedGrains.add(cellKey);
+    cellsWithinRadius(cursorPos.x, cursorPos.y).forEach(({ col, row }) => {
+      markedGrains.add(col + "," + row);
+    });
     hoverCell = null;
     hoverTimer = null;
     drawSand();
   }, HOVER_DWELL_MS);
+  drawSand();
 });
 $("sand-canvas").addEventListener("mouseleave", () => {
   if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
   hoverCell = null;
+  cursorPos = null;
+  drawSand();
 });
 $("sand-canvas").addEventListener("contextmenu", (e) => {
   e.preventDefault();
