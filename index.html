@@ -2270,11 +2270,18 @@ function renderDumpButton() {
 const SAND_CELL  = 12;
 const SAND_GRAIN = 10;
 // Grain colors by bulk-key. Foil standard rotates through a rainbow each frame.
-const SAND_COLOR = { standard: "#5ad06a", rare: "#5aa8ff", foilStandard: "#ffffff" };
+// Grain palette is intentionally separate from the brand RARITY_COLOURS used
+// on cells / pills. Standards stay green; rares pop with a deep saturated
+// blue (was sky blue, too close to green at 10px). Foils shimmer through
+// warm hues only — never green or blue — so they're always identifiable.
+const SAND_COLOR = { standard: "#5ad06a", rare: "#2752ff", foilStandard: "#ffffff" };
+const FOIL_HUE_START = 270; // purple
+const FOIL_HUE_SWEEP = 180; // sweeps through magenta → red → orange → yellow (stops well before green)
 function grainColorFor(key) {
   if (key === "foilStandard") {
-    const t = (Date.now() / 24) % 360;
-    return `hsl(${t}, 90%, 70%)`;
+    const t = (Date.now() / 24) % FOIL_HUE_SWEEP;
+    const hue = (FOIL_HUE_START + t) % 360;
+    return `hsl(${hue}, 90%, 70%)`;
   }
   return SAND_COLOR[key] || "#b8b8c8";
 }
