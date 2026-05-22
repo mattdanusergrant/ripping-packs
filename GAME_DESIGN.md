@@ -183,6 +183,56 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 
 ---
 
+## 8b. CLOUT — vault sets for XP
+
+Every crafted set can either be **listed** for cash or **vaulted** for CLOUT. Vaulting is a one-way trade — the set is consumed and you can never list it later — but it earns progression XP that ratchets up your effective caps.
+
+**CLOUT per set:** `ceil(sqrt(BASELINE[setKey]))`. Stays in sync with the set's market baseline, so retuning prices reshapes the curve automatically.
+
+| Set                  | Baseline | CLOUT |
+|----------------------|---------:|------:|
+| Standard Set         | $15      | 4     |
+| Rare Set             | $200     | 15    |
+| Foil Standard Set    | $60      | 8     |
+| Epic Set             | $52      | 8     |
+| Legendary Set        | $173     | 14    |
+| Mythic Set           | $345     | 19    |
+| Foil Rare Set        | $621     | 25    |
+| Foil Epic Set        | $2,588   | 51    |
+| Foil Legendary Set   | $6,900   | 84    |
+| Foil Mythic Set      | $13,800  | 118   |
+
+**Level curve:** `level = 1 + floor(sqrt(clout / 10))` — quadratic, gentle early and steeper late.
+
+| Level | CLOUT required |
+|------:|--------------:|
+| 1     | 0             |
+| 2     | 10            |
+| 3     | 40            |
+| 4     | 90            |
+| 5     | 160           |
+| 6     | 250           |
+| 7     | 360           |
+| 8     | 490           |
+| 9     | 640           |
+| 10    | 810           |
+
+**Unlocks (`CLOUT_BONUSES`):**
+
+| Level | Bonus                |
+|------:|----------------------|
+| 2     | +1 marketplace slot  |
+| 3     | +1 max sorter        |
+| 5     | +2 marketplace slots |
+| 7     | +1 max sorter        |
+| 10    | +3 marketplace slots |
+
+So a Lv-10 player runs **16 listing slots** (vs 10 base) and **5 sorters** (vs 3 base). Effective caps recompute live — no migration needed when crossing a threshold.
+
+A `Lv N · X CLOUT · Y to next` chip lives in the page header and pops with a pink flash on level-up. The vault button on each set track is magenta to visually separate it from the gold LIST action.
+
+---
+
 ## 9. Helpers — Homies & Sorters
 
 ### Hire Homie — temporary auto-ripper

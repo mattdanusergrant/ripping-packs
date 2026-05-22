@@ -26,6 +26,23 @@
   header h1 { margin: 0; font-size: 1.2rem; letter-spacing: 1px; }
   header .stats { display: flex; gap: 24px; font-size: 0.95rem; align-items: center; }
   header .stats span b { color: var(--gold); }
+  .clout-chip {
+    background: rgba(255,126,179,0.10);
+    border: 1px solid rgba(255,126,179,0.55);
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.85);
+  }
+  .clout-chip b { color: #ff7eb3 !important; }
+  .clout-chip.level-up {
+    animation: clout-pop 0.9s ease-out;
+  }
+  @keyframes clout-pop {
+    0%   { transform: scale(1);   box-shadow: 0 0 0 rgba(255,126,179,0); }
+    30%  { transform: scale(1.18); box-shadow: 0 0 16px rgba(255,126,179,0.8); }
+    100% { transform: scale(1);   box-shadow: 0 0 0 rgba(255,126,179,0); }
+  }
 
   #shop, #vault { background: var(--panel); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   #shop h2, #vault h2 { margin: 0; letter-spacing: 1px; font-size: 1rem; }
@@ -546,13 +563,13 @@
     display: flex; gap: 6px; align-items: stretch;
     margin-top: 4px;
   }
-  .set-craft-btn, .set-list-btn {
-    flex: 1;
+  .set-craft-btn, .set-list-btn, .set-vault-btn {
+    flex: 1; min-width: 0;
     background: transparent; color: var(--ink);
     border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
-    padding: 4px 8px; cursor: pointer;
-    font-family: inherit; font-size: 0.7rem; letter-spacing: 1px;
-    transition: all 0.12s;
+    padding: 4px 6px; cursor: pointer;
+    font-family: inherit; font-size: 0.62rem; letter-spacing: 0.5px;
+    transition: all 0.12s; white-space: nowrap;
   }
   .set-craft-btn:not(:disabled) {
     color: var(--gold); border-color: var(--gold);
@@ -564,15 +581,30 @@
   .set-list-btn:not(:disabled) { color: var(--ink); border-color: rgba(255,255,255,0.45); }
   .set-list-btn:not(:disabled):hover { background: rgba(255,255,255,0.06); }
   .set-list-btn b { color: var(--gold); }
-  .set-craft-btn:disabled, .set-list-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  /* Vault button = magenta accent so it visually separates from the gold
+     LIST action; it's the "trade money for XP" alternative. */
+  .set-vault-btn:not(:disabled) {
+    color: #ff7eb3; border-color: #ff7eb3;
+    font-weight: bold;
+    box-shadow: 0 0 6px rgba(255,126,179,0.3);
+  }
+  .set-vault-btn:not(:disabled):hover { background: rgba(255,126,179,0.18); color: #fff; }
+  .set-craft-btn:disabled, .set-list-btn:disabled, .set-vault-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .set-owned-badge {
+    display: inline-block; margin-left: 4px;
+    background: rgba(0,0,0,0.45); color: var(--gold);
+    border-radius: 6px; padding: 0 4px;
+    font-size: 0.55rem;
+  }
   @keyframes set-pulse {
     0%, 100% { box-shadow: 0 0 8px rgba(245,197,66,0.35); }
     50%      { box-shadow: 0 0 14px rgba(245,197,66,0.7); }
   }
   /* Foil-track variants: rainbow border + shimmery accent for the foil
-     standard set craft / list buttons. */
+     standard set craft / list / vault buttons. */
   .set-craft-btn.foil:not(:disabled),
-  .set-list-btn.foil:not(:disabled) {
+  .set-list-btn.foil:not(:disabled),
+  .set-vault-btn.foil:not(:disabled) {
     border-image: linear-gradient(135deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3) 1;
     color: #fff;
   }
@@ -585,7 +617,8 @@
     50%      { box-shadow: 0 0 16px rgba(255,126,179,0.7); }
   }
   .set-craft-btn.foil:not(:disabled):hover,
-  .set-list-btn.foil:not(:disabled):hover {
+  .set-list-btn.foil:not(:disabled):hover,
+  .set-vault-btn.foil:not(:disabled):hover {
     background: linear-gradient(135deg, rgba(255,126,179,0.18), rgba(101,214,255,0.18));
   }
   .sell-stack { display: flex; flex-direction: column; gap: 6px; }
@@ -734,6 +767,7 @@
     <span>Cash: <b id="coins">$0</b></span>
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
+    <span class="clout-chip" id="clout-chip" title="CLOUT — earned by vaulting crafted sets">Lv <b id="clout-level">1</b> · <b id="clout-now">0</b> CLOUT · <span id="clout-next">10 to next</span></span>
     <button class="reset" id="design-btn">Game Design</button>
     <button class="reset" id="reset-btn">Reset</button>
   </div>
@@ -1055,6 +1089,43 @@ let LISTING_COOLDOWN_MAX = def("LISTING_COOLDOWN_MAX", 20);
 let LISTING_SLOTS        = def("LISTING_SLOTS", 10);
 const LISTING_TICK_MS = 2000;
 
+// ---- CLOUT progression --------------------------------------------------
+// CLOUT is XP earned by vaulting crafted sets (instead of listing them for
+// cash). Levels are quadratic in clout — the curve is gentle early and
+// steepens steadily. Each unlock tier in CLOUT_BONUSES bumps the effective
+// cap for listing slots, sorters, etc.
+function cloutForSetKey(itemKey) {
+  const b = BASELINE[itemKey] || 0;
+  return Math.max(1, Math.ceil(Math.sqrt(b)));
+}
+function cloutForLevel(level) { return Math.pow(Math.max(1, level) - 1, 2) * 10; }
+function cloutLevel(clout)    { return 1 + Math.floor(Math.sqrt(Math.max(0, clout) / 10)); }
+function currentCloutLevel()  { return cloutLevel(state.clout || 0); }
+function cloutToNextLevel() {
+  const lv = currentCloutLevel();
+  return Math.max(0, cloutForLevel(lv + 1) - (state.clout || 0));
+}
+// Each entry contributes deltas to the bonuses once the player hits its level.
+const CLOUT_BONUSES = [
+  { level: 2,  listingSlots: 1 },
+  { level: 3,  sorterMax: 1 },
+  { level: 5,  listingSlots: 2 },
+  { level: 7,  sorterMax: 1 },
+  { level: 10, listingSlots: 3 },
+];
+function cumulativeCloutBonuses(level) {
+  const out = { listingSlots: 0, sorterMax: 0 };
+  CLOUT_BONUSES.forEach(b => {
+    if (b.level <= level) {
+      if (b.listingSlots) out.listingSlots += b.listingSlots;
+      if (b.sorterMax)    out.sorterMax    += b.sorterMax;
+    }
+  });
+  return out;
+}
+function listingSlotsEffective() { return LISTING_SLOTS + cumulativeCloutBonuses(currentCloutLevel()).listingSlots; }
+function sorterMaxEffective()    { return SORTER_MAX    + cumulativeCloutBonuses(currentCloutLevel()).sorterMax; }
+
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 
 // ---- State ---------------------------------------------------------------
@@ -1089,6 +1160,8 @@ const defaultState = () => ({
                   // input  = raw grains loaded from the pile bottom row
                   // output = grains the sorter finished processing (ready to collect)
   sorterUidCounter: 0,
+  clout: 0,              // XP earned by vaulting crafted sets
+  vaultedSets: {},       // { [setItemKey]: count } — lifetime vault deposits
   listings: [],          // [{uid, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
 });
@@ -1288,6 +1361,8 @@ function load() {
     // Retired: state.friends → replaced by homies.
     delete parsed.friends;
     if (typeof parsed.boxesOwned !== "number") parsed.boxesOwned = 0;
+    if (typeof parsed.clout !== "number") parsed.clout = 0;
+    if (!parsed.vaultedSets || typeof parsed.vaultedSets !== "object") parsed.vaultedSets = {};
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     // Backfill slot assignments + cap to HOMIE_MAX (legacy saves had no slot).
@@ -1591,6 +1666,7 @@ function caseCost() { return CASE_COST; }
 // ---- Render --------------------------------------------------------------
 const $ = id => document.getElementById(id);
 
+let _lastCloutLevel = null;
 function renderHeader() {
   $("coins").textContent        = usd(state.coins);
   $("packs-opened").textContent = state.packsOpened;
@@ -1599,6 +1675,17 @@ function renderHeader() {
   $("supply-label").textContent = boxes > 0
     ? `Supply: ${state.packSupply} · 📦 ${boxes}`
     : `Supply: ${state.packSupply}`;
+  // CLOUT chip — animate on level-up.
+  const lv = currentCloutLevel();
+  $("clout-level").textContent = lv;
+  $("clout-now").textContent = (state.clout || 0).toLocaleString();
+  const toNext = cloutToNextLevel();
+  $("clout-next").textContent = toNext === 0 ? "max" : `${toNext.toLocaleString()} to next`;
+  const chip = $("clout-chip");
+  if (_lastCloutLevel != null && lv > _lastCloutLevel && chip) {
+    chip.classList.remove("level-up"); void chip.offsetWidth; chip.classList.add("level-up");
+  }
+  _lastCloutLevel = lv;
   $("cost-pack").textContent = usd(packCost());
   $("cost-box").textContent  = usd(boxCost());
   $("cost-case").textContent = usd(caseCost());
@@ -1621,18 +1708,25 @@ function setActionsBlock(key) {
   const setsOwned = (state.invById[track.itemKey] && state.invById[track.itemKey][1]) || 0;
   const setPrice = marketPriceFor(track.itemKey, 1);
   const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
-  const craftLabel = ready ? `CRAFT ${setName} SET` : `${setName} ${uniqueOwned}/${size}`;
   const slotsFull = listingSlotsFull();
-  const canList = setsOwned > 0 && !slotsFull;
-  const listLabel = setsOwned === 0
-    ? "—"
-    : (slotsFull ? "SLOTS FULL" : `LIST 1 (~${usd(setPrice)})`);
+  const earnedClout = cloutForSetKey(track.itemKey);
+
+  const craftLabel = ready ? `CRAFT ${setName} SET` : `${setName} ${uniqueOwned}/${size}`;
+  const listLabel  = setsOwned === 0 ? "—" : (slotsFull ? "FULL" : `LIST · ${compactUsd(setPrice)}`);
+  const vaultLabel = setsOwned === 0 ? "—" : `VAULT · +${earnedClout}`;
+
+  const canList  = setsOwned > 0 && !slotsFull;
+  const canVault = setsOwned > 0;
+
   const craftCls = "set-craft-btn" + (track.foil ? " foil" : "");
   const listCls  = "set-list-btn"  + (track.foil ? " foil" : "");
+  const vaultCls = "set-vault-btn" + (track.foil ? " foil" : "");
+  const setsBadge = setsOwned > 0 ? ` <span class="set-owned-badge">×${setsOwned}</span>` : "";
   return `
     <div class="set-actions">
-      <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"}>${craftLabel}</button>
-      <button class="${listCls}" data-list-set="${key}" ${canList ? "" : "disabled"}>${setName} SETS: <b>${setsOwned}</b> · ${listLabel}</button>
+      <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"} title="${setName} SET — ${uniqueOwned}/${size} unique held${setsOwned > 0 ? ` · ${setsOwned} crafted` : ""}">${craftLabel}${setsBadge}</button>
+      <button class="${listCls}"  data-list-set="${key}"  ${canList ? "" : "disabled"} title="List a ${setName} SET — current market ${usd(setPrice)}">${listLabel}</button>
+      <button class="${vaultCls}" data-vault-set="${key}" ${canVault ? "" : "disabled"} title="Stash a ${setName} SET in your personal vault — earns ${earnedClout} CLOUT (XP)">${vaultLabel}</button>
     </div>`;
 }
 
@@ -1840,10 +1934,10 @@ function activeListingCount() {
   return Array.isArray(state.listings) ? state.listings.length : 0;
 }
 function listingSlotsFree() {
-  return Math.max(0, LISTING_SLOTS - activeListingCount());
+  return Math.max(0, listingSlotsEffective() - activeListingCount());
 }
 function listingSlotsFull() {
-  return activeListingCount() >= LISTING_SLOTS;
+  return activeListingCount() >= listingSlotsEffective();
 }
 
 function ensureBulkInv() {
@@ -1932,11 +2026,34 @@ function craftSet(key) {
   $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
 }
 
+function vaultSet(key) {
+  const track = craftTrack(key);
+  if (!track) return;
+  const itemKey = track.itemKey;
+  const inv = state.invById[itemKey];
+  if (!inv || !inv[1]) return;
+  inv[1] -= 1;
+  if (inv[1] <= 0) delete inv[1];
+  if (!state.vaultedSets) state.vaultedSets = {};
+  state.vaultedSets[itemKey] = (state.vaultedSets[itemKey] || 0) + 1;
+  const earned = cloutForSetKey(itemKey);
+  const beforeLv = currentCloutLevel();
+  state.clout = (state.clout || 0) + earned;
+  const afterLv = currentCloutLevel();
+  renderAll(); save();
+  const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
+  if (afterLv > beforeLv) {
+    $("hint").textContent = `Vaulted ${setName} SET. +${earned} CLOUT — LEVEL UP! Now Lv ${afterLv}.`;
+  } else {
+    $("hint").textContent = `Vaulted ${setName} SET. +${earned} CLOUT.`;
+  }
+}
+
 function listSetItem(key) {
   const itemKey = setItemKey(key);
   if (!itemKey) return;
   if (listingSlotsFull()) {
-    $("hint").textContent = `All ${LISTING_SLOTS} listing slots full — cancel one first.`;
+    $("hint").textContent = `All ${listingSlotsEffective()} listing slots full — cancel one first.`;
     return;
   }
   const inv = state.invById[itemKey];
@@ -2070,7 +2187,7 @@ function renderListings() {
   if (!wrap) return;
   const listings = Array.isArray(state.listings) ? state.listings : [];
   const used = listings.length;
-  const slots = LISTING_SLOTS;
+  const slots = listingSlotsEffective();
   const empties = Math.max(0, slots - used);
   let html = `
     <div class="listings-header">
@@ -2924,8 +3041,9 @@ function tickHomies() {
 
 function buySorter() {
   const owned = (state.sorters || []).length;
-  if (owned >= SORTER_MAX) {
-    $("hint").textContent = `Max sorters (${SORTER_MAX}) reached.`;
+  const cap = sorterMaxEffective();
+  if (owned >= cap) {
+    $("hint").textContent = `Max sorters (${cap}) reached.`;
     return;
   }
   if (state.coins < SORTER_COST) {
@@ -3086,8 +3204,9 @@ function renderSorters() {
   const buyBtn = $("buy-sorter");
   const costEl = $("sorter-cost");
   const owned = sorters.length;
-  if (costEl) costEl.textContent = owned >= SORTER_MAX ? `MAX (${SORTER_MAX})` : usd(SORTER_COST);
-  if (buyBtn) buyBtn.disabled = owned >= SORTER_MAX || state.coins < SORTER_COST;
+  const cap = sorterMaxEffective();
+  if (costEl) costEl.textContent = owned >= cap ? `MAX (${cap})` : usd(SORTER_COST);
+  if (buyBtn) buyBtn.disabled = owned >= cap || state.coins < SORTER_COST;
 
   // Incremental update — preserve DOM nodes (and :hover) across ticks.
   const wanted = new Set(sorters.map(s => String(s.uid)));
@@ -3334,6 +3453,8 @@ $("stock-rows").addEventListener("click", (e) => {
   if (craft && craft.dataset.craft && !craft.disabled) { craftSet(craft.dataset.craft); return; }
   const listBtn = e.target.closest(".set-list-btn");
   if (listBtn && listBtn.dataset.listSet && !listBtn.disabled) { listSetItem(listBtn.dataset.listSet); return; }
+  const vaultBtn = e.target.closest(".set-vault-btn");
+  if (vaultBtn && vaultBtn.dataset.vaultSet && !vaultBtn.disabled) { vaultSet(vaultBtn.dataset.vaultSet); return; }
 });
 $("dump-btn").addEventListener("click", dumpUnsorted);
 $("sand-canvas").addEventListener("click", (e) => {
