@@ -1280,28 +1280,37 @@ function cloutForSetKey(itemKey) {
 // available from the start; deeper nodes only become available once the
 // previous in the same chain is unlocked.
 const UPGRADE_NODES = [
-  // PAINT — bulk-pit hover-mark capabilities.
-  { id: "paint1", branch: "paint",    tier: 1, label: "Steadier Hand",    desc: "+5 marks",            cost: 8,   effect: { maxHighlights: 5 } },
-  { id: "paint2", branch: "paint",    tier: 2, label: "Wider Sweep",      desc: "+5 marks",            cost: 25,  effect: { maxHighlights: 5 },     prereq: ["paint1"] },
-  { id: "paint3", branch: "paint",    tier: 3, label: "Pile Mastery",     desc: "+10 marks",           cost: 80,  effect: { maxHighlights: 10 },    prereq: ["paint2"] },
-  { id: "paint4", branch: "paint",    tier: 4, label: "Bigger Brush",     desc: "Cursor +0.3 radius",  cost: 100, effect: { hoverRadius: 0.3 },     prereq: ["paint3"] },
-  { id: "paint5", branch: "paint",    tier: 5, label: "Massive Brush",    desc: "Cursor +0.5 radius",  cost: 300, effect: { hoverRadius: 0.5 },     prereq: ["paint4"] },
+  // PAINT — three subtracks: max marks, cursor radius, paint speed.
+  { id: "paint_marks1",  branch: "paint", subtrack: "marks",  label: "Steadier Hand", desc: "+5 marks",           cost: 8,   effect: { maxHighlights: 5 } },
+  { id: "paint_marks2",  branch: "paint", subtrack: "marks",  label: "Wider Sweep",   desc: "+5 marks",           cost: 25,  effect: { maxHighlights: 5 },     prereq: ["paint_marks1"] },
+  { id: "paint_marks3",  branch: "paint", subtrack: "marks",  label: "Pile Mastery",  desc: "+10 marks",          cost: 80,  effect: { maxHighlights: 10 },    prereq: ["paint_marks2"] },
+  { id: "paint_marks4",  branch: "paint", subtrack: "marks",  label: "Steady Aim",    desc: "+20 marks",          cost: 250, effect: { maxHighlights: 20 },    prereq: ["paint_marks3"] },
+  { id: "paint_radius1", branch: "paint", subtrack: "radius", label: "Bigger Brush",  desc: "Cursor +0.3 radius", cost: 100, effect: { hoverRadius: 0.3 } },
+  { id: "paint_radius2", branch: "paint", subtrack: "radius", label: "Massive Brush", desc: "Cursor +0.5 radius", cost: 300, effect: { hoverRadius: 0.5 },     prereq: ["paint_radius1"] },
+  { id: "paint_radius3", branch: "paint", subtrack: "radius", label: "Mop Brush",     desc: "Cursor +1.0 radius", cost: 700, effect: { hoverRadius: 1.0 },     prereq: ["paint_radius2"] },
+  { id: "paint_speed1",  branch: "paint", subtrack: "speed",  label: "Quick Eye",     desc: "Dwell -5ms",         cost: 40,  effect: { hoverDwellDelta: -5 } },
+  { id: "paint_speed2",  branch: "paint", subtrack: "speed",  label: "Snap Focus",    desc: "Dwell -10ms",        cost: 120, effect: { hoverDwellDelta: -10 }, prereq: ["paint_speed1"] },
+  { id: "paint_speed3",  branch: "paint", subtrack: "speed",  label: "Reflexes",      desc: "Dwell -15ms",        cost: 350, effect: { hoverDwellDelta: -15 }, prereq: ["paint_speed2"] },
   // LISTINGS — marketplace slot expansion.
-  { id: "list1",  branch: "listings", tier: 1, label: "Side Hustle",      desc: "+1 listing slot",     cost: 5,   effect: { listingSlots: 1 } },
-  { id: "list2",  branch: "listings", tier: 2, label: "Shop Front",       desc: "+1 listing slot",     cost: 20,  effect: { listingSlots: 1 },      prereq: ["list1"] },
-  { id: "list3",  branch: "listings", tier: 3, label: "Storefront",       desc: "+2 listing slots",    cost: 60,  effect: { listingSlots: 2 },      prereq: ["list2"] },
-  { id: "list4",  branch: "listings", tier: 4, label: "Online Empire",    desc: "+3 listing slots",    cost: 200, effect: { listingSlots: 3 },      prereq: ["list3"] },
+  { id: "list1",  branch: "listings", label: "Side Hustle",      desc: "+1 listing slot",     cost: 5,   effect: { listingSlots: 1 } },
+  { id: "list2",  branch: "listings", label: "Shop Front",       desc: "+1 listing slot",     cost: 20,  effect: { listingSlots: 1 },      prereq: ["list1"] },
+  { id: "list3",  branch: "listings", label: "Storefront",       desc: "+2 listing slots",    cost: 60,  effect: { listingSlots: 2 },      prereq: ["list2"] },
+  { id: "list4",  branch: "listings", label: "Online Empire",    desc: "+3 listing slots",    cost: 200, effect: { listingSlots: 3 },      prereq: ["list3"] },
   // SORTERS — automation expansion.
-  { id: "sort1",  branch: "sorters",  tier: 1, label: "Workbench",        desc: "+1 max sorter",       cost: 30,  effect: { sorterMax: 1 } },
-  { id: "sort2",  branch: "sorters",  tier: 2, label: "Garage",           desc: "+1 max sorter",       cost: 100, effect: { sorterMax: 1 },         prereq: ["sort1"] },
-  { id: "sort3",  branch: "sorters",  tier: 3, label: "Quick Pickers",    desc: "Sorters -500ms tick", cost: 200, effect: { sorterBaseMsDelta: -500 }, prereq: ["sort2"] },
+  { id: "sort1",  branch: "sorters",  label: "Workbench",        desc: "+1 max sorter",       cost: 30,  effect: { sorterMax: 1 } },
+  { id: "sort2",  branch: "sorters",  label: "Garage",           desc: "+1 max sorter",       cost: 100, effect: { sorterMax: 1 },         prereq: ["sort1"] },
+  { id: "sort3",  branch: "sorters",  label: "Quick Pickers",    desc: "Sorters -500ms tick", cost: 200, effect: { sorterBaseMsDelta: -500 }, prereq: ["sort2"] },
   // MARKET — economy modifiers.
-  { id: "mkt1",   branch: "market",   tier: 1, label: "Quick Sales",      desc: "Listing cooldown -3s",cost: 20,  effect: { listingCooldownDelta: -3 } },
-  { id: "mkt2",   branch: "market",   tier: 2, label: "Hot Demand",       desc: "NPC absorb +0.03/s",  cost: 80,  effect: { marketDecayDelta: 0.03 }, prereq: ["mkt1"] },
-  { id: "mkt3",   branch: "market",   tier: 3, label: "Premium Sets",     desc: "Set craft mult +0.10",cost: 250, effect: { setCraftMultDelta: 0.1 }, prereq: ["mkt2"] },
+  { id: "mkt1",   branch: "market",   label: "Quick Sales",      desc: "Listing cooldown -3s",cost: 20,  effect: { listingCooldownDelta: -3 } },
+  { id: "mkt2",   branch: "market",   label: "Hot Demand",       desc: "NPC absorb +0.03/s",  cost: 80,  effect: { marketDecayDelta: 0.03 }, prereq: ["mkt1"] },
+  { id: "mkt3",   branch: "market",   label: "Premium Sets",     desc: "Set craft mult +0.10",cost: 250, effect: { setCraftMultDelta: 0.1 }, prereq: ["mkt2"] },
 ];
 const UPGRADE_BRANCHES = [
-  { key: "paint",    label: "PAINT",    color: "#ff7eb3" },
+  { key: "paint",    label: "PAINT",    color: "#ff7eb3", subtracks: [
+    { key: "marks",  label: "MAX MARKS" },
+    { key: "radius", label: "CURSOR RADIUS" },
+    { key: "speed",  label: "PAINT SPEED" },
+  ] },
   { key: "listings", label: "LISTINGS", color: "#ffd84d" },
   { key: "sorters",  label: "SORTERS",  color: "#5aa8ff" },
   { key: "market",   label: "MARKET",   color: "#b8ff5a" },
@@ -1358,6 +1367,7 @@ function listingSlotsEffective()      { return LISTING_SLOTS       + (eff().list
 function sorterMaxEffective()         { return SORTER_MAX          + (eff().sorterMax            || 0); }
 function maxHighlightsEffective()     { return MAX_HIGHLIGHTS      + (eff().maxHighlights        || 0); }
 function hoverRadiusEffective()       { return HOVER_RADIUS_CELLS  + (eff().hoverRadius          || 0); }
+function hoverDwellMsEffective()      { return Math.max(5, HOVER_DWELL_MS + (eff().hoverDwellDelta || 0)); }
 function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
 function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
 function listingCooldownMaxEffective(){ return Math.max(listingCooldownMinEffective(), LISTING_COOLDOWN_MAX + (eff().listingCooldownDelta || 0)); }
@@ -1605,6 +1615,16 @@ function load() {
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!parsed.vaultedSets || typeof parsed.vaultedSets !== "object") parsed.vaultedSets = {};
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
+    // Paint nodes were renamed when split into subtracks. Map old ids → new
+    // so players keep their unlocked progress.
+    const PAINT_NODE_RENAMES = {
+      paint1: "paint_marks1",
+      paint2: "paint_marks2",
+      paint3: "paint_marks3",
+      paint4: "paint_radius1",
+      paint5: "paint_radius2",
+    };
+    parsed.unlockedNodes = parsed.unlockedNodes.map(id => PAINT_NODE_RENAMES[id] || id);
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     // Backfill slot assignments + cap to HOMIE_MAX (legacy saves had no slot).
@@ -3247,16 +3267,43 @@ function renderUpgrades() {
   const branches = _openUpgradesBranch
     ? UPGRADE_BRANCHES.filter(b => b.key === _openUpgradesBranch)
     : UPGRADE_BRANCHES;
-  body.classList.toggle("single", branches.length === 1);
+
+  // Build a flat list of (label, color, nodes[]) columns. Branches with a
+  // `subtracks` field get one column per subtrack; flat branches get one
+  // column for the whole branch.
+  const columns = [];
   branches.forEach(branch => {
+    if (Array.isArray(branch.subtracks) && branch.subtracks.length > 0) {
+      branch.subtracks.forEach(st => {
+        columns.push({
+          label: st.label,
+          color: branch.color,
+          nodes: UPGRADE_NODES.filter(n => n.branch === branch.key && n.subtrack === st.key),
+        });
+      });
+    } else {
+      columns.push({
+        label: branch.label,
+        color: branch.color,
+        nodes: UPGRADE_NODES.filter(n => n.branch === branch.key),
+      });
+    }
+  });
+  // single = exactly one column (a flat single-branch view); when paint is
+  // open we get three columns so we want the wider layout.
+  body.classList.toggle("single", columns.length === 1);
+  body.style.gridTemplateColumns = columns.length === 1
+    ? "minmax(260px, 360px)"
+    : `repeat(${columns.length}, 1fr)`;
+  columns.forEach(({ label, color, nodes }) => {
     const col = document.createElement("div");
     col.className = "upgrade-branch";
-    col.style.color = branch.color;
-    const label = document.createElement("div");
-    label.className = "upgrade-branch-label";
-    label.textContent = branch.label;
-    col.appendChild(label);
-    UPGRADE_NODES.filter(n => n.branch === branch.key).forEach(node => {
+    col.style.color = color;
+    const labelEl = document.createElement("div");
+    labelEl.className = "upgrade-branch-label";
+    labelEl.textContent = label;
+    col.appendChild(labelEl);
+    nodes.forEach(node => {
       const status = nodeStatus(node);
       const card = document.createElement("div");
       card.className = "upgrade-node " + status;
@@ -3929,7 +3976,7 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
     hoverCell = null;
     hoverTimer = null;
     drawSand();
-  }, HOVER_DWELL_MS);
+  }, hoverDwellMsEffective());
   drawSand();
 });
 $("sand-canvas").addEventListener("mouseleave", () => {
