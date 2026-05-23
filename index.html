@@ -602,6 +602,34 @@
   }
 
   #stock-rows { display: flex; flex-direction: column; gap: 10px; }
+  /* Complete Set row — apex craft, sits at the very top. Rainbow border +
+     stronger glow so it visually outranks the per-rarity rows below. */
+  .stock-row.complete-set {
+    border-left-color: transparent;
+    border-image: linear-gradient(180deg, #ffd84d, #ff7a3d, #c060ff, #65d6ff, #5ad06a, #ffd84d) 1;
+    border-left-width: 4px;
+    border-left-style: solid;
+    box-shadow: 0 0 16px rgba(255,216,77,0.28);
+    background: linear-gradient(90deg, rgba(255,216,77,0.06), var(--panel-light));
+  }
+  .stock-row.complete-set .rarity-name {
+    background: linear-gradient(90deg, #ffd84d, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d);
+    background-size: 220% auto;
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px; font-size: 1rem;
+    animation: complete-shimmer 4s linear infinite;
+  }
+  @keyframes complete-shimmer {
+    from { background-position: 0% 50%; }
+    to   { background-position: 200% 50%; }
+  }
+  .set-craft-btn.complete:not(:disabled),
+  .set-list-btn.complete:not(:disabled),
+  .set-vault-btn.complete:not(:disabled) {
+    border-image: linear-gradient(90deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3) 1;
+    border-style: solid; border-width: 1.5px;
+  }
   .stock-row {
     background: var(--panel-light); border-radius: 8px; padding: 12px 14px;
     display: grid; grid-template-columns: 0.9fr 1fr; align-items: center; gap: 12px;
@@ -1135,8 +1163,16 @@ const MARKET_KEYS = [
   "foilRare", "foilEpic", "foilLegendary", "foilMythic",
   "standardSet", "rareSet", "epicSet", "legendarySet", "mythicSet",
   "foilStandardSet", "foilRareSet", "foilEpicSet", "foilLegendarySet", "foilMythicSet",
+  "completeSet",
 ];
 const SET_ITEM_KEYS = [
+  "standardSet", "rareSet", "epicSet", "legendarySet", "mythicSet",
+  "foilStandardSet", "foilRareSet", "foilEpicSet", "foilLegendarySet", "foilMythicSet",
+  "completeSet",
+];
+// Complete Set: the apex craft. Consumes 1 of every per-rarity set item, can
+// be vaulted for a flat CLOUT reward, or listed for cash like any other set.
+const COMPLETE_SET_INGREDIENTS = [
   "standardSet", "rareSet", "epicSet", "legendarySet", "mythicSet",
   "foilStandardSet", "foilRareSet", "foilEpicSet", "foilLegendarySet", "foilMythicSet",
 ];
@@ -1190,6 +1226,9 @@ let BASELINE = def("BASELINE", {
   standardSet:        30,
   rareSet:            200,
   foilStandardSet:    120,
+  // Complete Set baseline. Roughly 1.4× the sum of the 10 component sets, so
+  // crafting it is meaningfully more lucrative than listing the parts.
+  completeSet:        35000,
 });
 // Priced-set baselines (epicSet, legendarySet, mythicSet, foilRare/Epic/Leg/Mythic
 // Sets) are derived from the per-card baseline × SET_CRAFT_MULTIPLIER × set
@@ -1283,14 +1322,11 @@ let LISTING_SLOTS        = def("LISTING_SLOTS", 10);
 const LISTING_TICK_MS = 2000;
 
 // ---- CLOUT progression --------------------------------------------------
-// CLOUT is XP earned by vaulting crafted sets (instead of listing them for
-// cash). The CLOUT balance is a spendable resource — players unlock nodes
-// on the upgrade grid by spending CLOUT. Each unlocked node contributes its
-// effect deltas to the effective game limits.
-function cloutForSetKey(itemKey) {
-  const b = BASELINE[itemKey] || 0;
-  return Math.max(1, Math.ceil(Math.sqrt(b)));
-}
+// CLOUT is XP earned by vaulting a Complete Set — the apex craft made from 1
+// of each per-rarity set. The CLOUT balance is a spendable resource — players
+// unlock nodes on the upgrade grid by spending CLOUT. Each unlocked node
+// contributes its effect deltas to the effective game limits.
+let COMPLETE_SET_CLOUT = def("COMPLETE_SET_CLOUT", 500);
 
 // Upgrade grid: four branches (paint / listings / sorters / market), each a
 // linear chain of escalating-cost nodes. Tier-1 nodes (no prereqs) are
@@ -1997,30 +2033,57 @@ function setActionsBlock(key) {
   const setPrice = marketPriceFor(track.itemKey, 1);
   const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
   const slotsFull = listingSlotsFull();
-  const earnedClout = cloutForSetKey(track.itemKey);
 
   const craftLabel = ready ? `CRAFT ${setName} SET` : `${setName} ${uniqueOwned}/${size}`;
   const listLabel  = setsOwned === 0 ? "—" : (slotsFull ? "FULL" : `LIST · ${compactUsd(setPrice)}`);
-  const vaultLabel = setsOwned === 0 ? "—" : `VAULT · +${earnedClout}`;
 
   const canList  = setsOwned > 0 && !slotsFull;
-  const canVault = setsOwned > 0;
 
   const craftCls = "set-craft-btn" + (track.foil ? " foil" : "");
   const listCls  = "set-list-btn"  + (track.foil ? " foil" : "");
-  const vaultCls = "set-vault-btn" + (track.foil ? " foil" : "");
   const setsBadge = setsOwned > 0 ? ` <span class="set-owned-badge">×${setsOwned}</span>` : "";
   return `
     <div class="set-actions">
       <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"} title="${setName} SET — ${uniqueOwned}/${size} unique held${setsOwned > 0 ? ` · ${setsOwned} crafted` : ""}">${craftLabel}${setsBadge}</button>
       <button class="${listCls}"  data-list-set="${key}"  ${canList ? "" : "disabled"} title="List a ${setName} SET — current market ${usd(setPrice)}">${listLabel}</button>
-      <button class="${vaultCls}" data-vault-set="${key}" ${canVault ? "" : "disabled"} title="Stash a ${setName} SET in your personal vault — earns ${earnedClout} CLOUT (XP)">${vaultLabel}</button>
     </div>`;
 }
 
 function renderVault() {
   const grid = $("stock-rows");
   grid.innerHTML = "";
+
+  // Complete Set row — the apex craft. Consumes 1 of every per-rarity set;
+  // vaulting it is the only source of CLOUT. Always shown so the player can
+  // see what they're working toward.
+  {
+    const ingredients = COMPLETE_SET_INGREDIENTS;
+    const have = completeSetIngredientCount();
+    const need = ingredients.length;
+    const ready = have >= need;
+    const owned = (state.invById.completeSet && state.invById.completeSet[1]) || 0;
+    const price = marketPriceFor("completeSet", 1);
+    const slotsFull = listingSlotsFull();
+    const canList  = owned > 0 && !slotsFull;
+    const canVault = owned > 0;
+    const craftLabel = ready ? "CRAFT COMPLETE SET" : `COMPLETE SET ${have}/${need}`;
+    const listLabel  = owned === 0 ? "—" : (slotsFull ? "FULL" : `LIST · ${compactUsd(price)}`);
+    const vaultLabel = owned === 0 ? "—" : `VAULT · +${COMPLETE_SET_CLOUT}`;
+    const ownedBadge = owned > 0 ? ` <span class="set-owned-badge">×${owned}</span>` : "";
+    const row = document.createElement("div");
+    row.className = "stock-row complete-set";
+    row.innerHTML = `
+      <div class="rarity-name">★ COMPLETE</div>
+      <div class="counts">
+        <div class="set-actions">
+          <button class="set-craft-btn complete" data-craft-complete ${ready ? "" : "disabled"} title="Crafts a COMPLETE SET — consumes 1 of every per-rarity set (${have}/${need} ready)">${craftLabel}${ownedBadge}</button>
+          <button class="set-list-btn complete" data-list-complete ${canList ? "" : "disabled"} title="List a COMPLETE SET — current market ${usd(price)}">${listLabel}</button>
+          <button class="set-vault-btn complete" data-vault-complete ${canVault ? "" : "disabled"} title="Stash a COMPLETE SET — earns ${COMPLETE_SET_CLOUT} CLOUT">${vaultLabel}</button>
+        </div>
+      </div>`;
+    grid.appendChild(row);
+  }
+
   // One row per rarity, mythic → standard top to bottom. Each row holds the
   // foil track's craft + list buttons on top of the non-foil track's craft +
   // list buttons. Rarities the player has never touched stay hidden until
@@ -2296,21 +2359,66 @@ function craftSet(key) {
   $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
 }
 
-function vaultSet(key) {
-  const track = craftTrack(key);
-  if (!track) return;
-  const itemKey = track.itemKey;
-  const inv = state.invById[itemKey];
+function completeSetIngredientCount() {
+  return COMPLETE_SET_INGREDIENTS.reduce((n, k) => {
+    return n + (((state.invById[k] || {})[1] || 0) > 0 ? 1 : 0);
+  }, 0);
+}
+
+function canCraftCompleteSet() {
+  return completeSetIngredientCount() >= COMPLETE_SET_INGREDIENTS.length;
+}
+
+function craftCompleteSet() {
+  if (!canCraftCompleteSet()) {
+    $("hint").textContent = `Need 1 of every rarity set first (${completeSetIngredientCount()}/${COMPLETE_SET_INGREDIENTS.length}).`;
+    return;
+  }
+  COMPLETE_SET_INGREDIENTS.forEach(k => {
+    const inv = state.invById[k];
+    inv[1] -= 1;
+    if (inv[1] <= 0) delete inv[1];
+  });
+  if (!state.invById.completeSet) state.invById.completeSet = {};
+  state.invById.completeSet[1] = (state.invById.completeSet[1] || 0) + 1;
+  renderAll(); save();
+  $("hint").textContent = `Crafted a COMPLETE SET. Vault it for +${COMPLETE_SET_CLOUT} CLOUT or list it for cash.`;
+}
+
+function vaultCompleteSet() {
+  const inv = state.invById.completeSet;
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
   if (!state.vaultedSets) state.vaultedSets = {};
-  state.vaultedSets[itemKey] = (state.vaultedSets[itemKey] || 0) + 1;
-  const earned = cloutForSetKey(itemKey);
-  state.clout = (state.clout || 0) + earned;
+  state.vaultedSets.completeSet = (state.vaultedSets.completeSet || 0) + 1;
+  state.clout = (state.clout || 0) + COMPLETE_SET_CLOUT;
   renderAll(); save();
-  const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
-  $("hint").textContent = `Vaulted ${setName} SET. +${earned} CLOUT (balance: ${state.clout}).`;
+  $("hint").textContent = `Vaulted a COMPLETE SET. +${COMPLETE_SET_CLOUT} CLOUT (balance: ${state.clout}).`;
+}
+
+function listCompleteSet() {
+  if (listingSlotsFull()) {
+    $("hint").textContent = `All ${listingSlotsEffective()} listing slots full — cancel one first.`;
+    return;
+  }
+  const inv = state.invById.completeSet;
+  if (!inv || !inv[1]) return;
+  inv[1] -= 1;
+  if (inv[1] <= 0) delete inv[1];
+  const ask = Math.max(0.01, Math.round(marketPriceFor("completeSet", 1) * 100) / 100);
+  const cooldownSec = rollListingCooldown();
+  const uid = (state.listingsUidCounter || 0) + 1;
+  state.listingsUidCounter = uid;
+  if (!Array.isArray(state.listings)) state.listings = [];
+  state.listings.push({
+    uid, rarity: "completeSet", cardId: 1, foil: false,
+    askPrice: ask,
+    resolveAt: Date.now() + cooldownSec * 1000,
+    willResolve: true,
+  });
+  renderAll(); save();
+  $("hint").textContent = `Listed COMPLETE SET @ ${usd(ask)}.`;
 }
 
 function listSetItem(key) {
@@ -2380,7 +2488,9 @@ function resolveListings() {
       // next sale of this exact (key, id). Works for both set items and
       // per-id priced cards (l.rarity is the market key in either case).
       if (BASELINE[l.rarity] != null) npcAbsorbSale(l.rarity, l.cardId || 1);
-      if (isSetListing(l)) {
+      if (l.rarity === "completeSet") {
+        lastMessage = `Sold COMPLETE SET @ ${usd(l.askPrice)}.`;
+      } else if (isSetListing(l)) {
         const meta = setItemMeta(l.rarity);
         lastMessage = `Sold ${meta.foil ? "FOIL " : ""}${RARITY_LABELS[meta.baseRarity]} SET @ ${usd(l.askPrice)}.`;
       } else {
@@ -2439,7 +2549,15 @@ function renderListings() {
     </div>
     <div class="listings-grid">`;
   listings.forEach(l => {
-    if (isSetListing(l)) {
+    if (l.rarity === "completeSet") {
+      const color = "#ffd84d";
+      html += `<button type="button" class="listing-card set complete" data-uid="${l.uid}" style="--cell-color:${color}" title="COMPLETE SET · ${usd(l.askPrice)}\nClick to cancel">`
+            + `<span class="lst-glyph">★</span>`
+            + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
+            + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
+            + `<span class="lst-id">COMPLETE</span>`
+            + `</button>`;
+    } else if (isSetListing(l)) {
       const meta = setItemMeta(l.rarity);
       const color = RARITY_COLOURS[meta.baseRarity];
       const cls = "listing-card set" + (meta.foil ? " foil" : "");
@@ -3088,7 +3206,9 @@ const DESIGN_FIELDS = [
   { group: "Market baselines", key: "BASELINE.standardSet",            path: "BASELINE.standardSet",          label: "Standard Set baseline ($)",      step: 1,    min: 0 },
   { group: "Market baselines", key: "BASELINE.rareSet",                path: "BASELINE.rareSet",              label: "Rare Set baseline ($)",          step: 5,    min: 0 },
   { group: "Market baselines", key: "BASELINE.foilStandardSet",        path: "BASELINE.foilStandardSet",      label: "Foil Standard Set baseline ($)", step: 1,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.completeSet",            path: "BASELINE.completeSet",          label: "Complete Set baseline ($)",      step: 100,  min: 0 },
   { group: "Market baselines", key: "SET_CRAFT_MULTIPLIER",            path: "SET_CRAFT_MULTIPLIER",          label: "Priced-set craft multiplier",    step: 0.05, min: 1 },
+  { group: "Market baselines", key: "COMPLETE_SET_CLOUT",              path: "COMPLETE_SET_CLOUT",            label: "Complete Set vault → CLOUT",     step: 25,   min: 1, int: true },
 
   // Set sizes
   { group: "Set sizes",        key: "SET_SIZES.standard",              path: "SET_SIZES.standard",        label: "Standard card count",          step: 1, min: 1, int: true },
@@ -3148,6 +3268,7 @@ function _liveDesignSnapshot() {
     SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
     MARKET_TARGET_STOCK, MARKET_DECAY_RATE, SET_CRAFT_MULTIPLIER,
+    COMPLETE_SET_CLOUT,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO,
     LISTING_COOLDOWN_MIN, LISTING_COOLDOWN_MAX, LISTING_SLOTS,
   };
@@ -3954,12 +4075,19 @@ $("listings-panel").addEventListener("click", (e) => {
   if (card && card.dataset.uid) cancelListing(parseInt(card.dataset.uid, 10));
 });
 $("stock-rows").addEventListener("click", (e) => {
+  // Complete Set actions take priority — same button classes, distinguished
+  // by their dedicated data-*-complete attributes.
+  const craftC = e.target.closest("[data-craft-complete]");
+  if (craftC && !craftC.disabled) { craftCompleteSet(); return; }
+  const listC  = e.target.closest("[data-list-complete]");
+  if (listC  && !listC.disabled)  { listCompleteSet();  return; }
+  const vaultC = e.target.closest("[data-vault-complete]");
+  if (vaultC && !vaultC.disabled) { vaultCompleteSet(); return; }
+  // Per-rarity set actions.
   const craft = e.target.closest(".set-craft-btn");
   if (craft && craft.dataset.craft && !craft.disabled) { craftSet(craft.dataset.craft); return; }
   const listBtn = e.target.closest(".set-list-btn");
   if (listBtn && listBtn.dataset.listSet && !listBtn.disabled) { listSetItem(listBtn.dataset.listSet); return; }
-  const vaultBtn = e.target.closest(".set-vault-btn");
-  if (vaultBtn && vaultBtn.dataset.vaultSet && !vaultBtn.disabled) { vaultSet(vaultBtn.dataset.vaultSet); return; }
 });
 $("sand-canvas").addEventListener("click", (e) => {
   const canvas = $("sand-canvas");

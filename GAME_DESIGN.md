@@ -179,39 +179,28 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 
 ---
 
-## 8b. CLOUT — vault sets, spend on the upgrade grid
+## 8b. CLOUT — craft + vault a Complete Set
 
-Every crafted set can either be **listed** for cash or **vaulted** for CLOUT. Vaulting is a one-way trade — the set is consumed and you can never list it later — but it earns progression XP that ratchets up your effective caps.
+CLOUT comes from one path only: **vaulting a COMPLETE SET**. A Complete Set is the apex craft — it consumes 1 of every per-rarity set item (all 10: standard, rare, foil-standard, epic, legendary, mythic, and the four priced foils). Once crafted it lands in `state.invById.completeSet` and can be:
 
-**CLOUT per set:** `ceil(sqrt(BASELINE[setKey]))`. Stays in sync with the set's market baseline, so retuning prices reshapes the curve automatically.
+- **Vaulted** for `COMPLETE_SET_CLOUT` (default 500) — one-way, consumes the Complete Set.
+- **Listed** for cash on the marketplace at the `BASELINE.completeSet` price (default $35,000, ~1.4× the sum of its 10 component sets).
 
-| Set                  | Baseline | CLOUT |
-|----------------------|---------:|------:|
-| Standard Set         | $15      | 4     |
-| Rare Set             | $200     | 15    |
-| Foil Standard Set    | $60      | 8     |
-| Epic Set             | $52      | 8     |
-| Legendary Set        | $173     | 14    |
-| Mythic Set           | $345     | 19    |
-| Foil Rare Set        | $621     | 25    |
-| Foil Epic Set        | $2,588   | 51    |
-| Foil Legendary Set   | $6,900   | 84    |
-| Foil Mythic Set      | $13,800  | 118   |
+Per-rarity sets have no vault path anymore — they're ingredients (or cash, via LIST). The Complete Set row sits at the top of the vault column with a rainbow border + shimmering label and a `CRAFT COMPLETE SET X/10` button that lights up when all ten ingredients are held.
 
-**CLOUT is a spendable balance**, not a running total. The header pink chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. Click any **available** node to spend CLOUT and apply the bonus live — effective caps recompute on the spot, no migration or level threshold to cross.
-
-**Upgrade grid (`UPGRADE_NODES`):** four parallel branches, each a linear chain of escalating-cost nodes. Tier-1 nodes have no prereqs; deeper nodes only become available once the previous in the same branch is unlocked.
+Sorter upgrades are no longer CLOUT-bought — they cost cash via each sorter card's `⬆ $X` button. Three branches remain on the upgrade grid:
 
 | Branch | Tier 1 → ... | What it does |
 |--------|-------------|-------------|
-| PAINT  | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Bigger Brush (100) → Massive Brush (300) | +5 / +5 / +10 marks, then +0.3 / +0.5 cursor radius |
+| PAINT  | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Steady Aim (250), Bigger Brush (100) → Massive Brush (300) → Mop Brush (700), Quick Eye (40) → Snap Focus (120) → Reflexes (350) | +marks / +cursor radius / -paint dwell |
 | LISTINGS | Side Hustle (5) → Shop Front (20) → Storefront (60) → Online Empire (200) | +1 / +1 / +2 / +3 marketplace slots |
-| SORTERS | Workbench (30) → Garage (100) → Quick Pickers (200) | +1 / +1 max sorter, then sorter tick -500ms |
 | MARKET | Quick Sales (20) → Hot Demand (80) → Premium Sets (250) | listing cooldown -3s, NPC absorb +0.03/s, set craft mult +0.10 |
 
-Costs in CLOUT; numbers above are the node cost. Effects are deltas added to the base constants (`LISTING_SLOTS`, `SORTER_MAX`, etc.) via `unlockedNodeEffects()`.
+Costs in CLOUT; numbers above are the node cost. Effects are deltas added to the base constants via `unlockedNodeEffects()`.
 
-Modal UI: four columns (one per branch), each node card shows its name, effect, cost, and status — **owned** (gold border), **available** (pink pulse, clickable), **unaffordable** (dim pink), **locked** (dashed, prereqs unmet). The vault button on each set track is magenta to visually separate it from the gold LIST action.
+**CLOUT is a spendable balance**, not a running total. The header pink chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. Click any **available** node to spend CLOUT and apply the bonus live — effective caps recompute on the spot.
+
+Modal UI: three columns (one per branch), each node card shows its name, effect, cost, and status — **owned** (gold border), **available** (pink pulse, clickable), **unaffordable** (dim pink), **locked** (dashed, prereqs unmet).
 
 ---
 
