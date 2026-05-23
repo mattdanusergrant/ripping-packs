@@ -968,7 +968,6 @@
       <h2 id="sorters-title">SORTERS</h2>
       <div class="sorters-header-actions">
         <button class="sorter-buy-modal-btn" id="buy-sorter-modal" type="button">+ BUY ANOTHER<span class="cost" id="buy-sorter-modal-cost">$500</span></button>
-        <button class="upgrade-trigger" id="upgrade-sorters-modal" type="button" data-branch="sorters">⬆ UPGRADES</button>
       </div>
       <button class="upgrades-close" id="sorters-close" aria-label="Close">×</button>
     </div>
@@ -1314,10 +1313,8 @@ const UPGRADE_NODES = [
   { id: "list2",  branch: "listings", label: "Shop Front",       desc: "+1 listing slot",     cost: 20,  effect: { listingSlots: 1 },      prereq: ["list1"] },
   { id: "list3",  branch: "listings", label: "Storefront",       desc: "+2 listing slots",    cost: 60,  effect: { listingSlots: 2 },      prereq: ["list2"] },
   { id: "list4",  branch: "listings", label: "Online Empire",    desc: "+3 listing slots",    cost: 200, effect: { listingSlots: 3 },      prereq: ["list3"] },
-  // SORTERS — automation expansion.
-  { id: "sort1",  branch: "sorters",  label: "Workbench",        desc: "+1 max sorter",       cost: 30,  effect: { sorterMax: 1 } },
-  { id: "sort2",  branch: "sorters",  label: "Garage",           desc: "+1 max sorter",       cost: 100, effect: { sorterMax: 1 },         prereq: ["sort1"] },
-  { id: "sort3",  branch: "sorters",  label: "Quick Pickers",    desc: "Sorters -500ms tick", cost: 200, effect: { sorterBaseMsDelta: -500 }, prereq: ["sort2"] },
+  // SORTERS — all sorter upgrades now cost CASH (per-sorter level-ups via
+  // the sorter card's ⬆ button). No CLOUT-bought sorter nodes.
   // MARKET — economy modifiers.
   { id: "mkt1",   branch: "market",   label: "Quick Sales",      desc: "Listing cooldown -3s",cost: 20,  effect: { listingCooldownDelta: -3 } },
   { id: "mkt2",   branch: "market",   label: "Hot Demand",       desc: "NPC absorb +0.03/s",  cost: 80,  effect: { marketDecayDelta: 0.03 }, prereq: ["mkt1"] },
@@ -1330,7 +1327,6 @@ const UPGRADE_BRANCHES = [
     { key: "speed",  label: "PAINT SPEED" },
   ] },
   { key: "listings", label: "LISTINGS", color: "#ffd84d" },
-  { key: "sorters",  label: "SORTERS",  color: "#5aa8ff" },
   { key: "market",   label: "MARKET",   color: "#b8ff5a" },
 ];
 
@@ -1642,6 +1638,22 @@ function load() {
       paint5: "paint_radius2",
     };
     parsed.unlockedNodes = parsed.unlockedNodes.map(id => PAINT_NODE_RENAMES[id] || id);
+    // Sorter upgrades now cost cash, not CLOUT. Strip the retired sorter
+    // nodes and refund what the player spent on them so they can re-route
+    // that CLOUT into the surviving branches.
+    const REMOVED_SORTER_COSTS = { sort1: 30, sort2: 100, sort3: 200 };
+    let sorterRefund = 0;
+    parsed.unlockedNodes = parsed.unlockedNodes.filter(id => {
+      if (REMOVED_SORTER_COSTS[id] != null) {
+        sorterRefund += REMOVED_SORTER_COSTS[id];
+        return false;
+      }
+      return true;
+    });
+    if (sorterRefund > 0) {
+      parsed.clout = (parsed.clout || 0) + sorterRefund;
+      parsed.cloutSpent = Math.max(0, (parsed.cloutSpent || 0) - sorterRefund);
+    }
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     // Backfill slot assignments + cap to HOMIE_MAX (legacy saves had no slot).
