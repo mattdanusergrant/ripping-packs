@@ -1451,44 +1451,67 @@ function setCraftMultiplierEffective(){ return SET_CRAFT_MULTIPLIER+ (eff().setC
 
 
 // ---- State ---------------------------------------------------------------
-const SAVE_KEY = "cryptid_almanac_save_v4"; // bumped: starter box
+// Save schema is now multi-set. Per-set state (inventory, stock, vault, pile,
+// market) lives under state.sets[setId]; top-level state holds cross-set
+// fields (cash, CLOUT, upgrade nodes, listings, homies, sorters).
+const SAVE_KEY = "cryptid_almanac_save_v5"; // bumped: per-set state buckets
+// Set numbering follows the lore — one set per year, 2001 → 2030. Set 30 is
+// the current year and the only set live in Phase 1. Future phases unlock
+// older years via the vintage shop.
+const CURRENT_SET_ID = 30;
 const defaultState = () => ({
   coins: 50,
   packsOpened: 0,
-  packSupply: BOX_SIZE, // start with a box of loose packs on the house
-  unsorted:   { standard: 0, rare: 0, foilStandard: 0 },
-  stock:      { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
-  stockFoil:  { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
-  opened:     { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
-  openedFoil: { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
-  pile: [], // [colIndex] = array of rarity strings, bottom-up
-  owned:     { standard: [], rare: [], epic: [], legendary: [], mythic: [] },
-  ownedFoil: { standard: [], rare: [], epic: [], legendary: [], mythic: [] },
-  setsCelebrated:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
-  setsCelebratedFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
-  invById:      emptyInvById(),
-  bulkInvById:  { standard: {}, rare: {}, foilStandard: {} }, // per-id counts for sortable bulk
-  // Per (key, id), the NPC inventory level. Drives prices via marketPriceFor.
-  // Starts at MARKET_TARGET_STOCK when first accessed (lazy default) so the
-  // initial price equals BASELINE[key].
-  marketInv:        {},
-  marketInvUpdated: {},
+  // Per-set state buckets. Phase 1: only setId 30 exists by default; older
+  // sets are materialized lazily as the vintage shop comes online.
+  activeSetId: CURRENT_SET_ID,
+  sets: { [CURRENT_SET_ID]: blankSetState({ starterBox: true }) },
   marketVersion: MARKET_VERSION,
   setVersion: SET_VERSION,
-  boxesOwned: 1,  // sealed boxes, used to crack open or hire homies (1 free)
-  homies: [],     // [{uid, startAt, packsRemaining, lastRipAt}] active homies
+  homies: [],     // [{uid, startAt, packsRemaining, lastRipAt, setId}]
   homieUidCounter: 0,
-  sorters: [],    // [{uid, level, input:{}, output:{}, lastSortAt}]
-                  // input  = raw grains loaded from the pile bottom row
-                  // output = grains the sorter finished processing (ready to collect)
+  sorters: [],    // [{uid, level, input:{}, output:{}, lastSortAt, setId}]
   sorterUidCounter: 0,
   clout: 0,              // CLOUT balance — spent on upgrade nodes
   cloutSpent: 0,         // lifetime CLOUT spent
-  vaultedSets: {},       // { [setItemKey]: count } — lifetime vault deposits
   unlockedNodes: [],     // ids of purchased upgrade nodes
-  listings: [],          // [{uid, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
+  listings: [],          // [{uid, setId, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
 });
+
+function blankSetState({ starterBox = false } = {}) {
+  return {
+    packSupply: starterBox ? BOX_SIZE : 0,
+    boxesOwned: starterBox ? 1 : 0,
+    unsorted:   { standard: 0, rare: 0, foilStandard: 0 },
+    stock:      { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+    stockFoil:  { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+    opened:     { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+    openedFoil: { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
+    pile: [],
+    owned:     { standard: [], rare: [], epic: [], legendary: [], mythic: [] },
+    ownedFoil: { standard: [], rare: [], epic: [], legendary: [], mythic: [] },
+    setsCelebrated:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
+    setsCelebratedFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
+    invById:      emptyInvById(),
+    bulkInvById:  { standard: {}, rare: {}, foilStandard: {} },
+    vaultedSets:  {},
+    // NPC virtual market — lazy-defaults to MARKET_TARGET_STOCK per (key, id)
+    // on first read so prices begin at baseline.
+    marketInv:        {},
+    marketInvUpdated: {},
+  };
+}
+
+// Returns the per-set state bundle for setId, creating it on first touch.
+function setStateFor(setId) {
+  if (!state.sets) state.sets = {};
+  if (!state.sets[setId]) state.sets[setId] = blankSetState();
+  return state.sets[setId];
+}
+// Shortcut for the active set's bundle. Almost every inventory-touching
+// code path runs against the active set in Phase 1.
+function cur() { return setStateFor(state.activeSetId); }
 
 function emptyInvById() {
   const o = {};
@@ -1502,59 +1525,49 @@ function marketKeySize(k) {
   return meta ? SET_SIZES[meta.rarity] : 0;
 }
 
-// Lazy-decay the NPC inventory for (key, id) up to the current real time.
-// Called automatically inside marketPriceFor / npcAbsorbSale; no periodic
-// ticker. Inventory starts at MARKET_TARGET_STOCK when first accessed so
-// prices begin at baseline.
-function decayMarketInv(key, id, now) {
-  if (!state.marketInv)        state.marketInv        = {};
-  if (!state.marketInvUpdated) state.marketInvUpdated = {};
-  if (!state.marketInv[key])        state.marketInv[key]        = {};
-  if (!state.marketInvUpdated[key]) state.marketInvUpdated[key] = {};
-  const cur = state.marketInv[key][id] != null
-    ? state.marketInv[key][id]
+// Lazy-decay the NPC inventory for (setId, key, id) up to the current real
+// time. Each set has its own virtual market — a 2025 epic and a 2030 epic
+// are different items. Inventory starts at MARKET_TARGET_STOCK when first
+// accessed so prices begin at baseline.
+function decayMarketInv(setId, key, id, now) {
+  const bundle = setStateFor(setId);
+  if (!bundle.marketInv[key])        bundle.marketInv[key]        = {};
+  if (!bundle.marketInvUpdated[key]) bundle.marketInvUpdated[key] = {};
+  const curInv = bundle.marketInv[key][id] != null
+    ? bundle.marketInv[key][id]
     : MARKET_TARGET_STOCK;
-  const last = state.marketInvUpdated[key][id] != null
-    ? state.marketInvUpdated[key][id]
+  const last = bundle.marketInvUpdated[key][id] != null
+    ? bundle.marketInvUpdated[key][id]
     : now;
   const elapsed = Math.max(0, (now - last) / 1000);
-  const decayed = Math.max(0, cur - elapsed * marketDecayEffective());
-  state.marketInv[key][id]        = decayed;
-  state.marketInvUpdated[key][id] = now;
+  const decayed = Math.max(0, curInv - elapsed * marketDecayEffective());
+  bundle.marketInv[key][id]        = decayed;
+  bundle.marketInvUpdated[key][id] = now;
   return decayed;
 }
 
-// Current market price for a (key, id). Lazy — only computes when asked.
-function marketPriceFor(key, id) {
+// Current market price for a (setId, key, id). Lazy — only computes when asked.
+function marketPriceFor(setId, key, id) {
   const baseline = BASELINE[key];
   if (!baseline) return 0;
-  const inv = decayMarketInv(key, id, Date.now());
+  const inv = decayMarketInv(setId, key, id, Date.now());
   const raw = baseline * (MARKET_TARGET_STOCK / Math.max(1, inv));
   const floor = baseline * PRICE_FLOOR_RATIO;
   const ceil  = baseline * PRICE_CEIL_RATIO;
   return Math.max(floor, Math.min(ceil, raw));
 }
 
-// A listing just sold — NPC absorbed one unit of (key, id). Decay first,
-// then bump inventory, which pushes the price for subsequent sales down.
-function npcAbsorbSale(key, id) {
+// A listing just sold — NPC absorbed one unit of (setId, key, id). Decay
+// first, then bump inventory, which pushes price for subsequent sales down.
+function npcAbsorbSale(setId, key, id) {
   const now = Date.now();
-  decayMarketInv(key, id, now);
-  state.marketInv[key][id] = (state.marketInv[key][id] || 0) + 1;
-  state.marketInvUpdated[key][id] = now;
+  decayMarketInv(setId, key, id, now);
+  const bundle = setStateFor(setId);
+  bundle.marketInv[key][id] = (bundle.marketInv[key][id] || 0) + 1;
+  bundle.marketInvUpdated[key][id] = now;
 }
 
 
-function pickRandomIds(rarity, n) {
-  const size = SET_SIZES[rarity];
-  const all = [];
-  for (let i = 1; i <= size; i++) all.push(i);
-  for (let i = all.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [all[i], all[j]] = [all[j], all[i]];
-  }
-  return all.slice(0, Math.min(n, size)).sort((a, b) => a - b);
-}
 let state = load() || defaultState();
 
 function load() {
@@ -1562,334 +1575,34 @@ function load() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (typeof parsed.coins !== "number" || !parsed.stock || !parsed.stockFoil) return null;
-    if (!Array.isArray(parsed.pile)) parsed.pile = [];
-    if (!parsed.owned) {
-      // Backfill set ownership for legacy saves: grant random IDs based on lifetime opened.
-      parsed.owned     = { common: [], uncommon: [], rare: [], mythic: [] };
-      parsed.ownedFoil = { common: [], uncommon: [], rare: [], mythic: [] };
-      RARITIES.forEach(r => {
-        parsed.owned[r]     = pickRandomIds(r, parsed.opened[r]     || 0);
-        parsed.ownedFoil[r] = pickRandomIds(r, parsed.openedFoil[r] || 0);
-      });
-    }
-    if (!parsed.setsCelebrated) {
-      parsed.setsCelebrated     = { common: false, uncommon: false, rare: false, mythic: false };
-      parsed.setsCelebratedFoil = { common: false, uncommon: false, rare: false, mythic: false };
-      RARITIES.forEach(r => {
-        if (parsed.owned[r].length     >= SET_SIZES[r]) parsed.setsCelebrated[r]     = true;
-        if (parsed.ownedFoil[r].length >= SET_SIZES[r]) parsed.setsCelebratedFoil[r] = true;
-      });
-    }
-    if (!parsed.invById) {
-      // Legacy: distribute existing stock counts randomly across IDs.
-      const inv = {};
-      MARKET_KEYS.forEach(k => { inv[k] = {}; });
-      const mythicSize = SET_SIZES.mythic;
-      for (let i = 0; i < (parsed.stock.mythic || 0); i++) {
-        const id = Math.floor(Math.random() * mythicSize) + 1;
-        inv.mythic[id] = (inv.mythic[id] || 0) + 1;
-      }
-      RARITIES.forEach(r => {
-        const mk = marketKey(r, true);
-        if (!mk) return;
-        const size = SET_SIZES[r];
-        for (let i = 0; i < (parsed.stockFoil[r] || 0); i++) {
-          const id = Math.floor(Math.random() * size) + 1;
-          inv[mk][id] = (inv[mk][id] || 0) + 1;
-        }
-      });
-      parsed.invById = inv;
-    }
-    if (parsed.setVersion !== SET_VERSION) {
-      // Migrate: IDs that exceeded the new per-rarity cap get remapped.
-      RARITIES.forEach(r => {
-        const max = SET_SIZES[r];
-        if (Array.isArray(parsed.owned[r]))     parsed.owned[r]     = parsed.owned[r].filter(id => id >= 1 && id <= max);
-        if (Array.isArray(parsed.ownedFoil[r])) parsed.ownedFoil[r] = parsed.ownedFoil[r].filter(id => id >= 1 && id <= max);
-      });
-      if (parsed.invById) {
-        MARKET_KEYS.forEach(mk => {
-          const meta = rarityFromMarketKey(mk);
-          if (!meta) return;
-          const max = SET_SIZES[meta.rarity];
-          const oldBucket = parsed.invById[mk] || {};
-          const newBucket = {};
-          Object.entries(oldBucket).forEach(([id, count]) => {
-            const i = parseInt(id, 10);
-            const target = (i >= 1 && i <= max) ? i : (Math.floor(Math.random() * max) + 1);
-            newBucket[target] = (newBucket[target] || 0) + count;
-          });
-          parsed.invById[mk] = newBucket;
-        });
-      }
-      // Bulk per-id counts (standards/rares/foilStandard) also need clamping
-      // — phantom out-of-range IDs would otherwise persist invisibly forever
-      // and inflate state.stock relative to what canCraftSet() can see.
-      if (parsed.bulkInvById) {
-        SAND_BULK_KEYS.forEach(k => {
-          const max = SET_SIZES[bulkBaseRarity(k)];
-          if (!max) return;
-          const oldBucket = parsed.bulkInvById[k] || {};
-          const newBucket = {};
-          Object.entries(oldBucket).forEach(([id, count]) => {
-            const i = parseInt(id, 10);
-            const target = (i >= 1 && i <= max) ? i : (Math.floor(Math.random() * max) + 1);
-            newBucket[target] = (newBucket[target] || 0) + count;
-          });
-          parsed.bulkInvById[k] = newBucket;
-        });
-      }
-      if (parsed.setsCelebrated) {
-        RARITIES.forEach(r => {
-          parsed.setsCelebrated[r]     = (parsed.owned[r]     || []).length >= SET_SIZES[r];
-          parsed.setsCelebratedFoil[r] = (parsed.ownedFoil[r] || []).length >= SET_SIZES[r];
-        });
-      }
-      // Active listings carrying old per-rarity IDs get remapped to a valid one.
-      if (Array.isArray(parsed.listings)) {
-        parsed.listings.forEach(l => {
-          if (l.cardId == null) return;
-          const max = SET_SIZES[l.rarity];
-          if (!max) return;
-          if (!(l.cardId >= 1 && l.cardId <= max)) {
-            l.cardId = Math.floor(Math.random() * max) + 1;
-          }
-        });
-      }
-      parsed.setVersion = SET_VERSION;
-    }
-    if (parsed.marketVersion !== MARKET_VERSION) {
-      // Wipe the legacy ticker-based market state. The new inventory model
-      // lazy-defaults to MARKET_TARGET_STOCK on first read, so empty objects
-      // make every price start at baseline.
-      delete parsed.market;
-      delete parsed.marketFund;
-      parsed.marketInv = {};
-      parsed.marketInvUpdated = {};
-      parsed.marketVersion = MARKET_VERSION;
-    }
-    if (!parsed.marketInv)        parsed.marketInv        = {};
-    if (!parsed.marketInvUpdated) parsed.marketInvUpdated = {};
-    if (!parsed.unsorted) {
-      // Treat existing bulk stock as unsorted so the pile stays intact
-      parsed.unsorted = {
-        common:   parsed.stock.common   || 0,
-        uncommon: parsed.stock.uncommon || 0,
-        rare:     parsed.stock.rare     || 0,
-      };
-      parsed.stock.common   = 0;
-      parsed.stock.uncommon = 0;
-      parsed.stock.rare     = 0;
-    }
-    // Retired: state.friends → replaced by homies.
-    delete parsed.friends;
-    if (typeof parsed.boxesOwned !== "number") parsed.boxesOwned = 0;
+    // v5 schema check: top-level coins + per-set buckets under state.sets.
+    if (typeof parsed.coins !== "number" || !parsed.sets || typeof parsed.sets !== "object") return null;
+    // Sanity backfills for top-level cross-set fields.
+    if (typeof parsed.activeSetId !== "number") parsed.activeSetId = CURRENT_SET_ID;
     if (typeof parsed.clout !== "number") parsed.clout = 0;
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
-    if (!parsed.vaultedSets || typeof parsed.vaultedSets !== "object") parsed.vaultedSets = {};
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
-    // Paint nodes were renamed when split into subtracks. Map old ids → new
-    // so players keep their unlocked progress.
-    const PAINT_NODE_RENAMES = {
-      paint1: "paint_marks1",
-      paint2: "paint_marks2",
-      paint3: "paint_marks3",
-      paint4: "paint_radius1",
-      paint5: "paint_radius2",
-    };
-    parsed.unlockedNodes = parsed.unlockedNodes.map(id => PAINT_NODE_RENAMES[id] || id);
-    // Sorter upgrades now cost cash, not CLOUT. Strip the retired sorter
-    // nodes and refund what the player spent on them so they can re-route
-    // that CLOUT into the surviving branches.
-    const REMOVED_SORTER_COSTS = { sort1: 30, sort2: 100, sort3: 200 };
-    let sorterRefund = 0;
-    parsed.unlockedNodes = parsed.unlockedNodes.filter(id => {
-      if (REMOVED_SORTER_COSTS[id] != null) {
-        sorterRefund += REMOVED_SORTER_COSTS[id];
-        return false;
-      }
-      return true;
-    });
-    if (sorterRefund > 0) {
-      parsed.clout = (parsed.clout || 0) + sorterRefund;
-      parsed.cloutSpent = Math.max(0, (parsed.cloutSpent || 0) - sorterRefund);
-    }
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
-    // Backfill slot assignments + cap to HOMIE_MAX (legacy saves had no slot).
-    {
-      const taken = new Set();
-      parsed.homies.forEach((h, i) => {
-        if (typeof h.slot !== "number" || h.slot < 0 || h.slot >= 6 || taken.has(h.slot)) {
-          let s = 0;
-          while (s < 6 && taken.has(s)) s += 1;
-          h.slot = s;
-        }
-        taken.add(h.slot);
-      });
-      if (parsed.homies.length > 6) parsed.homies = parsed.homies.slice(0, 6);
-    }
     if (!Array.isArray(parsed.sorters)) parsed.sorters = [];
     if (typeof parsed.sorterUidCounter !== "number") parsed.sorterUidCounter = 0;
-    parsed.sorters.forEach(s => {
-      if (typeof s.level !== "number") s.level = 1;
-      // Sorters now have a two-stage buffer: `input` (raw, manually loaded
-      // from the pile bottom row) and `output` (processed, ready to collect).
-      // Legacy `buffer` was the old "auto-sorted ready-to-collect" — fold it
-      // into `output` and start `input` empty.
-      if (s.buffer && !s.output) {
-        s.output = s.buffer;
-        delete s.buffer;
-      }
-      if (!s.input)  s.input  = { standard: 0, rare: 0, foilStandard: 0 };
-      if (!s.output) s.output = { standard: 0, rare: 0, foilStandard: 0 };
-      SAND_BULK_KEYS.forEach(k => {
-        if (typeof s.input[k]  !== "number") s.input[k]  = 0;
-        if (typeof s.output[k] !== "number") s.output[k] = 0;
-      });
-    });
-    // Rarity rename: drop legacy "common" data outright, fold "uncommon" into
-    // "standard". Listings carrying obsolete rarities are dropped (their
-    // proceeds were already lost when the rarity went away).
-    function mergeNumericBucket(field, fromR, toR) {
-      if (!parsed[field]) return;
-      if (parsed[field][fromR] != null) {
-        parsed[field][toR] = (parsed[field][toR] || 0) + (parsed[field][fromR] || 0);
-        delete parsed[field][fromR];
-      }
-    }
-    function dropNumericBucket(field, r) {
-      if (parsed[field] && parsed[field][r] != null) delete parsed[field][r];
-    }
-    function mergeArrayBucket(field, fromR, toR) {
-      if (!parsed[field]) return;
-      if (Array.isArray(parsed[field][fromR])) {
-        const merged = new Set([...(parsed[field][toR] || []), ...parsed[field][fromR]]);
-        parsed[field][toR] = [...merged];
-        delete parsed[field][fromR];
-      }
-    }
-    function dropArrayBucket(field, r) {
-      if (parsed[field] && parsed[field][r] != null) delete parsed[field][r];
-    }
-    ["stock", "stockFoil", "opened", "openedFoil", "unsorted"].forEach(f => {
-      mergeNumericBucket(f, "uncommon", "standard");
-      dropNumericBucket(f, "common");
-    });
-    ["owned", "ownedFoil"].forEach(f => {
-      mergeArrayBucket(f, "uncommon", "standard");
-      dropArrayBucket(f, "common");
-    });
-    ["setsCelebrated", "setsCelebratedFoil"].forEach(f => {
-      if (parsed[f] && parsed[f].common != null) delete parsed[f].common;
-      if (parsed[f] && parsed[f].uncommon != null) {
-        parsed[f].standard = !!(parsed[f].standard || parsed[f].uncommon);
-        delete parsed[f].uncommon;
-      }
-    });
-    // invById key rename / drop
-    if (parsed.invById) {
-      if (parsed.invById.foilUncommon) {
-        parsed.invById.foilStandard = parsed.invById.foilStandard || {};
-        Object.entries(parsed.invById.foilUncommon).forEach(([id, n]) => {
-          parsed.invById.foilStandard[id] = (parsed.invById.foilStandard[id] || 0) + n;
-        });
-        delete parsed.invById.foilUncommon;
-      }
-      delete parsed.invById.foilCommon;
-    }
-    // Listings: drop common/uncommon (they no longer exist as rarities)
-    if (Array.isArray(parsed.listings)) {
-      parsed.listings = parsed.listings.filter(l => l.rarity !== "common" && l.rarity !== "uncommon");
-    }
-    // Marketplace migration: sorted bulk cards from the old system go back to
-    // the unsorted pile so the player can re-sort them.
-    if (parsed.stock) {
-      SAND_BULK_RARITIES.forEach(r => {
-        const n = parsed.stock[r] || 0;
-        if (n > 0) {
-          parsed.unsorted[r] = (parsed.unsorted[r] || 0) + n;
-          parsed.stock[r] = 0;
-        }
-      });
-    }
     if (!Array.isArray(parsed.listings)) parsed.listings = [];
-    delete parsed.listingAim; // legacy fast/at/high — retired
     if (typeof parsed.listingsUidCounter !== "number") {
       parsed.listingsUidCounter = parsed.listings.reduce((m, l) => Math.max(m, l.uid || 0), 0);
     }
-    // Backfill per-rarity buckets for any rarity introduced in a later set.
-    ["stock", "stockFoil", "opened", "openedFoil"].forEach(field => {
-      if (!parsed[field]) parsed[field] = {};
-      RARITIES.forEach(r => { if (typeof parsed[field][r] !== "number") parsed[field][r] = 0; });
-    });
-    ["owned", "ownedFoil"].forEach(field => {
-      if (!parsed[field]) parsed[field] = {};
-      RARITIES.forEach(r => { if (!Array.isArray(parsed[field][r])) parsed[field][r] = []; });
-    });
-    ["setsCelebrated", "setsCelebratedFoil"].forEach(field => {
-      if (!parsed[field]) parsed[field] = {};
-      RARITIES.forEach(r => { if (typeof parsed[field][r] !== "boolean") parsed[field][r] = false; });
-    });
-    // Ensure invById has all market keys (incl. set items).
-    if (!parsed.invById) parsed.invById = {};
-    MARKET_KEYS.forEach(k => { if (!parsed.invById[k] || typeof parsed.invById[k] !== "object") parsed.invById[k] = {}; });
-    // Bulk per-id counts for sortable rarities. Backfill from owned[] so
-    // existing collections still show each unique card as 1× owned even
-    // though we previously didn't track per-id counts for bulk.
-    if (!parsed.bulkInvById || typeof parsed.bulkInvById !== "object") parsed.bulkInvById = {};
-    SAND_BULK_RARITIES.forEach(r => {
-      if (!parsed.bulkInvById[r] || typeof parsed.bulkInvById[r] !== "object") {
-        parsed.bulkInvById[r] = {};
-        (parsed.owned[r] || []).forEach(id => {
-          parsed.bulkInvById[r][id] = (parsed.bulkInvById[r][id] || 0) + 1;
-        });
-        parsed.stock[r] = Object.values(parsed.bulkInvById[r]).reduce((s, n) => s + n, 0);
+    // Make sure every set bundle has a full skeleton (lazy backfill for
+    // anything missed by a partial write). Tombstones in pile arrays only
+    // exist mid-animation and are stale on load.
+    Object.entries(parsed.sets).forEach(([sid, bundle]) => {
+      const blank = blankSetState();
+      Object.keys(blank).forEach(k => { if (bundle[k] == null) bundle[k] = blank[k]; });
+      MARKET_KEYS.forEach(k => { if (!bundle.invById[k] || typeof bundle.invById[k] !== "object") bundle.invById[k] = {}; });
+      if (Array.isArray(bundle.pile)) {
+        bundle.pile = bundle.pile.map(col =>
+          Array.isArray(col) ? col.filter(k => k && k !== "__") : []
+        );
       }
     });
-    // Foil-standard migration: was per-id priced (state.invById.foilStandard),
-    // now bulk-tracked via bulkInvById.foilStandard.
-    if (typeof parsed.unsorted !== "object" || !parsed.unsorted) parsed.unsorted = {};
-    if (typeof parsed.unsorted.foilStandard !== "number") parsed.unsorted.foilStandard = 0;
-    if (!parsed.bulkInvById.foilStandard || typeof parsed.bulkInvById.foilStandard !== "object") {
-      parsed.bulkInvById.foilStandard = {};
-      // Old priced foil-standard inventory → new bulk inventory.
-      if (parsed.invById.foilStandard && typeof parsed.invById.foilStandard === "object") {
-        Object.entries(parsed.invById.foilStandard).forEach(([id, n]) => {
-          parsed.bulkInvById.foilStandard[id] = (parsed.bulkInvById.foilStandard[id] || 0) + (n || 0);
-        });
-      }
-      // Backfill from the foil ownership list too (covers older saves).
-      (parsed.ownedFoil.standard || []).forEach(id => {
-        if (!parsed.bulkInvById.foilStandard[id]) parsed.bulkInvById.foilStandard[id] = 1;
-      });
-      // stockFoil.standard becomes the sorted-foil-standard count.
-      parsed.stockFoil.standard = Object.values(parsed.bulkInvById.foilStandard).reduce((s, n) => s + n, 0);
-    }
-    if (parsed.invById && parsed.invById.foilStandard) delete parsed.invById.foilStandard;
-    // Any active per-id foil-standard listings get cancelled back to the
-    // unsorted pile — they no longer exist as a market item.
-    if (Array.isArray(parsed.listings)) {
-      const kept = [];
-      parsed.listings.forEach(l => {
-        if (l && l.rarity === "standard" && l.foil === true) {
-          parsed.unsorted.foilStandard = (parsed.unsorted.foilStandard || 0) + 1;
-        } else {
-          kept.push(l);
-        }
-      });
-      parsed.listings = kept;
-    }
-    // Tombstones ("__") only exist mid-chain. If the save was written
-    // mid-animation (autosave during chain), drop them — state.unsorted was
-    // already decremented when they were tombstoned, so we just clean the
-    // pile so future LOAD/click logic isn't permanently blocked.
-    if (Array.isArray(parsed.pile)) {
-      parsed.pile = parsed.pile.map(col =>
-        Array.isArray(col) ? col.filter(k => k && k !== "__") : []
-      );
-    }
     return parsed;
   } catch (e) {
     // Surface load failures rather than silently wiping the save — this is
@@ -1971,35 +1684,35 @@ function addPull(card) {
   if (card.foil) {
     if (foilStandardBulk) {
       // Foil standards are bulk: drop into the unsorted pile as a shiny grain.
-      state.unsorted.foilStandard = (state.unsorted.foilStandard || 0) + 1;
+      cur().unsorted.foilStandard = (cur().unsorted.foilStandard || 0) + 1;
     } else {
-      state.stockFoil[card.rarity]  += 1;
+      cur().stockFoil[card.rarity]  += 1;
     }
-    state.openedFoil[card.rarity] += 1;
+    cur().openedFoil[card.rarity] += 1;
   } else {
     if (SAND_BULK_RARITIES.includes(card.rarity)) {
-      state.unsorted[card.rarity] += 1;
+      cur().unsorted[card.rarity] += 1;
     } else {
-      state.stock[card.rarity] += 1;
+      cur().stock[card.rarity] += 1;
     }
-    state.opened[card.rarity] += 1;
+    cur().opened[card.rarity] += 1;
   }
   const mk = marketKey(card.rarity, card.foil);
   if (mk) {
-    state.invById[mk][card.id] = (state.invById[mk][card.id] || 0) + 1;
+    cur().invById[mk][card.id] = (cur().invById[mk][card.id] || 0) + 1;
   }
   // Bulk pulls (standards, rares, foil standards) only land in the
   // collection on sort, so we hold the flash until then.
   const bulkPull = (!card.foil && SAND_BULK_RARITIES.includes(card.rarity))
                 || (card.foil && card.rarity === "standard");
   if (bulkPull) return { isNew: false, completed: false };
-  const ownedList = card.foil ? state.ownedFoil[card.rarity] : state.owned[card.rarity];
+  const ownedList = card.foil ? cur().ownedFoil[card.rarity] : cur().owned[card.rarity];
   const wasNew = !ownedList.includes(card.id);
   flashQueue.push({ rarity: card.rarity, id: card.id, foil: card.foil, fresh: wasNew });
   if (wasNew) {
     ownedList.push(card.id);
     const completed = ownedList.length >= SET_SIZES[card.rarity];
-    const celebratedFlag = card.foil ? state.setsCelebratedFoil : state.setsCelebrated;
+    const celebratedFlag = card.foil ? cur().setsCelebratedFoil : cur().setsCelebrated;
     const firstCompletion = completed && !celebratedFlag[card.rarity];
     if (firstCompletion) celebratedFlag[card.rarity] = true;
     return { isNew: true, completed: firstCompletion };
@@ -2007,7 +1720,7 @@ function addPull(card) {
   return { isNew: false, completed: false };
 }
 function totalFoilsOpened() {
-  return RARITIES.reduce((s, r) => s + state.openedFoil[r], 0);
+  return RARITIES.reduce((s, r) => s + cur().openedFoil[r], 0);
 }
 
 // ---- Economy -------------------------------------------------------------
@@ -2023,10 +1736,10 @@ function renderHeader() {
   $("coins").textContent        = usd(state.coins);
   $("packs-opened").textContent = state.packsOpened;
   $("foils-pulled").textContent = totalFoilsOpened();
-  const boxes = state.boxesOwned || 0;
+  const boxes = cur().boxesOwned || 0;
   $("supply-label").textContent = boxes > 0
-    ? `Supply: ${state.packSupply} · 📦 ${boxes}`
-    : `Supply: ${state.packSupply}`;
+    ? `Supply: ${cur().packSupply} · 📦 ${boxes}`
+    : `Supply: ${cur().packSupply}`;
   // CLOUT chip — animate when balance grows (vault deposit).
   const bal = state.clout || 0;
   $("clout-now").textContent = bal.toLocaleString();
@@ -2054,8 +1767,8 @@ function setActionsBlock(key) {
   let uniqueOwned = 0;
   for (let i = 1; i <= size; i++) if ((inv[i] || 0) > 0) uniqueOwned += 1;
   const ready = uniqueOwned >= size;
-  const setsOwned = (state.invById[track.itemKey] && state.invById[track.itemKey][1]) || 0;
-  const setPrice = marketPriceFor(track.itemKey, 1);
+  const setsOwned = (cur().invById[track.itemKey] && cur().invById[track.itemKey][1]) || 0;
+  const setPrice = marketPriceFor(state.activeSetId, track.itemKey, 1);
   const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
   const slotsFull = listingSlotsFull();
 
@@ -2086,8 +1799,8 @@ function renderVault() {
     const have = completeSetIngredientCount(key);
     const need = def.ingredients.length;
     const ready = have >= need;
-    const owned = (state.invById[key] && state.invById[key][1]) || 0;
-    const price = marketPriceFor(key, 1);
+    const owned = (cur().invById[key] && cur().invById[key][1]) || 0;
+    const price = marketPriceFor(state.activeSetId, key, 1);
     const slotsFull = listingSlotsFull();
     const canList  = owned > 0 && !slotsFull;
     const canVault = owned > 0;
@@ -2210,7 +1923,7 @@ function showHits(pulls, meta = {}) {
 let flashQueue = []; // [{rarity, id, foil, fresh}]
 
 function buildCollectionCell(rarity, i, foil) {
-  const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
+  const ownedList = foil ? cur().ownedFoil[rarity] : cur().owned[rarity];
   const owned = ownedList.includes(i);
   const cell = document.createElement("div");
   cell.className = "collection-cell"
@@ -2302,20 +2015,20 @@ function listingSlotsFull() {
 }
 
 function ensureBulkInv() {
-  if (!state.bulkInvById) state.bulkInvById = {};
-  SAND_BULK_KEYS.forEach(k => { if (!state.bulkInvById[k]) state.bulkInvById[k] = {}; });
-  if (!state.unsorted) state.unsorted = {};
-  SAND_BULK_KEYS.forEach(k => { if (typeof state.unsorted[k] !== "number") state.unsorted[k] = 0; });
+  if (!cur().bulkInvById) cur().bulkInvById = {};
+  SAND_BULK_KEYS.forEach(k => { if (!cur().bulkInvById[k]) cur().bulkInvById[k] = {}; });
+  if (!cur().unsorted) cur().unsorted = {};
+  SAND_BULK_KEYS.forEach(k => { if (typeof cur().unsorted[k] !== "number") cur().unsorted[k] = 0; });
 }
 
 function bulkOwnedList(key) {
   const base = bulkBaseRarity(key);
-  return bulkIsFoil(key) ? state.ownedFoil[base] : state.owned[base];
+  return bulkIsFoil(key) ? cur().ownedFoil[base] : cur().owned[base];
 }
 
 function trackBulkCard(key, id) {
   ensureBulkInv();
-  state.bulkInvById[key][id] = (state.bulkInvById[key][id] || 0) + 1;
+  cur().bulkInvById[key][id] = (cur().bulkInvById[key][id] || 0) + 1;
   const ownedList = bulkOwnedList(key);
   const wasNew = !ownedList.includes(id);
   if (wasNew) ownedList.push(id);
@@ -2341,15 +2054,15 @@ function setItemMeta(itemKey) {
 }
 
 // Returns the per-id inventory map for a craft track. Bulk tracks use the
-// track key directly (state.bulkInvById[key]); priced tracks use the market
-// key (state.invById[track.mk]).
+// track key directly (cur().bulkInvById[key]); priced tracks use the market
+// key (cur().invById[track.mk]).
 function trackInventory(key, track) {
   if (!track) return null;
   if (track.source === "bulk") {
     ensureBulkInv();
-    return state.bulkInvById[key] || {};
+    return cur().bulkInvById[key] || {};
   }
-  return state.invById[track.mk] || {};
+  return cur().invById[track.mk] || {};
 }
 
 function canCraftSet(key) {
@@ -2370,7 +2083,7 @@ function craftSet(key) {
   if (!canCraftSet(key)) return;
   const size = SET_SIZES[track.baseRarity];
   const inv = trackInventory(key, track);
-  const ownedList = track.foil ? state.ownedFoil[track.baseRarity] : state.owned[track.baseRarity];
+  const ownedList = track.foil ? cur().ownedFoil[track.baseRarity] : cur().owned[track.baseRarity];
   for (let i = 1; i <= size; i++) {
     inv[i] -= 1;
     if (inv[i] <= 0) {
@@ -2379,10 +2092,10 @@ function craftSet(key) {
       if (idx >= 0) ownedList.splice(idx, 1);
     }
   }
-  if (track.foil) state.stockFoil[track.baseRarity] = Math.max(0, (state.stockFoil[track.baseRarity] || 0) - size);
-  else            state.stock[track.baseRarity]     = Math.max(0, (state.stock[track.baseRarity]     || 0) - size);
-  if (!state.invById[track.itemKey]) state.invById[track.itemKey] = {};
-  state.invById[track.itemKey][1] = (state.invById[track.itemKey][1] || 0) + 1;
+  if (track.foil) cur().stockFoil[track.baseRarity] = Math.max(0, (cur().stockFoil[track.baseRarity] || 0) - size);
+  else            cur().stock[track.baseRarity]     = Math.max(0, (cur().stock[track.baseRarity]     || 0) - size);
+  if (!cur().invById[track.itemKey]) cur().invById[track.itemKey] = {};
+  cur().invById[track.itemKey][1] = (cur().invById[track.itemKey][1] || 0) + 1;
   renderAll(); save();
   $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
 }
@@ -2391,7 +2104,7 @@ function completeSetIngredientCount(key) {
   const def = completeSetDef(key);
   if (!def) return 0;
   return def.ingredients.reduce((n, k) => {
-    return n + (((state.invById[k] || {})[1] || 0) > 0 ? 1 : 0);
+    return n + (((cur().invById[k] || {})[1] || 0) > 0 ? 1 : 0);
   }, 0);
 }
 
@@ -2408,12 +2121,12 @@ function craftCompleteSet(key) {
     return;
   }
   def.ingredients.forEach(k => {
-    const inv = state.invById[k];
+    const inv = cur().invById[k];
     inv[1] -= 1;
     if (inv[1] <= 0) delete inv[1];
   });
-  if (!state.invById[key]) state.invById[key] = {};
-  state.invById[key][1] = (state.invById[key][1] || 0) + 1;
+  if (!cur().invById[key]) cur().invById[key] = {};
+  cur().invById[key][1] = (cur().invById[key][1] || 0) + 1;
   renderAll(); save();
   $("hint").textContent = `Crafted a ${def.label}. Vault it for +${def.clout} CLOUT or list it for cash.`;
 }
@@ -2421,12 +2134,12 @@ function craftCompleteSet(key) {
 function vaultCompleteSet(key) {
   const def = completeSetDef(key);
   if (!def) return;
-  const inv = state.invById[key];
+  const inv = cur().invById[key];
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
-  if (!state.vaultedSets) state.vaultedSets = {};
-  state.vaultedSets[key] = (state.vaultedSets[key] || 0) + 1;
+  if (!cur().vaultedSets) cur().vaultedSets = {};
+  cur().vaultedSets[key] = (cur().vaultedSets[key] || 0) + 1;
   state.clout = (state.clout || 0) + def.clout;
   renderAll(); save();
   $("hint").textContent = `Vaulted a ${def.label}. +${def.clout} CLOUT (balance: ${state.clout}).`;
@@ -2439,17 +2152,18 @@ function listCompleteSet(key) {
     $("hint").textContent = `All ${listingSlotsEffective()} listing slots full — cancel one first.`;
     return;
   }
-  const inv = state.invById[key];
+  const inv = cur().invById[key];
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
-  const ask = Math.max(0.01, Math.round(marketPriceFor(key, 1) * 100) / 100);
+  const setId = state.activeSetId;
+  const ask = Math.max(0.01, Math.round(marketPriceFor(setId, key, 1) * 100) / 100);
   const cooldownSec = rollListingCooldown();
   const uid = (state.listingsUidCounter || 0) + 1;
   state.listingsUidCounter = uid;
   if (!Array.isArray(state.listings)) state.listings = [];
   state.listings.push({
-    uid, rarity: key, cardId: 1, foil: def.foil,
+    uid, setId, rarity: key, cardId: 1, foil: def.foil,
     askPrice: ask,
     resolveAt: Date.now() + cooldownSec * 1000,
     willResolve: true,
@@ -2465,18 +2179,19 @@ function listSetItem(key) {
     $("hint").textContent = `All ${listingSlotsEffective()} listing slots full — cancel one first.`;
     return;
   }
-  const inv = state.invById[itemKey];
+  const inv = cur().invById[itemKey];
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
-  const basePrice = marketPriceFor(itemKey, 1);
+  const setId = state.activeSetId;
+  const basePrice = marketPriceFor(setId, itemKey, 1);
   const ask = Math.max(0.01, Math.round(basePrice * 100) / 100);
   const cooldownSec = rollListingCooldown();
   const uid = (state.listingsUidCounter || 0) + 1;
   state.listingsUidCounter = uid;
   if (!Array.isArray(state.listings)) state.listings = [];
   state.listings.push({
-    uid, rarity: itemKey, cardId: 1, foil: false,
+    uid, setId, rarity: itemKey, cardId: 1, foil: false,
     askPrice: ask,
     resolveAt: Date.now() + cooldownSec * 1000,
     willResolve: true,
@@ -2491,19 +2206,21 @@ function cancelListing(uid) {
   const idx = state.listings.findIndex(l => l.uid === uid);
   if (idx < 0) return;
   const l = state.listings[idx];
+  // Return inventory to the listing's own set bundle — the active set may
+  // differ when older sets land in Phase 2+.
+  const bundle = setStateFor(l.setId);
   if (isSetListing(l)) {
-    if (!state.invById[l.rarity]) state.invById[l.rarity] = {};
-    state.invById[l.rarity][1] = (state.invById[l.rarity][1] || 0) + 1;
+    if (!bundle.invById[l.rarity]) bundle.invById[l.rarity] = {};
+    bundle.invById[l.rarity][1] = (bundle.invById[l.rarity][1] || 0) + 1;
   } else if (isBulkListing(l)) {
-    // Legacy: older auto-listed bulk cards return to the unsorted pile.
-    state.unsorted[l.rarity] = (state.unsorted[l.rarity] || 0) + 1;
+    bundle.unsorted[l.rarity] = (bundle.unsorted[l.rarity] || 0) + 1;
     syncPileWithStock();
   } else {
     const mk = marketKey(l.rarity, l.foil);
     if (mk) {
-      state.invById[mk][l.cardId] = (state.invById[mk][l.cardId] || 0) + 1;
-      if (l.foil) state.stockFoil[l.rarity] += 1;
-      else        state.stock[l.rarity]     += 1;
+      bundle.invById[mk][l.cardId] = (bundle.invById[mk][l.cardId] || 0) + 1;
+      if (l.foil) bundle.stockFoil[l.rarity] += 1;
+      else        bundle.stock[l.rarity]     += 1;
     }
   }
   state.listings.splice(idx, 1);
@@ -2524,7 +2241,7 @@ function resolveListings() {
       // NPC absorbs one unit into market inventory — drops the price of the
       // next sale of this exact (key, id). Works for both set items and
       // per-id priced cards (l.rarity is the market key in either case).
-      if (BASELINE[l.rarity] != null) npcAbsorbSale(l.rarity, l.cardId || 1);
+      if (BASELINE[l.rarity] != null) npcAbsorbSale(l.setId, l.rarity, l.cardId || 1);
       if (isCompleteSetKey(l.rarity)) {
         lastMessage = `Sold ${completeSetDef(l.rarity).label} @ ${usd(l.askPrice)}.`;
       } else if (isSetListing(l)) {
@@ -2535,17 +2252,20 @@ function resolveListings() {
       }
     } else {
       if (isSetListing(l)) {
-        if (!state.invById[l.rarity]) state.invById[l.rarity] = {};
-        state.invById[l.rarity][1] = (state.invById[l.rarity][1] || 0) + 1;
+        const bundle = setStateFor(l.setId);
+        if (!bundle.invById[l.rarity]) bundle.invById[l.rarity] = {};
+        bundle.invById[l.rarity][1] = (bundle.invById[l.rarity][1] || 0) + 1;
       } else if (isBulkListing(l)) {
-        state.unsorted[l.rarity] = (state.unsorted[l.rarity] || 0) + 1;
+        const bundle = setStateFor(l.setId);
+        bundle.unsorted[l.rarity] = (bundle.unsorted[l.rarity] || 0) + 1;
         syncPileWithStock();
       } else {
+        const bundle = setStateFor(l.setId);
         const mk = marketKey(l.rarity, l.foil);
         if (mk) {
-          state.invById[mk][l.cardId] = (state.invById[mk][l.cardId] || 0) + 1;
-          if (l.foil) state.stockFoil[l.rarity] += 1;
-          else        state.stock[l.rarity]     += 1;
+          bundle.invById[mk][l.cardId] = (bundle.invById[mk][l.cardId] || 0) + 1;
+          if (l.foil) bundle.stockFoil[l.rarity] += 1;
+          else        bundle.stock[l.rarity]     += 1;
         }
       }
       lastMessage = `Listing expired — returned to inventory.`;
@@ -2703,7 +2423,7 @@ function cellsWithinRadius(px, py) {
   const out = [];
   for (let c = cx - dc; c <= cx + dc; c++) {
     if (c < 0 || c >= SAND_COLS) continue;
-    const col = state.pile[c]; if (!col) continue;
+    const col = cur().pile[c]; if (!col) continue;
     for (let r = cy - dc; r <= cy + dc; r++) {
       if (r < 0 || r >= col.length) continue;
       const k = col[r];
@@ -2721,13 +2441,13 @@ function sandColCount() { return SAND_COLS; }
 
 function ensurePileBuckets() {
   const cols = sandColCount();
-  while (state.pile.length < cols) state.pile.push([]);
+  while (cur().pile.length < cols) cur().pile.push([]);
 }
 
 function totalPileGrains() {
   // Tombstones ("__") are mid-chain placeholders, not live grains — skip them
   // so syncPileWithStock doesn't rebuild during an in-progress chain explosion.
-  return state.pile.reduce((s, col) => s + col.reduce((n, k) => n + (k === "__" ? 0 : 1), 0), 0);
+  return cur().pile.reduce((s, col) => s + col.reduce((n, k) => n + (k === "__" ? 0 : 1), 0), 0);
 }
 
 // Pick the column with the shortest effective height (settled pile +
@@ -2735,7 +2455,7 @@ function totalPileGrains() {
 // fills any empty column before adding to a non-empty one.
 function pickFillColumn(cols) {
   const heights = new Array(cols).fill(0);
-  for (let c = 0; c < cols; c++) heights[c] = (state.pile[c] || []).length;
+  for (let c = 0; c < cols; c++) heights[c] = (cur().pile[c] || []).length;
   fallingGrains.forEach(g => {
     if (g.col >= 0 && g.col < cols) heights[g.col] += 1;
   });
@@ -2759,7 +2479,7 @@ function pickFillColumn(cols) {
 }
 
 function rebuildPileFromStock() {
-  state.pile = [];
+  cur().pile = [];
   ensurePileBuckets();
   const cols = sandColCount();
   // Flatten every grain key into one list, then Fisher-Yates shuffle so the
@@ -2767,18 +2487,18 @@ function rebuildPileFromStock() {
   // the player one-shot every rare after a reload).
   const grains = [];
   SAND_BULK_KEYS.forEach(k => {
-    const n = state.unsorted[k] || 0;
+    const n = cur().unsorted[k] || 0;
     for (let i = 0; i < n; i++) grains.push(k);
   });
   for (let i = grains.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [grains[i], grains[j]] = [grains[j], grains[i]];
   }
-  grains.forEach(k => state.pile[pickFillColumn(cols)].push(k));
+  grains.forEach(k => cur().pile[pickFillColumn(cols)].push(k));
 }
 
 function syncPileWithStock() {
-  const unsortedBulk = SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
+  const unsortedBulk = SAND_BULK_KEYS.reduce((s, k) => s + (cur().unsorted[k] || 0), 0);
   if (totalPileGrains() + fallingGrains.length !== unsortedBulk) {
     rebuildPileFromStock();
   }
@@ -2796,8 +2516,8 @@ function findClickedGrain(clickX, clickY) {
   let bestCol = -1, bestRow = -1, bestDist = Infinity;
   for (let dc = -radius; dc <= radius; dc++) {
     const c = cx + dc;
-    if (c < 0 || c >= state.pile.length) continue;
-    const col = state.pile[c];
+    if (c < 0 || c >= cur().pile.length) continue;
+    const col = cur().pile[c];
     if (!col || col.length === 0) continue;
     for (let dr = -radius; dr <= radius; dr++) {
       const r = cy + dr;
@@ -2846,14 +2566,14 @@ function explosionOffsetsForKey(key) {
 function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
   offsets.forEach(([dc, dr]) => {
     const nc = centerCol + dc, nr = centerRow + dr;
-    if (nc < 0 || nc >= state.pile.length) return;
-    const col = state.pile[nc];
+    if (nc < 0 || nc >= cur().pile.length) return;
+    const col = cur().pile[nc];
     if (!col || nr < 0 || nr >= col.length) return;
     const k = col[nr];
     if (!k || k === "__") return;
-    // Refuse if state.unsorted has nothing left of this key — keeps the pile
+    // Refuse if cur().unsorted has nothing left of this key — keeps the pile
     // and the counters from drifting if they were out of sync.
-    if ((state.unsorted[k] || 0) <= 0) return;
+    if ((cur().unsorted[k] || 0) <= 0) return;
     col[nr] = "__";
     spawnCritPop(nc, nr, k);
     sortOneOfKey(k);
@@ -2868,15 +2588,15 @@ function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
 //          with its own key's blast pattern (rare: 4 orthos, foil: 8-cell +).
 // Standards in any blast are consumed but don't propagate.
 function runChainCrit(startCol, startRow, onDone) {
-  const seedKey = state.pile[startCol] && state.pile[startCol][startRow];
+  const seedKey = cur().pile[startCol] && cur().pile[startCol][startRow];
   if (!seedKey || seedKey === "__") { onDone(0); return; }
-  if ((state.unsorted[seedKey] || 0) <= 0) { onDone(0); return; }
+  if ((cur().unsorted[seedKey] || 0) <= 0) { onDone(0); return; }
   chainBusy = true;
   const finish = (n) => { chainBusy = false; onDone(n); };
   const refs = { total: 0 };
   let detonators = [];
   // Wave 0 — destroy seed + click AoE around it.
-  state.pile[startCol][startRow] = "__";
+  cur().pile[startCol][startRow] = "__";
   spawnCritPop(startCol, startRow, seedKey);
   sortOneOfKey(seedKey);
   refs.total += 1;
@@ -2907,15 +2627,15 @@ function runChainCrit(startCol, startRow, onDone) {
   setTimeout(step, CHAIN_STEP_MS);
 }
 
-// Consume one card from state.unsorted[key]: bumps stock/stockFoil, runs
+// Consume one card from cur().unsorted[key]: bumps stock/stockFoil, runs
 // trackBulkCard (set progress + collection flash). Does NOT touch the pile —
 // the caller decides how to remove the grain.
 function sortOneOfKey(key) {
-  if ((state.unsorted[key] || 0) <= 0) return false;
-  state.unsorted[key] -= 1;
+  if ((cur().unsorted[key] || 0) <= 0) return false;
+  cur().unsorted[key] -= 1;
   const baseRarity = bulkBaseRarity(key);
-  if (bulkIsFoil(key)) state.stockFoil[baseRarity] = (state.stockFoil[baseRarity] || 0) + 1;
-  else                 state.stock[baseRarity]     = (state.stock[baseRarity]     || 0) + 1;
+  if (bulkIsFoil(key)) cur().stockFoil[baseRarity] = (cur().stockFoil[baseRarity] || 0) + 1;
+  else                 cur().stock[baseRarity]     = (cur().stock[baseRarity]     || 0) + 1;
   trackBulkCard(key, randomCardId(baseRarity));
   return true;
 }
@@ -2927,13 +2647,13 @@ function settlePileAfterChain() {
   const canvas = $("sand-canvas");
   if (!canvas) return;
   const h = canvas.clientHeight || 90;
-  state.pile.forEach((col, c) => {
+  cur().pile.forEach((col, c) => {
     if (!col.some(k => k === "__")) return; // column untouched
     const survivors = [];
     for (let r = 0; r < col.length; r++) {
       if (col[r] !== "__") survivors.push({ row: r, key: col[r] });
     }
-    state.pile[c] = [];
+    cur().pile[c] = [];
     survivors.forEach(s => {
       fallingGrains.push({
         col: c,
@@ -2953,9 +2673,9 @@ function runChainCritFromMarks(seedCells, onDone) {
   const refs = { total: 0 };
   const detonators = [];
   seedCells.forEach(({ col, row }) => {
-    const col0 = state.pile[col]; if (!col0) return;
+    const col0 = cur().pile[col]; if (!col0) return;
     const k = col0[row]; if (!k || k === "__") return;
-    if ((state.unsorted[k] || 0) <= 0) return;
+    if ((cur().unsorted[k] || 0) <= 0) return;
     col0[row] = "__";
     spawnCritPop(col, row, k);
     sortOneOfKey(k);
@@ -2983,7 +2703,7 @@ function runChainCritFromMarks(seedCells, onDone) {
 function sortCards(opts) {
   ensureBulkInv();
   if (chainBusy) return; // a chain is mid-animation; drop the click
-  if (SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0) === 0) return;
+  if (SAND_BULK_KEYS.reduce((s, k) => s + (cur().unsorted[k] || 0), 0) === 0) return;
   if (!opts || !opts.click) return;
 
   // Paint mode: if grains are marked, detonate them all together (no click
@@ -3050,8 +2770,8 @@ function drawSand() {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, w, h);
   const cols = sandColCount();
-  for (let c = 0; c < state.pile.length && c < cols; c++) {
-    const stack = state.pile[c];
+  for (let c = 0; c < cur().pile.length && c < cols; c++) {
+    const stack = cur().pile[c];
     for (let r = 0; r < stack.length; r++) {
       if (stack[r] === "__") continue; // chain-explosion tombstone, not yet settled
       const cx = c * SAND_CELL_W + SAND_CELL_W / 2;
@@ -3116,11 +2836,11 @@ function stepSandAnim() {
   fallingGrains = fallingGrains.filter(g => {
     g.vy = Math.min(g.vy + 0.55, 11);
     g.y += g.vy;
-    const stackH = (state.pile[g.col] || []).length;
+    const stackH = (cur().pile[g.col] || []).length;
     const landY = h - (stackH + 1) * SAND_CELL_H;
     if (g.y >= landY) {
       g.y = landY;
-      state.pile[g.col].push(g.key);
+      cur().pile[g.col].push(g.key);
       return false;
     }
     return true;
@@ -3134,7 +2854,7 @@ function stepSandAnim() {
   // Keep the animation loop running while there are falling grains, foil
   // shimmer grains (for the rainbow cycle), or active crit pops.
   const hasShimmer = fallingGrains.some(g => g.key === "foilStandard")
-                 || state.pile.some(col => col.includes("foilStandard"));
+                 || cur().pile.some(col => col.includes("foilStandard"));
   if (fallingGrains.length > 0 || hasShimmer || critPops.length > 0) {
     requestAnimationFrame(stepSandAnim);
   } else {
@@ -3168,11 +2888,11 @@ function renderSandPile() {
   drawSand();
   // If shimmer grains are sitting in the pile, keep the animation loop alive
   // so their color cycles each frame.
-  if (state.pile.some(col => col.includes("foilStandard"))) startSandAnim();
+  if (cur().pile.some(col => col.includes("foilStandard"))) startSandAnim();
 }
 
 function buildSetBar(rarity, foil) {
-  const ownedList = foil ? state.ownedFoil[rarity] : state.owned[rarity];
+  const ownedList = foil ? cur().ownedFoil[rarity] : cur().owned[rarity];
   const owned = ownedList.length;
   const setSize = SET_SIZES[rarity];
   const pct = Math.min(100, (owned / setSize) * 100);
@@ -3560,7 +3280,7 @@ function renderHomieSprites() {
   if (!area) return;
   const homies = state.homies || [];
   const bySlot = new Map(homies.map(h => [h.slot, h]));
-  const canAfford = state.coins >= HOMIE_COST && (state.boxesOwned || 0) >= 1;
+  const canAfford = state.coins >= HOMIE_COST && (cur().boxesOwned || 0) >= 1;
   // Always render 6 fixed slots; active ones show the working homie, empty
   // ones are clickable hire buttons in the same position.
   for (let slot = 0; slot < HOMIE_MAX; slot++) {
@@ -3621,7 +3341,7 @@ function hireHomie() {
     $("hint").textContent = `Need ${usd(HOMIE_COST - state.coins)} more to hire a homie.`;
     return;
   }
-  if ((state.boxesOwned || 0) < 1) {
+  if ((cur().boxesOwned || 0) < 1) {
     $("hint").textContent = `Need a sealed box first — buy one from the shop.`;
     return;
   }
@@ -3631,7 +3351,7 @@ function hireHomie() {
     return;
   }
   state.coins -= HOMIE_COST;
-  state.boxesOwned -= 1;
+  cur().boxesOwned -= 1;
   state.homieUidCounter = (state.homieUidCounter || 0) + 1;
   if (!Array.isArray(state.homies)) state.homies = [];
   state.homies.push({
@@ -3647,7 +3367,7 @@ function hireHomie() {
 
 function homieRipPack(homie) {
   // Same as ripOne(), but consumes from the homie's personal pool instead of
-  // state.packSupply, and bails out cleanly if the unsorted pile is full.
+  // cur().packSupply, and bails out cleanly if the unsorted pile is full.
   if (unsortedTotal() >= UNSORTED_CAPACITY) return false;
   if (homie.packsRemaining <= 0) return false;
   homie.packsRemaining -= 1;
@@ -3739,7 +3459,7 @@ function previewLoadGrains(s) {
   const remaining = cap - sorterTotal(s);
   let available = 0;
   for (let c = 0; c < cols; c++) {
-    const col = state.pile[c];
+    const col = cur().pile[c];
     if (!col) continue;
     for (let r = 0; r < col.length; r++) {
       const k = col[r];
@@ -3771,14 +3491,14 @@ function loadSorter(uid) {
   outer: for (let r = 0; loaded < preview.count; r++) {
     let touchedAtThisRow = false;
     for (let c = 0; c < cols && loaded < preview.count; c++) {
-      const col = state.pile[c];
+      const col = cur().pile[c];
       if (!col || r >= col.length) continue;
       touchedAtThisRow = true;
       const k = col[r];
       if (!k || k === "__") continue;
       s.input[k] = (s.input[k] || 0) + 1;
       col[r] = "__";                                       // tombstone for settle
-      state.unsorted[k] = Math.max(0, (state.unsorted[k] || 0) - 1);
+      cur().unsorted[k] = Math.max(0, (cur().unsorted[k] || 0) - 1);
       loaded += 1;
     }
     if (!touchedAtThisRow) break outer;                    // ran out of grains
@@ -3798,8 +3518,8 @@ function collectSorter(uid) {
     const count = s.output[key] || 0;
     const baseRarity = bulkBaseRarity(key);
     for (let i = 0; i < count; i++) {
-      if (bulkIsFoil(key)) state.stockFoil[baseRarity] = (state.stockFoil[baseRarity] || 0) + 1;
-      else                 state.stock[baseRarity]     = (state.stock[baseRarity]     || 0) + 1;
+      if (bulkIsFoil(key)) cur().stockFoil[baseRarity] = (cur().stockFoil[baseRarity] || 0) + 1;
+      else                 cur().stock[baseRarity]     = (cur().stock[baseRarity]     || 0) + 1;
       trackBulkCard(key, randomCardId(baseRarity));
     }
     s.output[key] = 0;
@@ -3942,9 +3662,9 @@ function buyPacks(qty, totalCost, label) {
     return;
   }
   state.coins -= totalCost;
-  state.packSupply += qty;
+  cur().packSupply += qty;
   renderAll(); save();
-  $("hint").textContent = `Bought ${label}. Supply: ${state.packSupply}.`;
+  $("hint").textContent = `Bought ${label}. Supply: ${cur().packSupply}.`;
 }
 function buyBoxes(qty, totalCost, label) {
   if (state.coins < totalCost) {
@@ -3952,25 +3672,25 @@ function buyBoxes(qty, totalCost, label) {
     return;
   }
   state.coins -= totalCost;
-  state.boxesOwned = (state.boxesOwned || 0) + qty;
+  cur().boxesOwned = (cur().boxesOwned || 0) + qty;
   renderAll(); save();
-  $("hint").textContent = `Bought ${label}. Boxes: ${state.boxesOwned}.`;
+  $("hint").textContent = `Bought ${label}. Boxes: ${cur().boxesOwned}.`;
 }
 
 function unsortedTotal() {
-  return SAND_BULK_KEYS.reduce((s, k) => s + (state.unsorted[k] || 0), 0);
+  return SAND_BULK_KEYS.reduce((s, k) => s + (cur().unsorted[k] || 0), 0);
 }
 function maybeCrackBox() {
-  if (state.packSupply <= 0 && (state.boxesOwned || 0) > 0) {
-    state.boxesOwned -= 1;
-    state.packSupply += BOX_SIZE;
+  if (cur().packSupply <= 0 && (cur().boxesOwned || 0) > 0) {
+    cur().boxesOwned -= 1;
+    cur().packSupply += BOX_SIZE;
     $("hint").textContent = `Cracked a sealed box → ${BOX_SIZE} packs.`;
     return true;
   }
   return false;
 }
 function canRip() {
-  return (state.packSupply > 0 || (state.boxesOwned || 0) > 0) && unsortedTotal() < UNSORTED_CAPACITY;
+  return (cur().packSupply > 0 || (cur().boxesOwned || 0) > 0) && unsortedTotal() < UNSORTED_CAPACITY;
 }
 
 // ---- Typing mini-game ----------------------------------------------------
@@ -4069,8 +3789,8 @@ function handleTypingKey(rawKey) {
 }
 
 function ripOne() {
-  if (state.packSupply < 1) maybeCrackBox();
-  if (state.packSupply < 1) {
+  if (cur().packSupply < 1) maybeCrackBox();
+  if (cur().packSupply < 1) {
     $("hint").textContent = "No packs in supply. Buy one above.";
     return;
   }
@@ -4078,7 +3798,7 @@ function ripOne() {
     $("hint").textContent = `Unsorted pile full (${UNSORTED_CAPACITY}). Sort some cards first.`;
     return;
   }
-  state.packSupply -= 1;
+  cur().packSupply -= 1;
   state.packsOpened += 1;
   const pulls = rollPack();
   let newCount = 0;
@@ -4094,7 +3814,7 @@ function ripOne() {
   renderAll(); save();
   const foilCount = pulls.filter(p => p.foil).length;
   const tail = foilCount > 0 ? `  ✨ ${foilCount} foil${foilCount > 1 ? "s" : ""}!` : "";
-  $("hint").textContent = `Nice rip. ${state.packSupply} left.${tail}`;
+  $("hint").textContent = `Nice rip. ${cur().packSupply} left.${tail}`;
 }
 
 
@@ -4154,7 +3874,7 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
   // Cursor must be over a live grain (not off-pile, not a tombstone) to
   // start dwell. The actual *marked* set is computed from the radius when
   // the timer fires, so the cursor center grain is the anchor.
-  const k = state.pile[c] && state.pile[c][r];
+  const k = cur().pile[c] && cur().pile[c][r];
   if (!k || k === "__") {
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
     hoverCell = null;
