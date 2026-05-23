@@ -3707,11 +3707,17 @@ const TYPING_WORDS = [
   "sort", "homie", "sorter", "rip", "go",
 ];
 let typingState = { word: "", nextWord: "", index: 0 };
+// Keep the last N picks blocked so a word can't repeat within 5 words.
+const TYPING_RECENT_LIMIT = 5;
+let recentTypingWords = [];
 function pickTypingWord(...avoid) {
+  const blocked = new Set([...avoid, ...recentTypingWords]);
   let next;
   let tries = 0;
   do { next = TYPING_WORDS[Math.floor(Math.random() * TYPING_WORDS.length)]; tries += 1; }
-  while (avoid.includes(next) && tries < 8 && TYPING_WORDS.length > avoid.length);
+  while (blocked.has(next) && tries < 20 && TYPING_WORDS.length > blocked.size);
+  recentTypingWords.push(next);
+  while (recentTypingWords.length > TYPING_RECENT_LIMIT) recentTypingWords.shift();
   return next;
 }
 function ensureTypingWord() {
