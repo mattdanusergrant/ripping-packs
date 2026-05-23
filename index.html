@@ -22,26 +22,50 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: 'Segoe UI', Roboto, system-ui, sans-serif; height: 100%; }
   body { display: grid; grid-template-columns: 1fr 1.6fr; grid-template-rows: auto 1fr auto; height: 100vh; gap: 12px; padding: 12px; }
-  header { grid-column: 1 / 3; display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: var(--panel); border-radius: 10px; }
+  header { grid-column: 1 / 3; display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 10px 16px; background: var(--panel); border-radius: 10px; }
+  header .header-top { display: flex; align-items: center; gap: 18px; flex: 1; }
   header h1 { margin: 0; font-size: 1.2rem; letter-spacing: 1px; }
-  header .stats { display: flex; gap: 24px; font-size: 0.95rem; align-items: center; }
-  header .stats span b { color: var(--gold); }
-  .clout-chip {
-    background: rgba(255,126,179,0.10);
-    border: 1px solid rgba(255,126,179,0.55);
-    border-radius: 12px;
-    padding: 3px 10px;
-    font-size: 0.82rem;
-    color: rgba(255,255,255,0.85);
+  header .stats { display: flex; gap: 16px; font-size: 0.85rem; align-items: center; color: var(--muted); }
+  header .stats span b { color: var(--ink); font-weight: bold; }
+  /* Cash and CLOUT as hero chips — the two primary resources. Bigger
+     value, distinct fill, parked next to the title. */
+  .hero-resources { display: flex; gap: 10px; }
+  .hero-chip {
+    display: flex; flex-direction: column;
+    padding: 4px 14px;
+    border-radius: 10px;
+    border: 1.5px solid;
+    line-height: 1.1;
+    min-width: 110px;
   }
-  .clout-chip b { color: #ff7eb3 !important; }
-  .clout-chip.level-up {
+  .hero-chip .hero-label { font-size: 0.55rem; letter-spacing: 2px; opacity: 0.75; }
+  .hero-chip .hero-value { font-size: 1.25rem; font-weight: bold; letter-spacing: 0.5px; }
+  .hero-chip.cash  { border-color: var(--gold);   background: rgba(245,197,66,0.10); color: var(--gold); }
+  .hero-chip.clout { border-color: #ff7eb3;       background: rgba(255,126,179,0.12); color: #ff7eb3; }
+  .hero-chip.bump {
     animation: clout-pop 0.9s ease-out;
   }
   @keyframes clout-pop {
     0%   { transform: scale(1);   box-shadow: 0 0 0 rgba(255,126,179,0); }
-    30%  { transform: scale(1.18); box-shadow: 0 0 16px rgba(255,126,179,0.8); }
+    30%  { transform: scale(1.10); box-shadow: 0 0 16px currentColor; }
     100% { transform: scale(1);   box-shadow: 0 0 0 rgba(255,126,179,0); }
+  }
+  /* Small per-feature upgrade trigger — pink to match CLOUT. */
+  .upgrade-trigger {
+    background: transparent;
+    border: 1px solid rgba(255,126,179,0.55);
+    color: #ff7eb3;
+    border-radius: 10px;
+    font: bold 0.62rem inherit;
+    padding: 2px 8px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .upgrade-trigger:hover { background: rgba(255,126,179,0.15); }
+  .upgrade-trigger.ready {
+    box-shadow: 0 0 8px rgba(255,126,179,0.6);
+    animation: clout-pop 1.8s ease-in-out infinite;
   }
 
   /* Each half scrolls as a unit when the viewport gets too short; the two
@@ -451,10 +475,12 @@
     border: 1px solid rgba(245,197,66,0.18);
   }
   .listings-header {
-    display: flex; justify-content: space-between; align-items: baseline;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
     font-size: 0.72rem; letter-spacing: 3px; color: var(--gold);
   }
-  .listings-header .listings-count { color: var(--muted); font-size: 0.65rem; letter-spacing: 1px; }
+  .listings-header .listings-count   { color: var(--muted); font-size: 0.65rem; letter-spacing: 1px; flex: 1; text-align: right; }
+  .listings-header .listings-upgrades { display: inline-flex; gap: 4px; }
+  .upgrade-row { display: flex; gap: 6px; }
   .listings-empty {
     color: var(--muted); font-size: 0.72rem; font-style: italic;
     text-align: center; padding: 8px 0;
@@ -707,6 +733,8 @@
     grid-template-columns: repeat(4, 1fr);
     gap: 14px;
   }
+  /* Single-branch view (per-feature modal) gets one centered column. */
+  .upgrades-body.single { grid-template-columns: minmax(260px, 360px); justify-content: center; }
   .upgrade-branch {
     display: flex; flex-direction: column; gap: 8px;
     min-width: 0;
@@ -879,12 +907,16 @@
 <body>
 
 <header>
-  <h1>RIPPING PACKS</h1>
+  <div class="header-top">
+    <h1>RIPPING PACKS</h1>
+    <div class="hero-resources">
+      <div class="hero-chip cash" title="Cash on hand"><span class="hero-label">CASH</span><span class="hero-value" id="coins">$0</span></div>
+      <div class="hero-chip clout" id="clout-chip" title="CLOUT — earned by vaulting crafted sets"><span class="hero-label">CLOUT</span><span class="hero-value"><b id="clout-now">0</b></span></div>
+    </div>
+  </div>
   <div class="stats">
-    <span>Cash: <b id="coins">$0</b></span>
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
-    <button class="clout-chip" id="clout-chip" type="button" title="CLOUT earned by vaulting crafted sets — spend on the upgrade grid"><b id="clout-now">0</b> CLOUT · UPGRADES</button>
     <button class="reset" id="design-btn">Game Design</button>
     <button class="reset" id="reset-btn">Reset</button>
   </div>
@@ -957,6 +989,9 @@
         <span class="hire-cost" id="sorter-cost">$1,000</span>
       </button>
     </div>
+    <div class="upgrade-row">
+      <button class="upgrade-trigger" id="upgrade-sorters" type="button" data-branch="sorters">⬆ SORTER UPGRADES</button>
+    </div>
     <div id="sorters-area"></div>
   </div>
   <div id="set-progress"></div>
@@ -977,6 +1012,7 @@
         <span id="marked-counter" class="marked-counter">0 / 10</span>
         hover to mark · click to detonate
       </span>
+      <button class="upgrade-trigger" id="upgrade-paint" type="button" data-branch="paint">⬆ PAINT</button>
     </div>
     <button id="dump-btn" type="button" disabled>DUMP PILE — $0</button>
     <canvas id="sand-canvas"></canvas>
@@ -1886,7 +1922,7 @@ function renderHeader() {
   $("clout-now").textContent = bal.toLocaleString();
   const chip = $("clout-chip");
   if (_lastCloutBalance != null && bal > _lastCloutBalance && chip) {
-    chip.classList.remove("level-up"); void chip.offsetWidth; chip.classList.add("level-up");
+    chip.classList.remove("bump"); void chip.offsetWidth; chip.classList.add("bump");
   }
   _lastCloutBalance = bal;
   $("cost-pack").textContent = usd(packCost());
@@ -2390,6 +2426,10 @@ function renderListings() {
     <div class="listings-header">
       <span>MARKETPLACE</span>
       <span class="listings-count">${used} / ${slots} slots</span>
+      <span class="listings-upgrades">
+        <button class="upgrade-trigger" data-upgrade-branch="listings" type="button">⬆ SLOTS</button>
+        <button class="upgrade-trigger" data-upgrade-branch="market"   type="button">⬆ MARKET</button>
+      </span>
     </div>
     <div class="listings-grid">`;
   listings.forEach(l => {
@@ -3180,12 +3220,15 @@ function closeDesignPanel() {
   $("design-modal").hidden = true;
 }
 
-function openUpgradesPanel() {
+let _openUpgradesBranch = null;
+function openUpgradesPanel(branchKey) {
+  _openUpgradesBranch = branchKey || null;
   renderUpgrades();
   $("upgrades-modal").hidden = false;
 }
 function closeUpgradesPanel() {
   $("upgrades-modal").hidden = true;
+  _openUpgradesBranch = null;
 }
 
 function renderUpgrades() {
@@ -3193,8 +3236,19 @@ function renderUpgrades() {
   if (!body) return;
   const balanceEl = $("upgrades-balance");
   if (balanceEl) balanceEl.textContent = (state.clout || 0).toLocaleString();
+  // Title reflects which branch is open (or "UPGRADES" if all).
+  const titleEl = $("upgrades-title");
+  if (titleEl) {
+    const branch = _openUpgradesBranch ? UPGRADE_BRANCHES.find(b => b.key === _openUpgradesBranch) : null;
+    titleEl.textContent = branch ? `${branch.label} UPGRADES` : "UPGRADES";
+    titleEl.style.color = branch ? branch.color : "#ff7eb3";
+  }
   body.innerHTML = "";
-  UPGRADE_BRANCHES.forEach(branch => {
+  const branches = _openUpgradesBranch
+    ? UPGRADE_BRANCHES.filter(b => b.key === _openUpgradesBranch)
+    : UPGRADE_BRANCHES;
+  body.classList.toggle("single", branches.length === 1);
+  branches.forEach(branch => {
     const col = document.createElement("div");
     col.className = "upgrade-branch";
     col.style.color = branch.color;
@@ -3912,13 +3966,21 @@ $("design-close").addEventListener("click", closeDesignPanel);
 $("design-cancel").addEventListener("click", closeDesignPanel);
 $("design-apply").addEventListener("click", applyDesignAndReload);
 $("design-reset").addEventListener("click", resetDesignOverrides);
-$("clout-chip").addEventListener("click", openUpgradesPanel);
 $("upgrades-close").addEventListener("click", closeUpgradesPanel);
 $("upgrades-backdrop").addEventListener("click", closeUpgradesPanel);
 $("upgrades-body").addEventListener("click", (e) => {
   const card = e.target.closest(".upgrade-node");
   if (!card || !card.dataset.nodeId) return;
   if (card.classList.contains("available")) purchaseNode(card.dataset.nodeId);
+});
+// Per-feature UPGRADE triggers (each opens the modal filtered to one branch).
+document.addEventListener("click", (e) => {
+  const trig = e.target.closest("[data-branch], [data-upgrade-branch]");
+  if (!trig) return;
+  const branch = trig.dataset.branch || trig.dataset.upgradeBranch;
+  if (!branch) return;
+  if (!UPGRADE_BRANCHES.some(b => b.key === branch)) return;
+  openUpgradesPanel(branch);
 });
 document.querySelector("#design-modal .design-modal-backdrop").addEventListener("click", closeDesignPanel);
 document.addEventListener("keydown", (e) => {
