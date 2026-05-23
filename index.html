@@ -2554,11 +2554,19 @@ function rebuildPileFromStock() {
   state.pile = [];
   ensurePileBuckets();
   const cols = sandColCount();
+  // Flatten every grain key into one list, then Fisher-Yates shuffle so the
+  // rebuild doesn't stack all rares on top of all standards (which would let
+  // the player one-shot every rare after a reload).
+  const grains = [];
   SAND_BULK_KEYS.forEach(k => {
-    for (let i = 0; i < (state.unsorted[k] || 0); i++) {
-      state.pile[pickFillColumn(cols)].push(k);
-    }
+    const n = state.unsorted[k] || 0;
+    for (let i = 0; i < n; i++) grains.push(k);
   });
+  for (let i = grains.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [grains[i], grains[j]] = [grains[j], grains[i]];
+  }
+  grains.forEach(k => state.pile[pickFillColumn(cols)].push(k));
 }
 
 function syncPileWithStock() {
