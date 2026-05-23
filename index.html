@@ -3468,25 +3468,23 @@ function upgradeSorter(uid) {
   $("hint").textContent = `Sorter upgraded to Lv ${s.level}.`;
 }
 
-// Compute what a LOAD click would scoop right now: a snapshot of the pile's
-// bottom row, capped by remaining sorter capacity.
-// LOAD is only available when the pile has a *complete* bottom row across
-// every column AND the sorter has enough remaining capacity for the entire
-// row in one go. No partial loads.
+// Compute what a LOAD click would scoop right now: as many bottom-row grains
+// as are available across the pile, capped by the sorter's remaining
+// capacity. Partial rows are fine — LOAD always max-fills.
 function previewLoadGrains(s) {
   const cols = sandColCount();
-  const remaining = sorterCapacity(s.level) - sorterTotal(s);
-  let count = 0;
-  let complete = cols > 0;
+  const cap = sorterCapacity(s.level);
+  const remaining = cap - sorterTotal(s);
+  let available = 0;
   for (let c = 0; c < cols; c++) {
     const col = state.pile[c];
-    if (!col || col.length === 0) { complete = false; continue; }
+    if (!col || col.length === 0) continue;
     const k = col[0];
-    if (!k || k === "__") { complete = false; continue; }
-    count += 1;
+    if (!k || k === "__") continue;
+    available += 1;
   }
-  const fits = complete && remaining >= count;
-  return { count, complete, fits, canLoad: complete && fits };
+  const count = Math.min(available, Math.max(0, remaining));
+  return { count, available, remaining, canLoad: count > 0 };
 }
 
 function loadSorter(uid) {
@@ -3495,20 +3493,21 @@ function loadSorter(uid) {
   if (!s) return;
   ensureBulkInv();
   const preview = previewLoadGrains(s);
-  if (!preview.complete) {
-    $("hint").textContent = "Bottom row isn't complete — fill the pile across all columns first.";
+  if (preview.available === 0) {
+    $("hint").textContent = "Pile is empty — nothing to load.";
     return;
   }
-  if (!preview.fits) {
-    const short = preview.count - (sorterCapacity(s.level) - sorterTotal(s));
-    $("hint").textContent = `Sorter needs ${short} more space for that row — collect first.`;
+  if (preview.remaining <= 0) {
+    $("hint").textContent = "Sorter is full — collect first.";
     return;
   }
   let loaded = 0;
   const cols = sandColCount();
-  for (let c = 0; c < cols; c++) {
+  for (let c = 0; c < cols && loaded < preview.count; c++) {
     const col = state.pile[c];
+    if (!col || col.length === 0) continue;
     const k = col[0];
+    if (!k || k === "__") continue;
     s.input[k] = (s.input[k] || 0) + 1;
     col[0] = "__";                                       // tombstone for settle
     state.unsorted[k] = Math.max(0, (state.unsorted[k] || 0) - 1);
@@ -3632,10 +3631,10 @@ function renderSorters() {
     const loadText = preview.count > 0 ? `LOAD ${preview.count}` : "LOAD";
     if (loadBtn.textContent !== loadText) loadBtn.textContent = loadText;
     const loadTitle = preview.canLoad
-      ? `Scoop the bottom row (${preview.count} grains) into this sorter`
-      : (!preview.complete
-          ? "Bottom row isn't complete across all columns"
-          : `Sorter needs ${preview.count - (cap - totalN)} more space`);
+      ? `Scoop ${preview.count} grain${preview.count > 1 ? "s" : ""} from the pile into this sorter`
+      : (preview.available === 0
+          ? "Pile is empty"
+          : "Sorter is full — collect first");
     if (loadBtn.title !== loadTitle) loadBtn.title = loadTitle;
     if (loadBtn.disabled !== !canLoad) loadBtn.disabled = !canLoad;
 
