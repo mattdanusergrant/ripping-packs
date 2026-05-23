@@ -183,7 +183,7 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 
 ---
 
-## 8b. CLOUT — vault sets for XP
+## 8b. CLOUT — vault sets, spend on the upgrade grid
 
 Every crafted set can either be **listed** for cash or **vaulted** for CLOUT. Vaulting is a one-way trade — the set is consumed and you can never list it later — but it earns progression XP that ratchets up your effective caps.
 
@@ -202,34 +202,20 @@ Every crafted set can either be **listed** for cash or **vaulted** for CLOUT. Va
 | Foil Legendary Set   | $6,900   | 84    |
 | Foil Mythic Set      | $13,800  | 118   |
 
-**Level curve:** `level = 1 + floor(sqrt(clout / 10))` — quadratic, gentle early and steeper late.
+**CLOUT is a spendable balance**, not a running total. The header pink chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. Click any **available** node to spend CLOUT and apply the bonus live — effective caps recompute on the spot, no migration or level threshold to cross.
 
-| Level | CLOUT required |
-|------:|--------------:|
-| 1     | 0             |
-| 2     | 10            |
-| 3     | 40            |
-| 4     | 90            |
-| 5     | 160           |
-| 6     | 250           |
-| 7     | 360           |
-| 8     | 490           |
-| 9     | 640           |
-| 10    | 810           |
+**Upgrade grid (`UPGRADE_NODES`):** four parallel branches, each a linear chain of escalating-cost nodes. Tier-1 nodes have no prereqs; deeper nodes only become available once the previous in the same branch is unlocked.
 
-**Unlocks (`CLOUT_BONUSES`):**
+| Branch | Tier 1 → ... | What it does |
+|--------|-------------|-------------|
+| PAINT  | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Bigger Brush (100) → Massive Brush (300) | +5 / +5 / +10 marks, then +0.3 / +0.5 cursor radius |
+| LISTINGS | Side Hustle (5) → Shop Front (20) → Storefront (60) → Online Empire (200) | +1 / +1 / +2 / +3 marketplace slots |
+| SORTERS | Workbench (30) → Garage (100) → Quick Pickers (200) | +1 / +1 max sorter, then sorter tick -500ms |
+| MARKET | Quick Sales (20) → Hot Demand (80) → Premium Sets (250) | listing cooldown -3s, NPC absorb +0.03/s, set craft mult +0.10 |
 
-| Level | Bonus                                |
-|------:|--------------------------------------|
-| 2     | +1 marketplace slot · +5 marks       |
-| 3     | +1 max sorter · +5 marks             |
-| 5     | +2 marketplace slots · +10 marks     |
-| 7     | +1 max sorter · +10 marks            |
-| 10    | +3 marketplace slots · +20 marks     |
+Costs in CLOUT; numbers above are the node cost. Effects are deltas added to the base constants (`LISTING_SLOTS`, `SORTER_MAX`, etc.) via `unlockedNodeEffects()`.
 
-So a Lv-10 player runs **16 listing slots** (vs 10 base), **5 sorters** (vs 3 base), and can stage **60 marked grains** in one paint (vs 10 base). Effective caps recompute live — no migration needed when crossing a threshold.
-
-A `Lv N · X CLOUT · Y to next` chip lives in the page header and pops with a pink flash on level-up. The vault button on each set track is magenta to visually separate it from the gold LIST action.
+Modal UI: four columns (one per branch), each node card shows its name, effect, cost, and status — **owned** (gold border), **available** (pink pulse, clickable), **unaffordable** (dim pink), **locked** (dashed, prereqs unmet). The vault button on each set track is magenta to visually separate it from the gold LIST action.
 
 ---
 

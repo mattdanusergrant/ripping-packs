@@ -655,6 +655,109 @@
   button.reset:hover { color: var(--ink); border-color: var(--ink); }
 
   /* ---- Game Design modal ------------------------------------------------ */
+  /* ---- Upgrades modal ----------------------------------------------------- */
+  .upgrades-modal {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .upgrades-modal[hidden] { display: none; }
+  .upgrades-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(8,6,18,0.78);
+    backdrop-filter: blur(2px);
+  }
+  .upgrades-panel {
+    position: relative;
+    background: var(--panel);
+    border: 1.5px solid rgba(255,126,179,0.45);
+    border-radius: 14px;
+    padding: 0;
+    width: min(960px, 92vw);
+    max-height: 88vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+  }
+  .upgrades-header {
+    display: flex; align-items: center; gap: 18px;
+    padding: 18px 22px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .upgrades-header h2 {
+    margin: 0; flex: 1;
+    letter-spacing: 3px; font-size: 1.05rem; color: #ff7eb3;
+  }
+  .upgrades-balance {
+    background: rgba(255,126,179,0.14);
+    border: 1px solid rgba(255,126,179,0.6);
+    border-radius: 14px;
+    padding: 4px 14px;
+    font-size: 0.92rem;
+  }
+  .upgrades-balance b { color: #ff7eb3; }
+  .upgrades-close {
+    background: transparent; color: var(--ink); border: 0;
+    font-size: 1.4rem; cursor: pointer; padding: 0 6px;
+  }
+  .upgrades-close:hover { color: #ff7eb3; }
+  .upgrades-body {
+    padding: 18px 22px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .upgrade-branch {
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 0;
+  }
+  .upgrade-branch-label {
+    text-align: center;
+    font-size: 0.7rem; letter-spacing: 2px;
+    padding: 4px 0;
+    border-bottom: 1px solid currentColor;
+    margin-bottom: 4px;
+  }
+  .upgrade-node {
+    position: relative;
+    background: var(--panel-light);
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 2px;
+    cursor: default; user-select: none;
+    transition: all 0.12s;
+  }
+  .upgrade-node .un-label   { font-weight: bold; font-size: 0.82rem; letter-spacing: 0.5px; color: var(--ink); }
+  .upgrade-node .un-desc    { font-size: 0.7rem; color: var(--muted); }
+  .upgrade-node .un-cost    { font-size: 0.72rem; font-weight: bold; color: #ff7eb3; margin-top: 2px; }
+  .upgrade-node.owned       { background: rgba(245,197,66,0.10); border-color: var(--gold); }
+  .upgrade-node.owned .un-cost { color: var(--gold); }
+  .upgrade-node.owned .un-cost::before { content: "✓ UNLOCKED"; }
+  .upgrade-node.owned .un-cost-text { display: none; }
+  .upgrade-node.available {
+    border-color: #ff7eb3;
+    box-shadow: 0 0 10px rgba(255,126,179,0.45);
+    cursor: pointer;
+    animation: upgr-pulse 1.6s ease-in-out infinite;
+  }
+  .upgrade-node.available:hover { background: rgba(255,126,179,0.16); }
+  .upgrade-node.unaffordable {
+    border-color: rgba(255,126,179,0.25);
+    opacity: 0.7;
+  }
+  .upgrade-node.unaffordable .un-cost { color: rgba(255,126,179,0.7); }
+  .upgrade-node.locked {
+    opacity: 0.4;
+    border-style: dashed;
+  }
+  .upgrade-node.locked .un-cost::before { content: "🔒 "; }
+  @keyframes upgr-pulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(255,126,179,0.35); }
+    50%      { box-shadow: 0 0 14px rgba(255,126,179,0.8); }
+  }
+  @media (max-width: 900px) {
+    .upgrades-body { grid-template-columns: repeat(2, 1fr); }
+  }
   .design-modal {
     position: fixed; inset: 0; z-index: 50;
     display: flex; align-items: center; justify-content: center;
@@ -780,11 +883,23 @@
     <span>Cash: <b id="coins">$0</b></span>
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
-    <span class="clout-chip" id="clout-chip" title="CLOUT — earned by vaulting crafted sets">Lv <b id="clout-level">1</b> · <b id="clout-now">0</b> CLOUT · <span id="clout-next">10 to next</span></span>
+    <button class="clout-chip" id="clout-chip" type="button" title="CLOUT earned by vaulting crafted sets — spend on the upgrade grid"><b id="clout-now">0</b> CLOUT · UPGRADES</button>
     <button class="reset" id="design-btn">Game Design</button>
     <button class="reset" id="reset-btn">Reset</button>
   </div>
 </header>
+
+<div id="upgrades-modal" class="upgrades-modal" hidden>
+  <div class="upgrades-backdrop" id="upgrades-backdrop"></div>
+  <div class="upgrades-panel" role="dialog" aria-modal="true" aria-labelledby="upgrades-title">
+    <div class="upgrades-header">
+      <h2 id="upgrades-title">UPGRADES</h2>
+      <span class="upgrades-balance">💎 <b id="upgrades-balance">0</b> CLOUT</span>
+      <button class="upgrades-close" id="upgrades-close" aria-label="Close">×</button>
+    </div>
+    <div class="upgrades-body" id="upgrades-body"></div>
+  </div>
+</div>
 
 <div id="design-modal" class="design-modal" hidden>
   <div class="design-modal-backdrop"></div>
@@ -1035,8 +1150,17 @@ const PRICED_SET_TRACKS = [
   ["foilMythicSet",    "foilMythic",    "mythic"],
 ];
 function recomputePricedSetBaselines() {
+  // Use the effective multiplier when state is initialized (so upgrade nodes
+  // shift the set baselines live); fall back to the raw constant at boot
+  // before state exists.
+  let mult = SET_CRAFT_MULTIPLIER;
+  try {
+    if (typeof state !== "undefined" && state && Array.isArray(state.unlockedNodes)) {
+      mult = setCraftMultiplierEffective();
+    }
+  } catch (_) {}
   PRICED_SET_TRACKS.forEach(([setKey, cardKey, baseRarity]) => {
-    BASELINE[setKey] = SET_SIZES[baseRarity] * BASELINE[cardKey] * SET_CRAFT_MULTIPLIER;
+    BASELINE[setKey] = SET_SIZES[baseRarity] * BASELINE[cardKey] * mult;
   });
 }
 recomputePricedSetBaselines();
@@ -1086,7 +1210,7 @@ let SORTER_BASE_MS       = def("SORTER_BASE_MS", 2000); // L1: 1 card / 2s
 let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 500);
 let SORTER_LEVEL_MAX     = def("SORTER_LEVEL_MAX", 5);
 const SORTER_TICK_MS     = 250;
-function sorterInterval(level) { return Math.max(250, SORTER_BASE_MS / Math.max(1, level)); }
+function sorterInterval(level) { return Math.max(250, sorterBaseMsEffective() / Math.max(1, level)); }
 function sorterCapacity(level) { return SORTER_BASE_CAPACITY + (Math.max(1, level) - 1) * 10; }
 function sorterUpgradeCost(level) { return SORTER_UPGRADE_BASE * level * level; }
 function sumBuckets(b) {
@@ -1106,42 +1230,102 @@ const LISTING_TICK_MS = 2000;
 
 // ---- CLOUT progression --------------------------------------------------
 // CLOUT is XP earned by vaulting crafted sets (instead of listing them for
-// cash). Levels are quadratic in clout — the curve is gentle early and
-// steepens steadily. Each unlock tier in CLOUT_BONUSES bumps the effective
-// cap for listing slots, sorters, etc.
+// cash). The CLOUT balance is a spendable resource — players unlock nodes
+// on the upgrade grid by spending CLOUT. Each unlocked node contributes its
+// effect deltas to the effective game limits.
 function cloutForSetKey(itemKey) {
   const b = BASELINE[itemKey] || 0;
   return Math.max(1, Math.ceil(Math.sqrt(b)));
 }
-function cloutForLevel(level) { return Math.pow(Math.max(1, level) - 1, 2) * 10; }
-function cloutLevel(clout)    { return 1 + Math.floor(Math.sqrt(Math.max(0, clout) / 10)); }
-function currentCloutLevel()  { return cloutLevel(state.clout || 0); }
-function cloutToNextLevel() {
-  const lv = currentCloutLevel();
-  return Math.max(0, cloutForLevel(lv + 1) - (state.clout || 0));
-}
-// Each entry contributes deltas to the bonuses once the player hits its level.
-const CLOUT_BONUSES = [
-  { level: 2,  listingSlots: 1, maxHighlights: 5 },
-  { level: 3,  sorterMax: 1,    maxHighlights: 5 },
-  { level: 5,  listingSlots: 2, maxHighlights: 10 },
-  { level: 7,  sorterMax: 1,    maxHighlights: 10 },
-  { level: 10, listingSlots: 3, maxHighlights: 20 },
+
+// Upgrade grid: four branches (paint / listings / sorters / market), each a
+// linear chain of escalating-cost nodes. Tier-1 nodes (no prereqs) are
+// available from the start; deeper nodes only become available once the
+// previous in the same chain is unlocked.
+const UPGRADE_NODES = [
+  // PAINT — bulk-pit hover-mark capabilities.
+  { id: "paint1", branch: "paint",    tier: 1, label: "Steadier Hand",    desc: "+5 marks",            cost: 8,   effect: { maxHighlights: 5 } },
+  { id: "paint2", branch: "paint",    tier: 2, label: "Wider Sweep",      desc: "+5 marks",            cost: 25,  effect: { maxHighlights: 5 },     prereq: ["paint1"] },
+  { id: "paint3", branch: "paint",    tier: 3, label: "Pile Mastery",     desc: "+10 marks",           cost: 80,  effect: { maxHighlights: 10 },    prereq: ["paint2"] },
+  { id: "paint4", branch: "paint",    tier: 4, label: "Bigger Brush",     desc: "Cursor +0.3 radius",  cost: 100, effect: { hoverRadius: 0.3 },     prereq: ["paint3"] },
+  { id: "paint5", branch: "paint",    tier: 5, label: "Massive Brush",    desc: "Cursor +0.5 radius",  cost: 300, effect: { hoverRadius: 0.5 },     prereq: ["paint4"] },
+  // LISTINGS — marketplace slot expansion.
+  { id: "list1",  branch: "listings", tier: 1, label: "Side Hustle",      desc: "+1 listing slot",     cost: 5,   effect: { listingSlots: 1 } },
+  { id: "list2",  branch: "listings", tier: 2, label: "Shop Front",       desc: "+1 listing slot",     cost: 20,  effect: { listingSlots: 1 },      prereq: ["list1"] },
+  { id: "list3",  branch: "listings", tier: 3, label: "Storefront",       desc: "+2 listing slots",    cost: 60,  effect: { listingSlots: 2 },      prereq: ["list2"] },
+  { id: "list4",  branch: "listings", tier: 4, label: "Online Empire",    desc: "+3 listing slots",    cost: 200, effect: { listingSlots: 3 },      prereq: ["list3"] },
+  // SORTERS — automation expansion.
+  { id: "sort1",  branch: "sorters",  tier: 1, label: "Workbench",        desc: "+1 max sorter",       cost: 30,  effect: { sorterMax: 1 } },
+  { id: "sort2",  branch: "sorters",  tier: 2, label: "Garage",           desc: "+1 max sorter",       cost: 100, effect: { sorterMax: 1 },         prereq: ["sort1"] },
+  { id: "sort3",  branch: "sorters",  tier: 3, label: "Quick Pickers",    desc: "Sorters -500ms tick", cost: 200, effect: { sorterBaseMsDelta: -500 }, prereq: ["sort2"] },
+  // MARKET — economy modifiers.
+  { id: "mkt1",   branch: "market",   tier: 1, label: "Quick Sales",      desc: "Listing cooldown -3s",cost: 20,  effect: { listingCooldownDelta: -3 } },
+  { id: "mkt2",   branch: "market",   tier: 2, label: "Hot Demand",       desc: "NPC absorb +0.03/s",  cost: 80,  effect: { marketDecayDelta: 0.03 }, prereq: ["mkt1"] },
+  { id: "mkt3",   branch: "market",   tier: 3, label: "Premium Sets",     desc: "Set craft mult +0.10",cost: 250, effect: { setCraftMultDelta: 0.1 }, prereq: ["mkt2"] },
 ];
-function cumulativeCloutBonuses(level) {
-  const out = { listingSlots: 0, sorterMax: 0, maxHighlights: 0 };
-  CLOUT_BONUSES.forEach(b => {
-    if (b.level <= level) {
-      if (b.listingSlots)  out.listingSlots  += b.listingSlots;
-      if (b.sorterMax)     out.sorterMax     += b.sorterMax;
-      if (b.maxHighlights) out.maxHighlights += b.maxHighlights;
-    }
+const UPGRADE_BRANCHES = [
+  { key: "paint",    label: "PAINT",    color: "#ff7eb3" },
+  { key: "listings", label: "LISTINGS", color: "#ffd84d" },
+  { key: "sorters",  label: "SORTERS",  color: "#5aa8ff" },
+  { key: "market",   label: "MARKET",   color: "#b8ff5a" },
+];
+
+function unlockedNodeSet() {
+  return new Set(Array.isArray(state.unlockedNodes) ? state.unlockedNodes : []);
+}
+function unlockedNodeEffects() {
+  const set = unlockedNodeSet();
+  const out = {};
+  UPGRADE_NODES.forEach(n => {
+    if (!set.has(n.id)) return;
+    Object.entries(n.effect || {}).forEach(([k, v]) => {
+      out[k] = (out[k] || 0) + v;
+    });
   });
   return out;
 }
-function listingSlotsEffective()  { return LISTING_SLOTS  + cumulativeCloutBonuses(currentCloutLevel()).listingSlots; }
-function sorterMaxEffective()     { return SORTER_MAX     + cumulativeCloutBonuses(currentCloutLevel()).sorterMax; }
-function maxHighlightsEffective() { return MAX_HIGHLIGHTS + cumulativeCloutBonuses(currentCloutLevel()).maxHighlights; }
+function nodeStatus(node) {
+  if (!node) return "missing";
+  const set = unlockedNodeSet();
+  if (set.has(node.id)) return "owned";
+  const prereqMet = (node.prereq || []).every(p => set.has(p));
+  if (!prereqMet) return "locked";
+  if ((state.clout || 0) < node.cost) return "unaffordable";
+  return "available";
+}
+function purchaseNode(id) {
+  const node = UPGRADE_NODES.find(n => n.id === id);
+  if (!node) return;
+  const st = nodeStatus(node);
+  if (st === "owned") return;
+  if (st === "locked") { $("hint").textContent = "Prereqs not unlocked yet."; return; }
+  if (st === "unaffordable") {
+    $("hint").textContent = `Need ${node.cost - (state.clout || 0)} more CLOUT.`;
+    return;
+  }
+  state.clout -= node.cost;
+  state.cloutSpent = (state.cloutSpent || 0) + node.cost;
+  if (!Array.isArray(state.unlockedNodes)) state.unlockedNodes = [];
+  state.unlockedNodes.push(node.id);
+  // mkt3 (and any future node touching set craft multiplier) shifts the set
+  // baselines — recompute so the live price reflects the new bonus.
+  recomputePricedSetBaselines();
+  renderAll();
+  renderUpgrades();
+  save();
+  $("hint").textContent = `Unlocked: ${node.label}.`;
+}
+
+const eff = () => unlockedNodeEffects();
+function listingSlotsEffective()      { return LISTING_SLOTS       + (eff().listingSlots         || 0); }
+function sorterMaxEffective()         { return SORTER_MAX          + (eff().sorterMax            || 0); }
+function maxHighlightsEffective()     { return MAX_HIGHLIGHTS      + (eff().maxHighlights        || 0); }
+function hoverRadiusEffective()       { return HOVER_RADIUS_CELLS  + (eff().hoverRadius          || 0); }
+function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
+function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
+function listingCooldownMaxEffective(){ return Math.max(listingCooldownMinEffective(), LISTING_COOLDOWN_MAX + (eff().listingCooldownDelta || 0)); }
+function marketDecayEffective()       { return MARKET_DECAY_RATE   + (eff().marketDecayDelta     || 0); }
+function setCraftMultiplierEffective(){ return SET_CRAFT_MULTIPLIER+ (eff().setCraftMultDelta    || 0); }
 
 function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 
@@ -1177,8 +1361,10 @@ const defaultState = () => ({
                   // input  = raw grains loaded from the pile bottom row
                   // output = grains the sorter finished processing (ready to collect)
   sorterUidCounter: 0,
-  clout: 0,              // XP earned by vaulting crafted sets
+  clout: 0,              // CLOUT balance — spent on upgrade nodes
+  cloutSpent: 0,         // lifetime CLOUT spent
   vaultedSets: {},       // { [setItemKey]: count } — lifetime vault deposits
+  unlockedNodes: [],     // ids of purchased upgrade nodes
   listings: [],          // [{uid, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
 });
@@ -1211,7 +1397,7 @@ function decayMarketInv(key, id, now) {
     ? state.marketInvUpdated[key][id]
     : now;
   const elapsed = Math.max(0, (now - last) / 1000);
-  const decayed = Math.max(0, cur - elapsed * MARKET_DECAY_RATE);
+  const decayed = Math.max(0, cur - elapsed * marketDecayEffective());
   state.marketInv[key][id]        = decayed;
   state.marketInvUpdated[key][id] = now;
   return decayed;
@@ -1379,7 +1565,9 @@ function load() {
     delete parsed.friends;
     if (typeof parsed.boxesOwned !== "number") parsed.boxesOwned = 0;
     if (typeof parsed.clout !== "number") parsed.clout = 0;
+    if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!parsed.vaultedSets || typeof parsed.vaultedSets !== "object") parsed.vaultedSets = {};
+    if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     // Backfill slot assignments + cap to HOMIE_MAX (legacy saves had no slot).
@@ -1683,7 +1871,7 @@ function caseCost() { return CASE_COST; }
 // ---- Render --------------------------------------------------------------
 const $ = id => document.getElementById(id);
 
-let _lastCloutLevel = null;
+let _lastCloutBalance = null;
 function renderHeader() {
   $("coins").textContent        = usd(state.coins);
   $("packs-opened").textContent = state.packsOpened;
@@ -1692,17 +1880,14 @@ function renderHeader() {
   $("supply-label").textContent = boxes > 0
     ? `Supply: ${state.packSupply} · 📦 ${boxes}`
     : `Supply: ${state.packSupply}`;
-  // CLOUT chip — animate on level-up.
-  const lv = currentCloutLevel();
-  $("clout-level").textContent = lv;
-  $("clout-now").textContent = (state.clout || 0).toLocaleString();
-  const toNext = cloutToNextLevel();
-  $("clout-next").textContent = toNext === 0 ? "max" : `${toNext.toLocaleString()} to next`;
+  // CLOUT chip — animate when balance grows (vault deposit).
+  const bal = state.clout || 0;
+  $("clout-now").textContent = bal.toLocaleString();
   const chip = $("clout-chip");
-  if (_lastCloutLevel != null && lv > _lastCloutLevel && chip) {
+  if (_lastCloutBalance != null && bal > _lastCloutBalance && chip) {
     chip.classList.remove("level-up"); void chip.offsetWidth; chip.classList.add("level-up");
   }
-  _lastCloutLevel = lv;
+  _lastCloutBalance = bal;
   $("cost-pack").textContent = usd(packCost());
   $("cost-box").textContent  = usd(boxCost());
   $("cost-case").textContent = usd(caseCost());
@@ -1923,7 +2108,9 @@ function isBulkListing(l) {
 }
 
 function rollListingCooldown() {
-  return LISTING_COOLDOWN_MIN + Math.random() * Math.max(0, LISTING_COOLDOWN_MAX - LISTING_COOLDOWN_MIN);
+  const lo = listingCooldownMinEffective();
+  const hi = listingCooldownMaxEffective();
+  return lo + Math.random() * Math.max(0, hi - lo);
 }
 
 function basePriceFor(rarity, cardId, foil) {
@@ -2052,16 +2239,10 @@ function vaultSet(key) {
   if (!state.vaultedSets) state.vaultedSets = {};
   state.vaultedSets[itemKey] = (state.vaultedSets[itemKey] || 0) + 1;
   const earned = cloutForSetKey(itemKey);
-  const beforeLv = currentCloutLevel();
   state.clout = (state.clout || 0) + earned;
-  const afterLv = currentCloutLevel();
   renderAll(); save();
   const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
-  if (afterLv > beforeLv) {
-    $("hint").textContent = `Vaulted ${setName} SET. +${earned} CLOUT — LEVEL UP! Now Lv ${afterLv}.`;
-  } else {
-    $("hint").textContent = `Vaulted ${setName} SET. +${earned} CLOUT.`;
-  }
+  $("hint").textContent = `Vaulted ${setName} SET. +${earned} CLOUT (balance: ${state.clout}).`;
 }
 
 function listSetItem(key) {
@@ -2322,10 +2503,11 @@ function cellsWithinRadius(px, py) {
   if (!canvas) return [];
   const h = canvas.clientHeight || 90;
   const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
-  const pxR  = HOVER_RADIUS_CELLS * unit;
+  const radius = hoverRadiusEffective();
+  const pxR  = radius * unit;
   const cx = Math.floor(px / SAND_CELL_W);
   const cy = Math.floor((h - py) / SAND_CELL_H);
-  const dc = Math.ceil(HOVER_RADIUS_CELLS);
+  const dc = Math.ceil(radius);
   const out = [];
   for (let c = cx - dc; c <= cx + dc; c++) {
     if (c < 0 || c >= SAND_COLS) continue;
@@ -2718,7 +2900,7 @@ function drawSand() {
   // is upgrade-friendly for later progression unlocks.
   if (cursorPos) {
     const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
-    const pxR = HOVER_RADIUS_CELLS * unit;
+    const pxR = hoverRadiusEffective() * unit;
     ctx.strokeStyle = "rgba(255,255,255,0.55)";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -2995,6 +3177,43 @@ function openDesignPanel() {
 }
 function closeDesignPanel() {
   $("design-modal").hidden = true;
+}
+
+function openUpgradesPanel() {
+  renderUpgrades();
+  $("upgrades-modal").hidden = false;
+}
+function closeUpgradesPanel() {
+  $("upgrades-modal").hidden = true;
+}
+
+function renderUpgrades() {
+  const body = $("upgrades-body");
+  if (!body) return;
+  const balanceEl = $("upgrades-balance");
+  if (balanceEl) balanceEl.textContent = (state.clout || 0).toLocaleString();
+  body.innerHTML = "";
+  UPGRADE_BRANCHES.forEach(branch => {
+    const col = document.createElement("div");
+    col.className = "upgrade-branch";
+    col.style.color = branch.color;
+    const label = document.createElement("div");
+    label.className = "upgrade-branch-label";
+    label.textContent = branch.label;
+    col.appendChild(label);
+    UPGRADE_NODES.filter(n => n.branch === branch.key).forEach(node => {
+      const status = nodeStatus(node);
+      const card = document.createElement("div");
+      card.className = "upgrade-node " + status;
+      card.dataset.nodeId = node.id;
+      card.innerHTML = `
+        <span class="un-label">${node.label}</span>
+        <span class="un-desc">${node.desc}</span>
+        <span class="un-cost"><span class="un-cost-text">${node.cost} CLOUT</span></span>`;
+      col.appendChild(card);
+    });
+    body.appendChild(col);
+  });
 }
 
 function readFormOverrides() {
@@ -3692,9 +3911,20 @@ $("design-close").addEventListener("click", closeDesignPanel);
 $("design-cancel").addEventListener("click", closeDesignPanel);
 $("design-apply").addEventListener("click", applyDesignAndReload);
 $("design-reset").addEventListener("click", resetDesignOverrides);
+$("clout-chip").addEventListener("click", openUpgradesPanel);
+$("upgrades-close").addEventListener("click", closeUpgradesPanel);
+$("upgrades-backdrop").addEventListener("click", closeUpgradesPanel);
+$("upgrades-body").addEventListener("click", (e) => {
+  const card = e.target.closest(".upgrade-node");
+  if (!card || !card.dataset.nodeId) return;
+  if (card.classList.contains("available")) purchaseNode(card.dataset.nodeId);
+});
 document.querySelector("#design-modal .design-modal-backdrop").addEventListener("click", closeDesignPanel);
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("design-modal").hidden) closeDesignPanel();
+  if (e.key === "Escape") {
+    if (!$("design-modal").hidden)  { closeDesignPanel();  return; }
+    if (!$("upgrades-modal").hidden) { closeUpgradesPanel(); return; }
+  }
 });
 setInterval(save, 5000);
 setInterval(tickHomies, HOMIE_TICK_MS);
@@ -3716,8 +3946,10 @@ window.addEventListener("resize", () => {
 window.addEventListener("keydown", (e) => {
   // Don't hijack keys when the design modal is open, the user is in an
   // input/textarea, or a modifier is held.
-  const modal = document.getElementById("design-modal");
-  if (modal && !modal.hidden) return;
+  const designModal   = document.getElementById("design-modal");
+  const upgradesModal = document.getElementById("upgrades-modal");
+  if (designModal   && !designModal.hidden)   return;
+  if (upgradesModal && !upgradesModal.hidden) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
   if (e.key === "Escape") { clearMarkedGrains(); return; }
