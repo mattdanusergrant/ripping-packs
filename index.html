@@ -263,13 +263,14 @@
     color: #fff;
     box-shadow: 0 0 4px color-mix(in srgb, var(--cell-color, #fff) 50%, transparent);
   }
-  /* Unowned foil cells get a faint rainbow border so the top row of each
-     combined grid (foil) is identifiable even with nothing collected. */
+  /* Unowned foil cells get a barely-there rainbow border so the top row of
+     each combined grid is identifiable as foil — but dim enough not to be
+     mistaken for an owned (full-shimmer) cell. */
   .collection-cell.foil:not(.owned) {
     border-color: transparent;
     background:
-      linear-gradient(rgba(255,255,255,0.025), rgba(255,255,255,0.025)) padding-box,
-      linear-gradient(135deg, rgba(255,126,179,0.55), rgba(101,214,255,0.55), rgba(184,255,90,0.55), rgba(255,216,77,0.55)) border-box;
+      linear-gradient(rgba(255,255,255,0.015), rgba(255,255,255,0.015)) padding-box,
+      linear-gradient(135deg, rgba(255,126,179,0.22), rgba(101,214,255,0.22), rgba(184,255,90,0.22), rgba(255,216,77,0.22)) border-box;
     border: 1px solid transparent;
   }
   .collection-cell.foil.owned {
