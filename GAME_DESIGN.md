@@ -1,6 +1,6 @@
 # Ripping Packs — Game Design Document
 
-A single-file browser idler about cracking trading-card booster packs, sorting the dump pile, and selling completed sets on a live market. Built as one HTML file with vanilla JS + CSS. All gameplay state persists in `localStorage`.
+A single-file browser idler about cracking trading-card booster packs, sorting the sand pile, and selling completed sets on a live market. Built as one HTML file with vanilla JS + CSS. All gameplay state persists in `localStorage`.
 
 ---
 
@@ -79,10 +79,6 @@ Outcomes:
 ### Unsorted cap
 
 Max 2000 cards unsorted. The "Supply" / pack-opening flow refuses to rip when the cap is hit; the typing mini-game silently drops keys.
-
-### Dump
-
-A `DUMP PILE` button under the sand cashes out the entire unsorted pile at 50% of `SELL_PRICE × FOIL_MULTIPLIER`. Used to clear a stuck pile or trade volume for a small cash injection.
 
 ---
 
@@ -272,12 +268,6 @@ Pack/box/case costs:
 - **Box:** $100 (36 packs worth, ~7% discount)
 - **Case:** $500 (6 boxes worth, ~23% discount)
 
-Bulk dump prices (`SELL_PRICE`, ×`FOIL_MULTIPLIER` for foils):
-- Standard: $0.01
-- Rare: $0.05
-- Foil Standard: $0.10
-- Foil Rare bulk: not applicable (foil rares are per-id priced)
-
 Market baselines (drift around these, configurable). Foils are priced one tier above the non-foil tier above them — a foil epic ($250) outvalues a non-foil mythic ($100), reflecting its ~4× rarity:
 - Epic: $5, Legendary: $25, Mythic: $100
 - Foil Rare: $30, Foil Epic: $250, Foil Legendary: $1,000, Foil Mythic: $4,000
@@ -317,7 +307,7 @@ Dramaturgy: flood the market with foil epics in a session and prices visibly tan
 
 | Column         | Contains                                                          |
 |----------------|-------------------------------------------------------------------|
-| **Shop** (left)| Buy buttons (Pack/Box/Case), Hire Homie / Buy Sorter, set-progress meters, the pack opener, typing zone, hint line, sand canvas, dump button, sorter cards |
+| **Shop** (left)| Buy buttons (Pack/Box/Case), Hire Homie / Buy Sorter, set-progress meters, the pack opener, typing zone, hint line, sand canvas, sorter cards |
 | **Vault** (mid)| Header (coins, packs opened, foils), marketplace listings panel, collection grid (cells per rarity row, foil row beneath each), then the three bulk tracking rows (Rare / Foil Standard / Standard) with set craft + list buttons |
 | **Footer**     | One-line flavor copy                                              |
 

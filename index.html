@@ -456,16 +456,6 @@
     border-color: rgba(255,126,179,0.55);
     color: #ff7eb3;
   }
-  #dump-btn {
-    background: transparent; color: #ff7eb3;
-    border: 1px solid rgba(255,126,179,0.45); border-radius: 6px;
-    padding: 6px 10px; cursor: pointer;
-    font-family: inherit; font-size: 0.72rem; letter-spacing: 1px;
-    margin: 4px 0 8px; align-self: flex-start;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-  #dump-btn:hover:not(:disabled) { background: rgba(255,126,179,0.12); color: #ffaad0; }
-  #dump-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* ---- Marketplace listings -------------------------------------------- */
   #listings-panel {
@@ -1014,7 +1004,6 @@
       </span>
       <button class="upgrade-trigger" id="upgrade-paint" type="button" data-branch="paint">⬆ PAINT</button>
     </div>
-    <button id="dump-btn" type="button" disabled>DUMP PILE — $0</button>
     <canvas id="sand-canvas"></canvas>
   </div>
 </section>
@@ -1056,11 +1045,6 @@ function def(key, fallback) {
   return fallback;
 }
 
-// Bulk SELL_PRICE only applies to non-market rarities (common, uncommon, rare).
-// Higher rarities go through the market; the entries are kept for the foil
-// fallback path and the dump-discount calculation.
-let SELL_PRICE = def("SELL_PRICE", { standard: 0.01, rare: 0.05, epic: 5, legendary: 25, mythic: 100 });
-
 // ---- Sorting -------------------------------------------------------------
 // Sorting is purely positional: the player clicks the sand pile, the nearest
 // grain detonates plus its 4 orthogonal neighbors, then non-standard grains
@@ -1068,8 +1052,6 @@ let SELL_PRICE = def("SELL_PRICE", { standard: 0.01, rare: 0.05, epic: 5, legend
 // reach 2).
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 2000);
-
-let FOIL_MULTIPLIER       = def("FOIL_MULTIPLIER", 10);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
 // step 1's rare+ upgrade resolves.
 let PACK_FOIL_CHANCE      = def("PACK_FOIL_CHANCE", 0.02);
@@ -1259,7 +1241,6 @@ function sorterOutputTotal(s) { return sumBuckets(s && s.output); }
 function sorterTotal(s)       { return sorterInputTotal(s) + sorterOutputTotal(s); }
 
 // ---- Marketplace --------------------------------------------------------
-let DUMP_DISCOUNT             = def("DUMP_DISCOUNT", 0.5);
 let LISTING_COOLDOWN_MIN = def("LISTING_COOLDOWN_MIN", 10); // seconds
 let LISTING_COOLDOWN_MAX = def("LISTING_COOLDOWN_MAX", 20);
 let LISTING_SLOTS        = def("LISTING_SLOTS", 10);
@@ -1374,7 +1355,6 @@ function listingCooldownMaxEffective(){ return Math.max(listingCooldownMinEffect
 function marketDecayEffective()       { return MARKET_DECAY_RATE   + (eff().marketDecayDelta     || 0); }
 function setCraftMultiplierEffective(){ return SET_CRAFT_MULTIPLIER+ (eff().setCraftMultDelta    || 0); }
 
-function foilPrice(rarity) { return SELL_PRICE[rarity] * FOIL_MULTIPLIER; }
 
 // ---- State ---------------------------------------------------------------
 const SAVE_KEY = "cryptid_almanac_save_v4"; // bumped: starter box
@@ -1714,7 +1694,7 @@ function load() {
       parsed.listings = parsed.listings.filter(l => l.rarity !== "common" && l.rarity !== "uncommon");
     }
     // Marketplace migration: sorted bulk cards from the old system go back to
-    // the unsorted pile so the player can dump or re-sort (which now lists).
+    // the unsorted pile so the player can re-sort them.
     if (parsed.stock) {
       SAND_BULK_RARITIES.forEach(r => {
         const n = parsed.stock[r] || 0;
@@ -2170,24 +2150,6 @@ function rollListingCooldown() {
   return lo + Math.random() * Math.max(0, hi - lo);
 }
 
-function basePriceFor(rarity, cardId, foil) {
-  const mk = marketKey(rarity, foil);
-  if (mk && cardId != null) return marketPriceFor(mk, cardId);
-  return foil ? foilPrice(rarity) : SELL_PRICE[rarity];
-}
-
-function makeListing(rarity, cardId, foil) {
-  const ask = Math.max(0.01, Math.round(basePriceFor(rarity, cardId, foil) * 100) / 100);
-  const cooldownSec = rollListingCooldown();
-  const uid = (state.listingsUidCounter || 0) + 1;
-  state.listingsUidCounter = uid;
-  return {
-    uid, rarity, cardId, foil,
-    askPrice: ask,
-    resolveAt: Date.now() + cooldownSec * 1000,
-    willResolve: true,
-  };
-}
 
 function activeListingCount() {
   return Array.isArray(state.listings) ? state.listings.length : 0;
@@ -2355,31 +2317,6 @@ function cancelListing(uid) {
   $("hint").textContent = `Cancelled listing — returned to inventory.`;
 }
 
-function bulkKeyDumpPrice(key) {
-  const base = bulkBaseRarity(key);
-  return bulkIsFoil(key) ? SELL_PRICE[base] * FOIL_MULTIPLIER : SELL_PRICE[base];
-}
-function dumpUnsorted() {
-  let total = 0, proceeds = 0;
-  SAND_BULK_KEYS.forEach(k => {
-    const n = state.unsorted[k] || 0;
-    total += n;
-    proceeds += n * bulkKeyDumpPrice(k) * DUMP_DISCOUNT;
-  });
-  if (total === 0) return;
-  proceeds = Math.round(proceeds * 100) / 100;
-  if (!confirm(`Dump ${total} unsorted card${total > 1 ? "s" : ""} for ${usd(proceeds)}? (${Math.round(DUMP_DISCOUNT * 100)}% of listed price)`)) return;
-  state.coins += proceeds;
-  SAND_BULK_KEYS.forEach(k => state.unsorted[k] = 0);
-  state.pile = [];
-  ensurePileBuckets();
-  // Drop any still-falling grains too — otherwise they'd land in the now-empty
-  // pile after the dump, only to be wiped by the next syncPileWithStock.
-  fallingGrains = [];
-  critPops = [];
-  renderAll(); save();
-  $("hint").textContent = `Dumped ${total} cards for ${usd(proceeds)}.`;
-}
 
 function resolveListings() {
   if (!Array.isArray(state.listings) || state.listings.length === 0) return;
@@ -2483,20 +2420,6 @@ function renderListings() {
   wrap.innerHTML = html;
 }
 
-function renderDumpButton() {
-  const btn = $("dump-btn");
-  if (!btn) return;
-  let total = 0, proceeds = 0;
-  SAND_BULK_KEYS.forEach(k => {
-    const n = state.unsorted[k] || 0;
-    total += n;
-    proceeds += n * bulkKeyDumpPrice(k) * DUMP_DISCOUNT;
-  });
-  btn.disabled = total === 0;
-  btn.textContent = total === 0
-    ? `DUMP PILE — empty`
-    : `DUMP ${total} → ${usd(Math.round(proceeds * 100) / 100)}`;
-}
 
 // ---- Sand simulation -----------------------------------------------------
 // Grid is locked to SAND_COLS × SAND_ROWS = 50 × 40 = 2000 cells, matching
@@ -3076,7 +2999,7 @@ function renderSetProgress() {
 
 // ---- Game Design panel --------------------------------------------------
 // Each entry binds a form input to a current variable. `path` may include a
-// dot to address nested object keys (e.g., "SELL_PRICE.common"); `key` is
+// dot to address nested object keys (e.g., "BASELINE.epic"); `key` is
 // the registered design key (so we read its default from _DESIGN_DEFAULTS
 // and write the merged result back into _designOverrides on apply).
 const DESIGN_FIELDS = [
@@ -3087,15 +3010,7 @@ const DESIGN_FIELDS = [
   { group: "Economy",          key: "BOX_SIZE",                        path: "BOX_SIZE",                  label: "Box pack count",               step: 1,    min: 1, int: true },
   { group: "Economy",          key: "CASE_SIZE",                       path: "CASE_SIZE",                 label: "Case pack count",              step: 1,    min: 1, int: true },
 
-  // Sell prices (non-foil bulk)
-  { group: "Sell prices",      key: "SELL_PRICE.standard",             path: "SELL_PRICE.standard",       label: "Standard ($)",                 step: 0.01, min: 0 },
-  { group: "Sell prices",      key: "SELL_PRICE.rare",                 path: "SELL_PRICE.rare",           label: "Rare ($)",                     step: 0.01, min: 0 },
-  { group: "Sell prices",      key: "SELL_PRICE.epic",                 path: "SELL_PRICE.epic",           label: "Epic ($, foil fallback)",     step: 0.01, min: 0 },
-  { group: "Sell prices",      key: "SELL_PRICE.legendary",            path: "SELL_PRICE.legendary",      label: "Legendary ($, foil fallback)", step: 0.01, min: 0 },
-  { group: "Sell prices",      key: "SELL_PRICE.mythic",               path: "SELL_PRICE.mythic",         label: "Mythic ($, foil fallback)",   step: 0.01, min: 0 },
-
   // Pack rolls
-  { group: "Pack rolls",       key: "FOIL_MULTIPLIER",                 path: "FOIL_MULTIPLIER",           label: "Foil sell multiplier",         step: 0.1,   min: 0 },
   { group: "Pack rolls",       key: "PACK_FOIL_CHANCE",                path: "PACK_FOIL_CHANCE",          label: "Foil chance / slot",           step: 0.005, min: 0, max: 1 },
   { group: "Pack rolls",       key: "PACK_UPGRADE_CHANCE",             path: "PACK_UPGRADE_CHANCE",       label: "Tier upgrade chance / slot",   step: 0.005, min: 0, max: 1 },
   { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.rare",          path: "RARE_PLUS_WEIGHTS.rare",        label: "Rare+ slot: rare",        step: 0.01,  min: 0 },
@@ -3149,7 +3064,6 @@ const DESIGN_FIELDS = [
   { group: "Market dynamics",  key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",          label: "Ceiling (× baseline)",         step: 0.1,  min: 1 },
 
   // Marketplace
-  { group: "Marketplace",      key: "DUMP_DISCOUNT",                   path: "DUMP_DISCOUNT",             label: "Dump payout (× SELL_PRICE)",  step: 0.05, min: 0, max: 1 },
   { group: "Marketplace",      key: "LISTING_COOLDOWN_MIN",            path: "LISTING_COOLDOWN_MIN",      label: "Listing cooldown min (sec)",   step: 1, min: 1 },
   { group: "Marketplace",      key: "LISTING_COOLDOWN_MAX",            path: "LISTING_COOLDOWN_MAX",      label: "Listing cooldown max (sec)",   step: 1, min: 1 },
   { group: "Marketplace",      key: "LISTING_SLOTS",                   path: "LISTING_SLOTS",             label: "Listing slots",                step: 1, min: 1, int: true },
@@ -3169,8 +3083,7 @@ function _resolvePath(root, path) {
 function _liveDesignSnapshot() {
   return {
     PACK_COST, BOX_COST, CASE_COST, BOX_SIZE, CASE_SIZE,
-    SELL_PRICE,
-    FOIL_MULTIPLIER, PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
+    PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
     BASELINE,
     SET_SIZES,
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
@@ -3179,7 +3092,6 @@ function _liveDesignSnapshot() {
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
     MARKET_TARGET_STOCK, MARKET_DECAY_RATE, SET_CRAFT_MULTIPLIER,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO,
-    DUMP_DISCOUNT,
     LISTING_COOLDOWN_MIN, LISTING_COOLDOWN_MAX, LISTING_SLOTS,
   };
 }
@@ -3744,7 +3656,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); renderDumpButton(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -3930,7 +3842,6 @@ $("stock-rows").addEventListener("click", (e) => {
   const vaultBtn = e.target.closest(".set-vault-btn");
   if (vaultBtn && vaultBtn.dataset.vaultSet && !vaultBtn.disabled) { vaultSet(vaultBtn.dataset.vaultSet); return; }
 });
-$("dump-btn").addEventListener("click", dumpUnsorted);
 $("sand-canvas").addEventListener("click", (e) => {
   const canvas = $("sand-canvas");
   const rect = canvas.getBoundingClientRect();
