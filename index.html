@@ -3577,8 +3577,16 @@ function tickSorters() {
     s.lastSortAt = now;
     acted = true;
   });
-  if (acted) { renderAll(); save(); }
-  else       { renderSorters(); }
+  // Only the sorter cards' buffer counts change when a sort completes — the
+  // sorted cards stay inside the sorter's output until the player hits
+  // COLLECT, so nothing else in the UI is affected. Render just the sorters
+  // (instead of renderAll) to avoid thrashing unrelated DOM on every tick.
+  if (acted) { renderSorters(); save(); }
+  // No `else renderSorters()` — repainting at 4 Hz on idle sorters was
+  // interrupting CSS :hover transitions and causing the LOAD/COLLECT/UPGRADE
+  // buttons to flicker. Buffer counts only change when a sort completes (this
+  // branch) or when the player loads/collects (those handlers render
+  // explicitly), so there's nothing live to paint between sort events.
 }
 
 function buildSorterCard(uid) {
