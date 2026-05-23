@@ -119,6 +119,26 @@
     display: block; height: 100%; background: var(--gold);
     transition: width 0.4s ease;
   }
+  /* Empty homie slot — clickable, hires a new homie. */
+  .homie-sprite.empty {
+    pointer-events: auto; cursor: pointer;
+    animation: none;
+    width: 48px; height: 60px;
+    border: 1.5px dashed rgba(255,255,255,0.22);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.18);
+    align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 1.4rem; font-weight: bold;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .homie-sprite.empty:hover { border-color: var(--gold); color: var(--gold); background: rgba(245,197,66,0.08); }
+  .homie-sprite.empty.disabled {
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  .homie-sprite.empty .homie-plus { line-height: 1; }
+  .homie-sprite.empty .homie-meta { font-size: 0.5rem; letter-spacing: 1px; color: inherit; }
   @keyframes homie-bob {
     from { transform: translateY(0); }
     to   { transform: translateY(-6px); }
@@ -362,27 +382,7 @@
   @keyframes shimmer-bar { to { background-position: 200% center; } }
   @keyframes bar-foil-sweep { to { background-position: 160% 0; } }
 
-  /* ---- Staff ------------------------------------------------------------ */
-  #staff { display: flex; flex-direction: column; gap: 6px; }
-  .staff-buttons { display: flex; gap: 6px; }
-  .staff-buttons .hire-btn { flex: 1; min-width: 0; }
-  .hire-btn {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 2px;
-    background: var(--panel-light); color: var(--ink);
-    border: 1px solid #3a3260; border-radius: 8px;
-    padding: 8px 12px; cursor: pointer;
-    font-family: inherit; font-size: 0.78rem;
-    transition: background 0.12s ease, transform 0.08s ease;
-    text-align: center;
-  }
-  .hire-btn:hover:not(:disabled) { background: #2e2752; }
-  .hire-btn:active:not(:disabled) { transform: translateY(1px); }
-  .hire-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .hire-btn .hire-lbl  { font-weight: bold; letter-spacing: 1.5px; }
-  .hire-btn .hire-meta { color: var(--muted); font-size: 0.65rem; }
-  .hire-btn .hire-cost { color: var(--gold); font-weight: bold; font-size: 0.75rem; }
-
+  /* ---- Sorters ---------------------------------------------------------- */
   #sorters-area { display: flex; flex-direction: column; gap: 5px; }
   #sorters-area:empty { display: none; }
   .sorter-card {
@@ -427,6 +427,44 @@
   .sorter-upgrade:not(:disabled):hover { background: rgba(255,255,255,0.06); }
   .sorter-load:disabled, .sorter-collect:disabled, .sorter-upgrade:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  /* Sorter shop / modal-open button above the unsorted pile. Pre-purchase:
+     "BUY A SORTER — $X". Post-purchase: "SORTERS" (opens the modal). */
+  .sorter-shop-btn {
+    display: block; width: 100%;
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid #3a3260; border-radius: 8px;
+    padding: 8px 12px; margin-bottom: 6px;
+    cursor: pointer;
+    font-family: inherit; font-size: 0.78rem;
+    letter-spacing: 1.5px; font-weight: bold;
+    text-align: center;
+    transition: background 0.12s ease, transform 0.08s ease, border-color 0.12s;
+  }
+  .sorter-shop-btn:hover:not(:disabled) { background: #2e2752; border-color: var(--gold); }
+  .sorter-shop-btn:active:not(:disabled) { transform: translateY(1px); }
+  .sorter-shop-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .sorter-shop-btn .sorter-shop-cost { color: var(--gold); margin-left: 6px; }
+  .sorter-shop-btn .sorter-shop-count {
+    background: var(--gold); color: #111;
+    border-radius: 10px; padding: 1px 8px; margin-left: 8px;
+    font-size: 0.72rem; letter-spacing: 0.5px;
+  }
+
+  /* Sorters modal — reuses the upgrades-modal chrome but the body is a
+     vertical list of sorter cards, not a 4-column upgrade grid. */
+  #sorters-modal .upgrades-body { display: block; padding: 14px 18px; }
+  #sorters-modal #sorters-area { gap: 8px; }
+  .sorters-header-actions { display: flex; gap: 8px; align-items: center; }
+  .sorter-buy-modal-btn {
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid #3a3260; border-radius: 6px;
+    padding: 6px 12px; cursor: pointer;
+    font-family: inherit; font-size: 0.72rem; letter-spacing: 1px; font-weight: bold;
+  }
+  .sorter-buy-modal-btn:hover:not(:disabled) { background: #2e2752; border-color: var(--gold); }
+  .sorter-buy-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .sorter-buy-modal-btn .cost { color: var(--gold); margin-left: 4px; }
+
   #sand-canvas {
     /* Fixed 500×400 = 50×40 grid of 10×10 square cells. Centered in the
        column; doesn't widen with the viewport. */
@@ -470,7 +508,6 @@
   }
   .listings-header .listings-count   { color: var(--muted); font-size: 0.65rem; letter-spacing: 1px; flex: 1; text-align: right; }
   .listings-header .listings-upgrades { display: inline-flex; gap: 4px; }
-  .upgrade-row { display: flex; gap: 6px; }
   .listings-empty {
     color: var(--muted); font-size: 0.72rem; font-style: italic;
     text-align: center; padding: 8px 0;
@@ -924,6 +961,23 @@
   </div>
 </div>
 
+<div id="sorters-modal" class="upgrades-modal" hidden>
+  <div class="upgrades-backdrop" id="sorters-backdrop"></div>
+  <div class="upgrades-panel" role="dialog" aria-modal="true" aria-labelledby="sorters-title">
+    <div class="upgrades-header">
+      <h2 id="sorters-title">SORTERS</h2>
+      <div class="sorters-header-actions">
+        <button class="sorter-buy-modal-btn" id="buy-sorter-modal" type="button">+ BUY ANOTHER<span class="cost" id="buy-sorter-modal-cost">$500</span></button>
+        <button class="upgrade-trigger" id="upgrade-sorters-modal" type="button" data-branch="sorters">⬆ UPGRADES</button>
+      </div>
+      <button class="upgrades-close" id="sorters-close" aria-label="Close">×</button>
+    </div>
+    <div class="upgrades-body">
+      <div id="sorters-area"></div>
+    </div>
+  </div>
+</div>
+
 <div id="design-modal" class="design-modal" hidden>
   <div class="design-modal-backdrop"></div>
   <div class="design-modal-panel" role="dialog" aria-modal="true" aria-labelledby="design-title">
@@ -966,24 +1020,6 @@
       <div class="save">save 23%</div>
     </button>
   </div>
-  <div id="staff">
-    <div class="staff-buttons">
-      <button class="hire-btn" id="hire-homie" type="button">
-        <span class="hire-lbl">HIRE HOMIE</span>
-        <span class="hire-meta">opens 1 box automatically</span>
-        <span class="hire-cost" id="hire-cost">$20 + 📦</span>
-      </button>
-      <button class="hire-btn" id="buy-sorter" type="button">
-        <span class="hire-lbl">BUY SORTER</span>
-        <span class="hire-meta">permanent · sorts on its own</span>
-        <span class="hire-cost" id="sorter-cost">$1,000</span>
-      </button>
-    </div>
-    <div class="upgrade-row">
-      <button class="upgrade-trigger" id="upgrade-sorters" type="button" data-branch="sorters">⬆ SORTER UPGRADES</button>
-    </div>
-    <div id="sorters-area"></div>
-  </div>
   <div id="set-progress"></div>
   <div id="pack-area">
     <div class="pack" id="pack">
@@ -996,6 +1032,7 @@
 <div id="hint">A box on the house — start ripping!</div>
   </div>
   <div>
+    <button id="sorter-shop" type="button" class="sorter-shop-btn">BUY A SORTER<span class="sorter-shop-cost" id="sorter-shop-cost">$500</span></button>
     <div id="sort-pile-header">
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
       <span class="sort-hint" id="sort-hint">
@@ -3171,6 +3208,14 @@ function closeUpgradesPanel() {
   _openUpgradesBranch = null;
 }
 
+function openSortersModal() {
+  renderSorters();
+  $("sorters-modal").hidden = false;
+}
+function closeSortersModal() {
+  $("sorters-modal").hidden = true;
+}
+
 function renderUpgrades() {
   const body = $("upgrades-body");
   if (!body) return;
@@ -3307,49 +3352,82 @@ function resetDesignOverrides() {
 }
 
 function renderStaff() {
-  // Hire button cost + disabled state. The per-homie status (which homie is
-  // ripping and how many packs are left) is now shown inline in the homie
-  // sprite slots, not as separate pills.
-  const cost = $("hire-cost");
-  if (cost) cost.textContent = `${usd(HOMIE_COST)} + 📦`;
-  const btn = $("hire-homie");
-  const homiesActive = (state.homies || []).length;
-  const canHire = homiesActive < HOMIE_MAX
-                && state.coins >= HOMIE_COST
-                && (state.boxesOwned || 0) >= 1;
-  if (btn) btn.disabled = !canHire;
-  if (cost && homiesActive >= HOMIE_MAX) cost.textContent = `MAX (${HOMIE_MAX})`;
+  // The sorter shop button lives above the unsorted pile. Before owning any
+  // sorter it doubles as the purchase button; once owned it becomes the
+  // entry point to the SORTERS modal.
+  const btn = $("sorter-shop");
+  const costEl = $("sorter-shop-cost");
+  if (!btn) return;
+  const sorters = state.sorters || [];
+  const owned = sorters.length;
+  const cap = sorterMaxEffective();
+  if (owned === 0) {
+    btn.firstChild.nodeValue = "BUY A SORTER";
+    if (costEl) { costEl.textContent = usd(SORTER_COST); costEl.style.display = ""; }
+    btn.disabled = state.coins < SORTER_COST;
+    btn.title = btn.disabled
+      ? `Need ${usd(SORTER_COST - state.coins)} more for a sorter`
+      : "Buy your first sorter — sorts loaded grains on its own.";
+  } else {
+    btn.firstChild.nodeValue = "SORTERS";
+    if (costEl) {
+      costEl.textContent = owned >= cap ? `· MAX (${cap})` : `· ${owned} owned`;
+      costEl.style.display = "";
+    }
+    btn.disabled = false;
+    btn.title = "Open the sorters panel";
+  }
 }
 
 function renderHomieSprites() {
   const area = $("pack-area");
   if (!area) return;
   const homies = state.homies || [];
-  const wanted = new Set(homies.map(h => String(h.uid)));
-  // Drop sprites for finished homies.
-  area.querySelectorAll(".homie-sprite").forEach(el => {
-    if (!wanted.has(el.dataset.uid)) el.remove();
-  });
-  // Add or update sprites in their assigned slot (0-5, position fixed by CSS).
-  homies.forEach(h => {
-    let el = area.querySelector(`.homie-sprite[data-uid="${h.uid}"]`);
+  const bySlot = new Map(homies.map(h => [h.slot, h]));
+  const canAfford = state.coins >= HOMIE_COST && (state.boxesOwned || 0) >= 1;
+  // Always render 6 fixed slots; active ones show the working homie, empty
+  // ones are clickable hire buttons in the same position.
+  for (let slot = 0; slot < HOMIE_MAX; slot++) {
+    const h = bySlot.get(slot);
+    let el = area.querySelector(`.homie-sprite[data-slot="${slot}"]`);
+    const wantEmpty = !h;
+    // If the slot's occupancy flipped (active <-> empty), tear down and rebuild
+    // so we don't mix sprite/empty markup.
+    if (el && (el.classList.contains("empty") !== wantEmpty)) {
+      el.remove();
+      el = null;
+    }
     if (!el) {
       el = document.createElement("div");
-      el.className = "homie-sprite";
-      el.dataset.uid = h.uid;
-      el.innerHTML = `
-        <span class="homie-emoji">🧢</span>
-        <span class="homie-count">${h.packsRemaining}</span>
-        <span class="homie-bar"><span style="width:0%"></span></span>`;
+      el.className = "homie-sprite" + (wantEmpty ? " empty" : "");
+      el.dataset.slot = slot;
+      if (wantEmpty) {
+        el.innerHTML = `<span class="homie-plus">+</span><span class="homie-meta">HIRE</span>`;
+      } else {
+        el.innerHTML = `
+          <span class="homie-emoji">🧢</span>
+          <span class="homie-count">${h.packsRemaining}</span>
+          <span class="homie-bar"><span style="width:0%"></span></span>`;
+      }
       area.appendChild(el);
     }
-    el.dataset.slot = h.slot;
-    const pct = Math.min(100, ((BOX_SIZE - h.packsRemaining) / BOX_SIZE) * 100);
-    const bar = el.querySelector(".homie-bar > span");
-    if (bar) bar.style.width = pct + "%";
-    const label = el.querySelector(".homie-count");
-    if (label) label.textContent = h.packsRemaining;
-  });
+    if (wantEmpty) {
+      delete el.dataset.uid;
+      el.classList.toggle("disabled", !canAfford);
+      el.title = canAfford
+        ? `Hire a homie — ${usd(HOMIE_COST)} + 1 box. They'll rip ${BOX_SIZE} packs.`
+        : (state.coins < HOMIE_COST
+            ? `Need ${usd(HOMIE_COST - state.coins)} more to hire`
+            : `Need a sealed box first`);
+    } else {
+      el.dataset.uid = h.uid;
+      const pct = Math.min(100, ((BOX_SIZE - h.packsRemaining) / BOX_SIZE) * 100);
+      const bar = el.querySelector(".homie-bar > span");
+      if (bar) bar.style.width = pct + "%";
+      const label = el.querySelector(".homie-count");
+      if (label) label.textContent = h.packsRemaining;
+    }
+  }
 }
 
 function firstFreeHomieSlot() {
@@ -3412,10 +3490,7 @@ function homieRipPack(homie) {
 
 function tickHomies() {
   const homies = state.homies || [];
-  if (homies.length === 0) {
-    renderHomieSprites();
-    return;
-  }
+  if (homies.length === 0) return;
   const now = Date.now();
   let acted = false;
   homies.forEach(h => {
@@ -3429,8 +3504,11 @@ function tickHomies() {
   const before = homies.length;
   state.homies = homies.filter(h => h.packsRemaining > 0);
   const ended = before !== state.homies.length;
+  // Same idea as tickSorters: only repaint when something actually happened.
+  // The empty slots' affordance state is refreshed by the state-changing
+  // actions that mutate coins / boxes (buyPacks, sellListing, etc), so we
+  // don't need to re-render here on idle ticks.
   if (acted || ended) { renderAll(); save(); }
-  else                { renderHomieSprites(); renderStaff(); }
 }
 
 function buySorter() {
@@ -3610,8 +3688,8 @@ function renderSorters() {
   if (!wrap) return;
   const sorters = state.sorters || [];
 
-  const buyBtn = $("buy-sorter");
-  const costEl = $("sorter-cost");
+  const buyBtn = $("buy-sorter-modal");
+  const costEl = $("buy-sorter-modal-cost");
   const owned = sorters.length;
   const cap = sorterMaxEffective();
   if (costEl) costEl.textContent = owned >= cap ? `MAX (${cap})` : usd(SORTER_COST);
@@ -3930,8 +4008,20 @@ $("sand-canvas").addEventListener("contextmenu", (e) => {
   clearMarkedGrains();
 });
 $("reset-btn").addEventListener("click", resetGame);
-$("hire-homie").addEventListener("click", hireHomie);
-$("buy-sorter").addEventListener("click", buySorter);
+// Empty homie slots double as the "hire a homie" trigger (one per slot).
+$("pack-area").addEventListener("click", (e) => {
+  const slot = e.target.closest(".homie-sprite.empty");
+  if (slot && !slot.classList.contains("disabled")) hireHomie();
+});
+// Pre-purchase the button buys the first sorter; once any sorter is owned it
+// opens the SORTERS modal where the player can buy more / load / collect.
+$("sorter-shop").addEventListener("click", () => {
+  if ((state.sorters || []).length === 0) buySorter();
+  else openSortersModal();
+});
+$("buy-sorter-modal").addEventListener("click", buySorter);
+$("sorters-close").addEventListener("click", closeSortersModal);
+$("sorters-backdrop").addEventListener("click", closeSortersModal);
 $("sorters-area").addEventListener("click", (e) => {
   const load = e.target.closest(".sorter-load");
   if (load && load.dataset.load && !load.disabled) {
@@ -3972,7 +4062,8 @@ document.addEventListener("click", (e) => {
 document.querySelector("#design-modal .design-modal-backdrop").addEventListener("click", closeDesignPanel);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (!$("design-modal").hidden)  { closeDesignPanel();  return; }
+    if (!$("design-modal").hidden)   { closeDesignPanel();   return; }
+    if (!$("sorters-modal").hidden)  { closeSortersModal();  return; }
     if (!$("upgrades-modal").hidden) { closeUpgradesPanel(); return; }
   }
 });
@@ -3998,8 +4089,10 @@ window.addEventListener("keydown", (e) => {
   // input/textarea, or a modifier is held.
   const designModal   = document.getElementById("design-modal");
   const upgradesModal = document.getElementById("upgrades-modal");
+  const sortersModal  = document.getElementById("sorters-modal");
   if (designModal   && !designModal.hidden)   return;
   if (upgradesModal && !upgradesModal.hidden) return;
+  if (sortersModal  && !sortersModal.hidden)  return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
   if (e.key === "Escape") { clearMarkedGrains(); return; }
