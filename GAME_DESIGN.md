@@ -181,12 +181,21 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 
 ## 8b. CLOUT — craft + vault a Complete Set
 
-CLOUT comes from one path only: **vaulting a COMPLETE SET**. A Complete Set is the apex craft — it consumes 1 of every per-rarity set item (all 10: standard, rare, foil-standard, epic, legendary, mythic, and the four priced foils). Once crafted it lands in `state.invById.completeSet` and can be:
+CLOUT comes from one path only: **vaulting a COMPLETE SET**. There are two flavors, split by foil status so the (much rarer) foil ingredients don't gate progress entirely:
 
-- **Vaulted** for `COMPLETE_SET_CLOUT` (default 500) — one-way, consumes the Complete Set.
-- **Listed** for cash on the marketplace at the `BASELINE.completeSet` price (default $35,000, ~1.4× the sum of its 10 component sets).
+| Set                  | Ingredients (5 each)                                           | Baseline   | Vault → CLOUT |
+|----------------------|----------------------------------------------------------------|-----------:|--------------:|
+| **Complete Set**     | standardSet, rareSet, epicSet, legendarySet, mythicSet         |  $1,500    |  50           |
+| **Foil Complete Set**| foilStandardSet, foilRareSet, foilEpicSet, foilLegendarySet, foilMythicSet | $35,000 | 500           |
 
-Per-rarity sets have no vault path anymore — they're ingredients (or cash, via LIST). The Complete Set row sits at the top of the vault column with a rainbow border + shimmering label and a `CRAFT COMPLETE SET X/10` button that lights up when all ten ingredients are held.
+The non-foil path is the "starter" trickle of CLOUT — quick to assemble once you have a couple of full sets, modest payout. The foil path is the late-game push — 5× the per-set value but each ingredient takes orders of magnitude longer to pull.
+
+Each Complete Set lands in `state.invById[key]` and can be:
+
+- **Vaulted** for the set's flat `clout` value — one-way, consumes the Complete Set.
+- **Listed** for cash on the marketplace at the baseline price.
+
+Per-rarity sets have no vault path anymore — they're ingredients (or cash, via LIST). Both Complete Set rows sit at the top of the vault column. The non-foil row uses a gold accent; the foil row gets a full rainbow border + shimmering label. Each row's CRAFT button shows `X/5` progress until all five matching ingredients are held, then lights up.
 
 Sorter upgrades are no longer CLOUT-bought — they cost cash via each sorter card's `⬆ $X` button. Three branches remain on the upgrade grid:
 
