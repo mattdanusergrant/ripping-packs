@@ -573,10 +573,10 @@
   .sorter-buy-modal-btn .cost { color: var(--gold); margin-left: 4px; }
 
   #sand-canvas {
-    /* Fixed 500×400 = 50×40 grid of 10×10 square cells. Centered in the
+    /* Fixed 500×200 = 50×20 grid of 10×10 square cells. Centered in the
        column; doesn't widen with the viewport. */
     display: block;
-    width: 500px; height: 400px;
+    width: 500px; height: 200px;
     max-width: 100%;
     margin: 0 auto;
     background: rgba(0,0,0,0.18); border-radius: 6px;
@@ -1074,7 +1074,7 @@
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
-    #sand-canvas { width: 100%; height: auto; aspect-ratio: 5 / 4; }
+    #sand-canvas { width: 100%; height: auto; aspect-ratio: 5 / 2; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
     .buy-btn .qty { font-size: 0.6rem; }
@@ -1250,7 +1250,7 @@ function def(key, fallback) {
 // caught in the blast chain-explode (rare = 4-ortho, foil = 8-cell "+" at
 // reach 2).
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
-let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 2000);
+let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
 // step 1's rare+ upgrade resolves.
 let PACK_FOIL_CHANCE      = def("PACK_FOIL_CHANCE", 0.02);
@@ -2865,11 +2865,11 @@ function renderListings() {
 
 
 // ---- Sand simulation -----------------------------------------------------
-// Grid is locked to SAND_COLS × SAND_ROWS = 50 × 40 = 2000 cells, matching
+// Grid is locked to SAND_COLS × SAND_ROWS = 50 × 20 = 1000 cells, matching
 // UNSORTED_CAPACITY. Cell dimensions scale with the canvas so the grid
 // always fills the visible area regardless of viewport width or height.
 const SAND_COLS = 50;
-const SAND_ROWS = 40;
+const SAND_ROWS = 20;
 let SAND_CELL_W = 12;
 let SAND_CELL_H = 12;
 let SAND_GRAIN  = 10;
@@ -2974,8 +2974,8 @@ function pickFillColumn(cols) {
   fallingGrains.forEach(g => {
     if (g.col >= 0 && g.col < cols) heights[g.col] += 1;
   });
-  // Skip columns already at the SAND_ROWS cap (40). With UNSORTED_CAPACITY
-  // = SAND_COLS × SAND_ROWS = 2000, the rip check stops new pulls before
+  // Skip columns already at the SAND_ROWS cap (20). With UNSORTED_CAPACITY
+  // = SAND_COLS × SAND_ROWS = 1000, the rip check stops new pulls before
   // every column fills, so we usually have plenty of headroom.
   let minH = Infinity;
   for (let c = 0; c < cols; c++) {
