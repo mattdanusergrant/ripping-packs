@@ -1419,8 +1419,8 @@ function def(key, fallback) {
 // ---- Sorting -------------------------------------------------------------
 // Sorting is purely positional: the player clicks the sand pile, the nearest
 // grain detonates plus its 4 orthogonal neighbors, then non-standard grains
-// caught in the blast chain-explode (rare = 4-cell "+" arm in each
-// cardinal direction, foil = 8-cell "+" arm in each cardinal direction).
+// caught in the blast chain-explode (rare = RARE_BLAST_REACH-cell "+" arm in
+// each cardinal direction, foil = FOIL_BLAST_REACH-cell "+" arm).
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1250);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
@@ -3567,11 +3567,12 @@ function armOffsets(n) {
   _armCache.set(n, out);
   return out;
 }
-const RARE_BLAST_REACH = 4;
-const FOIL_BLAST_REACH = 8;
+let RARE_BLAST_REACH = def("RARE_BLAST_REACH", 3);
+let FOIL_BLAST_REACH = def("FOIL_BLAST_REACH", 6);
 function explosionOffsetsForKey(key) {
-  // Foils throw an 8-cell "+" — long enough to chain across most piles.
-  // Rares throw a 4-cell "+". Both follow a clean ray shape (no diagonals).
+  // Foils throw a longer "+" — typically long enough to chain across most
+  // piles. Rares throw a shorter one. Both follow a clean ray shape (no
+  // diagonals). Reaches are tunable via the Game Design panel.
   return bulkIsFoil(key) ? armOffsets(FOIL_BLAST_REACH) : armOffsets(RARE_BLAST_REACH);
 }
 
@@ -3978,6 +3979,8 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
   { group: "Sorting",          key: "MAX_HIGHLIGHTS",                  path: "MAX_HIGHLIGHTS",            label: "Max marked grains (base)",     step: 1, min: 1, int: true },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
+  { group: "Sorting",          key: "RARE_BLAST_REACH",                path: "RARE_BLAST_REACH",          label: "Rare grain blast reach (cells)", step: 1, min: 0, int: true },
+  { group: "Sorting",          key: "FOIL_BLAST_REACH",                path: "FOIL_BLAST_REACH",          label: "Foil grain blast reach (cells)", step: 1, min: 0, int: true },
 
   // Staff
   { group: "Staff",            key: "HOMIE_COST",                      path: "HOMIE_COST",                label: "Hire rip homie ($, plus 1 box)",step: 1,   min: 0 },
@@ -4031,6 +4034,7 @@ function _liveDesignSnapshot() {
     BASELINE,
     SET_SIZES,
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
+    RARE_BLAST_REACH, FOIL_BLAST_REACH,
     HOMIE_COST, HOMIE_PACK_MS,
     CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
     VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
