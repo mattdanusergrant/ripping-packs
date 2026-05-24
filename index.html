@@ -462,21 +462,20 @@
   }
   .vintage-slots { display: flex; gap: 6px; flex-wrap: wrap; }
   .vintage-pack {
-    flex: 1 1 0; min-width: 62px;
+    flex: 1 1 0; min-width: 86px;
     border: 1px solid #444; background: #1c1c1c; color: #ddd;
     border-radius: 6px; padding: 6px 4px;
     font-family: monospace; font-size: 0.65rem;
     cursor: pointer;
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    text-align: center; white-space: nowrap;
     transition: transform 0.08s ease, background 0.08s ease, border-color 0.08s ease;
   }
   .vintage-pack:hover:not(.cooling):not(.unaffordable) {
     background: #2a2a2a; border-color: #777; transform: translateY(-1px);
   }
   .vintage-pack .vp-pack { font-size: 1.1rem; line-height: 1; }
-  .vintage-pack .vp-set  { font-size: 0.85rem; font-weight: bold; letter-spacing: 0.5px; }
-  .vintage-pack .vp-year { color: var(--muted); font-size: 0.55rem; }
+  .vintage-pack .vp-set  { font-size: 0.75rem; font-weight: bold; letter-spacing: 0.5px; }
   .vintage-pack .vp-cost { color: var(--gold); font-weight: bold; margin-top: 1px; }
   .vintage-pack.unaffordable { opacity: 0.55; cursor: not-allowed; }
   .vintage-pack.unaffordable .vp-cost { color: #ff7a3d; }
@@ -2410,8 +2409,7 @@ function renderVintageShop() {
       const title = `Set ${yr} (${setYearLabel(yr)}) vintage ${what} · ${usd(cost)}\nLands in Set ${yr}'s supply (unopened). Switch year to rip.`;
       return `<button type="button" class="${cls}" data-vintage-slot="${i}" title="${title}">`
            + `<span class="vp-pack">${glyph}</span>`
-           + `<span class="vp-set">S${yr}</span>`
-           + `<span class="vp-year">'${String(setYearLabel(yr)).slice(2)} ${label}</span>`
+           + `<span class="vp-set">${setYearLabel(yr)} ${label}</span>`
            + `<span class="vp-cost">${usd(cost)}</span>`
            + `</button>`;
     } else {
@@ -2420,8 +2418,7 @@ function renderVintageShop() {
       const label = ms > 60000 ? `${Math.ceil(ms/60000)}m` : `${Math.ceil(ms/1000)}s`;
       return `<button type="button" class="vintage-pack cooling" disabled data-vintage-slot="${i}" title="Restocking in ${label}">`
            + `<span class="vp-pack">⏳</span>`
-           + `<span class="vp-set">—</span>`
-           + `<span class="vp-year">RESTOCK</span>`
+           + `<span class="vp-set">RESTOCK</span>`
            + `<span class="vp-cost">${label}</span>`
            + `</button>`;
     }
