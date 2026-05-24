@@ -17,6 +17,7 @@
     --ink: #ebe6ff;
     --muted: #8a82b8;
     --gold: #f5c542;
+    --cash: #85bb65;  /* dollar-bill green */
     --common: #b8b8c8;
     --uncommon: #5ad06a;
     --rare: #5aa8ff;
@@ -46,14 +47,14 @@
   }
   .hero-chip .hero-label { font-size: 0.55rem; letter-spacing: 2px; opacity: 0.75; }
   .hero-chip .hero-value { font-size: 1.25rem; font-weight: bold; letter-spacing: 0.5px; }
-  .hero-chip.cash  { border-color: var(--gold);   background: rgba(245,197,66,0.10); color: var(--gold); }
-  .hero-chip.clout { border-color: #ff7eb3;       background: rgba(255,126,179,0.12); color: #ff7eb3; }
+  .hero-chip.cash  { border-color: var(--cash);   background: rgba(133,187,101,0.12); color: var(--cash); }
+  .hero-chip.clout { border-color: var(--gold);   background: rgba(245,197,66,0.10); color: var(--gold); }
 
   /* Cash gain celebration: a quick bump on the value + a floating +$N
      popup spawned in JS at the bottom edge of the cash chip. */
   @keyframes cash-bump {
     0%   { transform: scale(1);    text-shadow: none; }
-    35%  { transform: scale(1.35); text-shadow: 0 0 14px rgba(255,216,77,0.95), 0 0 4px rgba(255,255,255,0.6); }
+    35%  { transform: scale(1.35); text-shadow: 0 0 14px rgba(133,187,101,0.95), 0 0 4px rgba(255,255,255,0.6); }
     100% { transform: scale(1);    text-shadow: none; }
   }
   #coins.cash-bump { animation: cash-bump 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2); display: inline-block; }
@@ -65,8 +66,8 @@
   .cash-pop {
     position: fixed; z-index: 9999; pointer-events: none;
     font-family: monospace; font-weight: bold; font-size: 1.05rem;
-    color: var(--gold);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 0 10px rgba(255,216,77,0.55);
+    color: var(--cash);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 0 10px rgba(133,187,101,0.55);
     animation: cash-pop 1.4s cubic-bezier(0.35, 0, 0.2, 1) forwards;
   }
 
