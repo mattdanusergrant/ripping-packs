@@ -2475,12 +2475,23 @@ function renderHeader() {
   $("supply-label").textContent = boxes > 0
     ? `Supply: ${cur().packSupply} · 📦 ${boxes}`
     : `Supply: ${cur().packSupply}`;
-  // CLOUT chip — animate when balance grows (vault deposit).
+  // CLOUT chip — animate when balance grows (vault deposit). Tooltip shows
+  // the long-arc progress so playtesters see "X/60 variants claimed" right
+  // in the chip and understand the collection target.
   const bal = state.clout || 0;
   $("clout-now").textContent = bal.toLocaleString();
   const chip = $("clout-chip");
-  if (_lastCloutBalance != null && bal > _lastCloutBalance && chip) {
-    chip.classList.remove("bump"); void chip.offsetWidth; chip.classList.add("bump");
+  if (chip) {
+    let claimed = 0;
+    Object.values(state.sets || {}).forEach(b => {
+      if (((b.vaultedSets || {}).completeSet     || 0) > 0) claimed += 1;
+      if (((b.vaultedSets || {}).foilCompleteSet || 0) > 0) claimed += 1;
+    });
+    const totalVariants = CURRENT_SET_ID * 2; // non-foil + foil per year
+    chip.title = `CLOUT — earned by vaulting Complete Sets. ${claimed} / ${totalVariants} variants claimed across all years.`;
+    if (_lastCloutBalance != null && bal > _lastCloutBalance) {
+      chip.classList.remove("bump"); void chip.offsetWidth; chip.classList.add("bump");
+    }
   }
   _lastCloutBalance = bal;
   $("cost-pack").textContent = usd(packCost());
