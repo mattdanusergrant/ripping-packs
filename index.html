@@ -348,6 +348,27 @@
     background: rgba(0,0,0,0.18);
     border-radius: 6px;
   }
+  .year-picker {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    padding: 6px 8px; margin-bottom: 8px;
+    background: rgba(0,0,0,0.22); border-radius: 6px;
+    max-height: 92px; overflow-y: auto;
+  }
+  .year-chip {
+    border: 1px solid #444; background: #1c1c1c; color: #ccc;
+    padding: 3px 6px; border-radius: 4px;
+    font-family: monospace; font-size: 0.65rem; line-height: 1.1;
+    cursor: pointer; min-width: 38px; text-align: center;
+    display: inline-flex; flex-direction: column; align-items: center;
+  }
+  .year-chip:hover:not(.locked):not(.active) { background: #2a2a2a; border-color: #666; }
+  .year-chip.active {
+    background: #ffd84d; color: #000; border-color: #ffd84d;
+    box-shadow: 0 0 6px rgba(255,216,77,0.5);
+  }
+  .year-chip.locked { opacity: 0.35; cursor: not-allowed; background: #131313; }
+  .year-chip .yr { opacity: 0.7; font-size: 0.55rem; }
+  .year-chip.active .yr { opacity: 0.9; }
   .set-col-label {
     font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
     text-align: center; margin-bottom: 2px;
@@ -1038,7 +1059,8 @@
 </div>
 
 <section id="shop">
-  <h2>SHOP</h2>
+  <h2 id="shop-title">SHOP · SET 30 · 2030</h2>
+  <div class="year-picker" id="year-picker"></div>
   <div class="buy-buttons">
     <button class="buy-btn" id="buy-pack">
       <div class="lbl">PACK</div>
@@ -1061,7 +1083,7 @@
   <div id="set-progress"></div>
   <div id="pack-area">
     <div class="pack" id="pack">
-      <div class="label">SERIES I<br>BOOSTER<small id="supply-label">Supply: 0</small></div>
+      <div class="label"><span id="pack-set-label">SET 30 · 2030</span><br>BOOSTER<small id="supply-label">Supply: 0</small></div>
     </div>
     <div id="typing-zone">
       <div class="typing-hint">type to rip</div>
@@ -1475,6 +1497,9 @@ const defaultState = () => ({
   clout: 0,              // CLOUT balance — spent on upgrade nodes
   cloutSpent: 0,         // lifetime CLOUT spent
   unlockedNodes: [],     // ids of purchased upgrade nodes
+  // Lifetime non-foil Complete Set crafts per setId. Crafting a Set N
+  // Complete Set unlocks Set N-1 in the vintage shop.
+  completeSetCrafts: {},
   listings: [],          // [{uid, setId, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
 });
@@ -1582,6 +1607,7 @@ function load() {
     if (typeof parsed.clout !== "number") parsed.clout = 0;
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
+    if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     if (!Array.isArray(parsed.sorters)) parsed.sorters = [];
@@ -1724,18 +1750,61 @@ function totalFoilsOpened() {
 }
 
 // ---- Economy -------------------------------------------------------------
-function packCost() { return PACK_COST; }
-function boxCost()  { return BOX_COST; }
-function caseCost() { return CASE_COST; }
+// Vintage pricing: older sets cost more. Linear scale on age — Set 30 is
+// 1× the base, Set 29 is 2×, … Set 01 is 30×. Same multiplier on box/case.
+function setAgeMult(setId) {
+  const s = (setId == null) ? state.activeSetId : setId;
+  return Math.max(1, 31 - s);
+}
+function packCost(setId) { return PACK_COST * setAgeMult(setId); }
+function boxCost(setId)  { return BOX_COST  * setAgeMult(setId); }
+function caseCost(setId) { return CASE_COST * setAgeMult(setId); }
+
+// A year is available in the vintage shop if you've ever crafted a non-foil
+// Complete Set of the *next* year. Set 30 is always unlocked.
+function isSetUnlocked(setId) {
+  if (setId === CURRENT_SET_ID) return true;
+  if (setId < 1 || setId > CURRENT_SET_ID) return false;
+  return ((state.completeSetCrafts || {})[setId + 1] || 0) > 0;
+}
+function setYearLabel(setId) { return 2000 + setId; }
 
 // ---- Render --------------------------------------------------------------
 const $ = id => document.getElementById(id);
 
 let _lastCloutBalance = null;
+function renderYearPicker() {
+  const wrap = $("year-picker");
+  if (!wrap) return;
+  const out = [];
+  for (let s = CURRENT_SET_ID; s >= 1; s -= 1) {
+    const year = setYearLabel(s);
+    const unlocked = isSetUnlocked(s);
+    const active = s === state.activeSetId;
+    const cls = ["year-chip"];
+    if (active) cls.push("active");
+    if (!unlocked) cls.push("locked");
+    const title = unlocked
+      ? `Set ${s} (${year}) · pack ${usd(packCost(s))}`
+      : `Locked — craft a Set ${s + 1} (${setYearLabel(s + 1)}) Complete Set to unlock`;
+    const prefix = unlocked ? "" : "🔒";
+    out.push(`<button type="button" class="${cls.join(" ")}" data-set-id="${s}" title="${title}">`
+           + `<span>${prefix}S${s}</span>`
+           + `<span class="yr">'${String(year).slice(2)}</span>`
+           + `</button>`);
+  }
+  wrap.innerHTML = out.join("");
+}
+
 function renderHeader() {
   $("coins").textContent        = usd(state.coins);
   $("packs-opened").textContent = state.packsOpened;
   $("foils-pulled").textContent = totalFoilsOpened();
+  const activeSet = state.activeSetId;
+  const setLabel = `SET ${activeSet} · ${setYearLabel(activeSet)}`;
+  $("shop-title").textContent = `SHOP · ${setLabel}`;
+  $("pack-set-label").textContent = setLabel;
+  renderYearPicker();
   const boxes = cur().boxesOwned || 0;
   $("supply-label").textContent = boxes > 0
     ? `Supply: ${cur().packSupply} · 📦 ${boxes}`
@@ -2127,8 +2196,21 @@ function craftCompleteSet(key) {
   });
   if (!cur().invById[key]) cur().invById[key] = {};
   cur().invById[key][1] = (cur().invById[key][1] || 0) + 1;
+  let unlockedNext = null;
+  if (!def.foil) {
+    // Non-foil Complete Set crafts unlock the prior year in the vintage shop.
+    if (!state.completeSetCrafts) state.completeSetCrafts = {};
+    const prior = state.completeSetCrafts[state.activeSetId] || 0;
+    state.completeSetCrafts[state.activeSetId] = prior + 1;
+    const nextSetId = state.activeSetId - 1;
+    if (prior === 0 && nextSetId >= 1) unlockedNext = nextSetId;
+  }
   renderAll(); save();
-  $("hint").textContent = `Crafted a ${def.label}. Vault it for +${def.clout} CLOUT or list it for cash.`;
+  if (unlockedNext != null) {
+    $("hint").textContent = `Crafted a ${def.label}. +${def.clout} CLOUT vault value. 🔓 Set ${unlockedNext} (${setYearLabel(unlockedNext)}) unlocked in the vintage shop.`;
+  } else {
+    $("hint").textContent = `Crafted a ${def.label}. Vault it for +${def.clout} CLOUT or list it for cash.`;
+  }
 }
 
 function vaultCompleteSet(key) {
@@ -3831,6 +3913,20 @@ $("pack").addEventListener("click", ripOne);
 $("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
 $("buy-box").addEventListener("click",  () => buyBoxes(1, boxCost(),  "1 sealed box"));
 $("buy-case").addEventListener("click", () => buyBoxes(Math.max(1, Math.round(CASE_SIZE / BOX_SIZE)), caseCost(), `a case (${Math.round(CASE_SIZE / BOX_SIZE)} sealed boxes)`));
+$("year-picker").addEventListener("click", (e) => {
+  const chip = e.target.closest(".year-chip");
+  if (!chip) return;
+  const sid = parseInt(chip.dataset.setId, 10);
+  if (!Number.isFinite(sid)) return;
+  if (sid === state.activeSetId) return;
+  if (!isSetUnlocked(sid)) {
+    $("hint").textContent = `Set ${sid} (${setYearLabel(sid)}) is locked — craft a Set ${sid + 1} Complete Set first.`;
+    return;
+  }
+  state.activeSetId = sid;
+  renderAll(); save();
+  $("hint").textContent = `Now ripping Set ${sid} (${setYearLabel(sid)}). Packs ${usd(packCost())} each.`;
+});
 // Collection cells are display-only now — listing is exclusively done via
 // the Set-craft pipeline. No click handler on #vault-grid.
 $("listings-panel").addEventListener("click", (e) => {
