@@ -775,9 +775,12 @@
   }
   .stock-row {
     background: var(--panel-light); border-radius: 8px; padding: 12px 14px;
-    display: grid; grid-template-columns: 0.9fr 1fr; align-items: center; gap: 12px;
+    display: grid; grid-template-columns: 0.9fr auto 1fr; align-items: center; gap: 12px;
     border-left: 4px solid #444;
   }
+  /* Complete Set rows don't have a craft-homie slot — collapse the middle
+     column so the layout stays a 2-column grid for those rows. */
+  .stock-row.complete-set { grid-template-columns: 0.9fr 1fr; }
   .stock-row.common    { border-left-color: var(--common); }
   .stock-row.uncommon  { border-left-color: var(--uncommon); }
   .stock-row.rare      { border-left-color: var(--rare); }
@@ -801,7 +804,7 @@
     display: flex; gap: 6px; align-items: stretch;
     margin-top: 4px;
   }
-  .set-craft-btn, .set-list-btn, .set-vault-btn, .set-hire-btn {
+  .set-craft-btn, .set-list-btn, .set-vault-btn {
     flex: 1; min-width: 0;
     background: transparent; color: var(--ink);
     border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
@@ -809,16 +812,58 @@
     font-family: inherit; font-size: 0.62rem; letter-spacing: 0.5px;
     transition: all 0.12s; white-space: nowrap;
   }
-  .set-hire-btn:not(:disabled) {
-    color: #5ad06a; border-color: rgba(90,208,106,0.55);
+  /* Per-rarity craft-homie slot — sits between the rarity name and the
+     foil/non-foil action stacks. Same visual vocabulary as the rip-homie
+     sprites near the pack: bobbing 🧢 + small bar/count badge. */
+  .craft-homie-slot {
+    width: 54px; min-width: 54px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px; padding: 4px 2px;
+    border: 1px dashed rgba(255,255,255,0.18); border-radius: 6px;
+    background: rgba(0,0,0,0.18);
+    cursor: pointer; user-select: none;
+    transition: background 0.12s, border-color 0.12s;
   }
-  .set-hire-btn:not(:disabled):hover { background: rgba(90,208,106,0.15); color: #fff; }
-  .set-hire-btn.working {
-    color: #5ad06a; border-color: rgba(90,208,106,0.85);
-    background: rgba(90,208,106,0.10);
-    opacity: 0.9;
+  .craft-homie-slot.empty:not(.disabled):hover {
+    background: rgba(90,208,106,0.10); border-color: #5ad06a;
   }
-  .set-hire-btn:disabled:not(.working) { opacity: 0.45; cursor: not-allowed; }
+  .craft-homie-slot.disabled { opacity: 0.45; cursor: not-allowed; }
+  .craft-homie-slot .homie-plus {
+    font-size: 1.1rem; color: var(--muted); font-weight: bold; line-height: 1;
+  }
+  .craft-homie-slot .homie-meta {
+    font-size: 0.5rem; letter-spacing: 1px; color: var(--muted);
+    font-weight: bold;
+  }
+  .craft-homie-slot.active {
+    border-style: solid; border-color: rgba(90,208,106,0.6);
+    background: rgba(90,208,106,0.08);
+    cursor: default;
+  }
+  .craft-homie-slot.active .homie-emoji {
+    font-size: 1.4rem; line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));
+    animation: homie-bob-inline 0.7s ease-in-out infinite alternate;
+  }
+  .craft-homie-slot.active .homie-count {
+    background: #5ad06a; color: #111;
+    border-radius: 8px; font-size: 0.55rem; font-weight: bold;
+    padding: 0 5px; line-height: 1.2;
+  }
+  .craft-homie-slot.active .homie-bar {
+    width: 44px; height: 3px;
+    background: rgba(0,0,0,0.55); border-radius: 2px; overflow: hidden;
+  }
+  .craft-homie-slot.active .homie-bar > span {
+    display: block; height: 100%; background: #5ad06a;
+    transition: width 0.4s linear;
+  }
+  /* Inline variant of the pack-side bob — no translate needed since the
+     slot is laid out by flex/grid, not absolute-positioned. */
+  @keyframes homie-bob-inline {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-3px); }
+  }
   .set-craft-btn:not(:disabled) {
     color: var(--gold); border-color: var(--gold);
     font-weight: bold;
@@ -2380,6 +2425,35 @@ function renderHeader() {
   else pack.classList.remove("disabled");
 }
 
+// One craft-homie slot per rarity row. Visually reuses the same .homie-sprite
+// + bobbing-hat imagery as the pack-side rip homies, but inline within the
+// vault row. Click an empty slot to hire; once hired the slot shows the
+// bobbing 🧢 with a time-remaining bar.
+function craftHomieSlotHtml(rarity) {
+  const homie = findCraftHomie(state.activeSetId, rarity);
+  if (homie) {
+    const totalMs = CRAFT_HOMIE_DURATION_MS;
+    const leftMs  = Math.max(0, homie.expiresAt - Date.now());
+    const pct = Math.max(0, Math.min(100, (leftMs / totalMs) * 100));
+    const label = leftMs > 60000 ? `${Math.ceil(leftMs/60000)}m` : `${Math.ceil(leftMs/1000)}s`;
+    const title = `${RARITY_LABELS[rarity]} craft homie · ${label} left · auto-crafts FOIL first, then non-foil every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s on Set ${state.activeSetId}`;
+    return `<div class="craft-homie-slot active" title="${title}">`
+         + `<span class="homie-emoji">🧢</span>`
+         + `<span class="homie-count">${label}</span>`
+         + `<span class="homie-bar"><span style="width:${pct}%"></span></span>`
+         + `</div>`;
+  }
+  const unaffordable = state.coins < CRAFT_HOMIE_COST;
+  const cls = "craft-homie-slot empty" + (unaffordable ? " disabled" : "");
+  const title = unaffordable
+    ? `Need ${usd(CRAFT_HOMIE_COST - state.coins)} more to hire a ${RARITY_LABELS[rarity]} craft homie`
+    : `Hire a ${RARITY_LABELS[rarity]} craft homie for ${usd(CRAFT_HOMIE_COST)} — auto-crafts FOIL ${RARITY_LABELS[rarity]} SET then ${RARITY_LABELS[rarity]} SET every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s for ${Math.round(CRAFT_HOMIE_DURATION_MS/60000)} min`;
+  return `<div class="${cls}" data-hire-rarity="${rarity}" title="${title}">`
+       + `<span class="homie-plus">+</span>`
+       + `<span class="homie-meta">HIRE ${usd(CRAFT_HOMIE_COST)}</span>`
+       + `</div>`;
+}
+
 function setActionsBlock(key) {
   const track = craftTrack(key);
   if (!track) return "";
@@ -2398,28 +2472,13 @@ function setActionsBlock(key) {
 
   const canList  = setsOwned > 0 && !slotsFull;
 
-  // Craft-homie state for this track + active year. If one's running, show
-  // the time remaining; if not, the HIRE button is available unless the
-  // player is broke.
-  const homie = findCraftHomie(state.activeSetId, key);
-  const homieMsLeft = homie ? Math.max(0, homie.expiresAt - Date.now()) : 0;
-  const homieLabel = homie
-    ? (homieMsLeft > 60000 ? `WORKING · ${Math.ceil(homieMsLeft/60000)}m` : `WORKING · ${Math.ceil(homieMsLeft/1000)}s`)
-    : `HIRE · ${usd(CRAFT_HOMIE_COST)}`;
-  const hireUnaffordable = !homie && state.coins < CRAFT_HOMIE_COST;
-  const hireTitle = homie
-    ? `Craft homie working ${setName} SET on Set ${state.activeSetId} — auto-crafts every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s when ingredients are ready`
-    : `Hire a craft homie for ${usd(CRAFT_HOMIE_COST)} — auto-crafts ${setName} SET every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s for ${Math.round(CRAFT_HOMIE_DURATION_MS/60000)} min`;
-
   const craftCls = "set-craft-btn" + (track.foil ? " foil" : "");
   const listCls  = "set-list-btn"  + (track.foil ? " foil" : "");
-  const hireCls  = "set-hire-btn"  + (track.foil ? " foil" : "") + (homie ? " working" : "");
   const setsBadge = setsOwned > 0 ? ` <span class="set-owned-badge">×${setsOwned}</span>` : "";
   return `
     <div class="set-actions">
       <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"} title="${setName} SET — ${uniqueOwned}/${size} unique held${setsOwned > 0 ? ` · ${setsOwned} crafted` : ""}">${craftLabel}${setsBadge}</button>
       <button class="${listCls}"  data-list-set="${key}"  ${canList ? "" : "disabled"} title="List a ${setName} SET — current market ${usd(setPrice)}">${listLabel}</button>
-      <button class="${hireCls}"  data-hire-craft="${key}" ${homie || hireUnaffordable ? "disabled" : ""} title="${hireTitle}">${homieLabel}</button>
     </div>`;
 }
 
@@ -2492,6 +2551,7 @@ function renderVault() {
     row.className = `stock-row ${rarity}`;
     row.innerHTML = `
       <div class="rarity-name" style="color:${color}">${glyph} ${label}</div>
+      ${craftHomieSlotHtml(rarity)}
       <div class="counts">
         ${setActionsBlock(foilKey)}
         ${setActionsBlock(nonFoilKey)}
@@ -4102,21 +4162,22 @@ function hireHomie(preferredSlot) {
   $("hint").textContent = `Hired a homie for Set ${hiredSetId} (${setYearLabel(hiredSetId)})! They'll rip ${BOX_SIZE} packs from your box.`;
 }
 
-function findCraftHomie(setId, craftKey) {
+function findCraftHomie(setId, craftRarity) {
   return (state.homies || []).find(h =>
-    h.kind === "craft" && h.setId === setId && h.craftKey === craftKey
+    h.kind === "craft" && h.setId === setId && h.craftRarity === craftRarity
   );
 }
 
-// Hire a per-track craft homie. Auto-attempts to craft the given track's
-// Set every CRAFT_HOMIE_TICK_MS for 8 minutes. No box required (they're
-// crafting, not ripping); one per (track × year).
-function hireCraftHomie(craftKey) {
-  if (!craftTrack(craftKey)) return;
+// Hire a craft homie that works a whole rarity row (both the foil and the
+// non-foil track) for 8 minutes. Each tick the homie tries to craft the
+// FOIL Set first; if foil isn't ready, falls back to the non-foil Set. No
+// box required (they're crafting, not ripping); one per (rarity × year).
+function hireCraftHomie(craftRarity) {
+  if (!RARITIES.includes(craftRarity)) return;
   const setId = state.activeSetId;
-  if (findCraftHomie(setId, craftKey)) {
+  if (findCraftHomie(setId, craftRarity)) {
     SFX.error();
-    $("hint").textContent = `Already have a craft homie working that track for Set ${setId}.`;
+    $("hint").textContent = `Already have a craft homie on ${RARITY_LABELS[craftRarity]} for Set ${setId}.`;
     return;
   }
   if (state.coins < CRAFT_HOMIE_COST) {
@@ -4132,17 +4193,15 @@ function hireCraftHomie(craftKey) {
     uid: state.homieUidCounter,
     kind: "craft",
     setId,
-    craftKey,
+    craftRarity,
     startAt: now,
     expiresAt: now + CRAFT_HOMIE_DURATION_MS,
     lastCraftAt: 0,
   });
   SFX.buy();
   renderAll(); save();
-  const track = craftTrack(craftKey);
-  const setName = (track.foil ? "FOIL " : "") + RARITY_LABELS[track.baseRarity];
   const mins = Math.round(CRAFT_HOMIE_DURATION_MS / 60000);
-  $("hint").textContent = `Hired a craft homie for ${setName} on Set ${setId} — auto-crafts for ${mins} min.`;
+  $("hint").textContent = `Hired a ${RARITY_LABELS[craftRarity]} craft homie on Set ${setId} — auto-crafts foil + non-foil for ${mins} min.`;
 }
 
 function homieRipPack(homie) {
@@ -4189,14 +4248,15 @@ function tickHomies() {
     if (h.kind === "craft") {
       if (now >= h.expiresAt) return;                                 // reaper handles removal below
       if (now - (h.lastCraftAt || 0) < CRAFT_HOMIE_TICK_MS) return;
-      // Route the craft into the homie's bound year. Silent so the hint
-      // line + render don't fire per-tick — tickHomies batches them once
-      // at the end of the loop.
+      // Route the craft into the homie's bound year. Foil first, then
+      // non-foil — the homie keeps drilling on both tracks until expiry.
+      // Silent so the hint line + render don't fire per-tick — tickHomies
+      // batches them once at the end of the loop.
       withActiveSet(h.setId, () => {
-        if (canCraftSet(h.craftKey)) {
-          craftSet(h.craftKey, { silent: true });
-          acted = true;
-        }
+        const r = h.craftRarity;
+        const foilKey = "foil" + r.charAt(0).toUpperCase() + r.slice(1);
+        if (canCraftSet(foilKey)) { craftSet(foilKey, { silent: true }); acted = true; }
+        if (canCraftSet(r))       { craftSet(r,       { silent: true }); acted = true; }
       });
       h.lastCraftAt = now;
     } else {
@@ -4743,8 +4803,11 @@ $("stock-rows").addEventListener("click", (e) => {
   if (craft && craft.dataset.craft && !craft.disabled) { craftSet(craft.dataset.craft); return; }
   const listBtn = e.target.closest(".set-list-btn");
   if (listBtn && listBtn.dataset.listSet && !listBtn.disabled) { listSetItem(listBtn.dataset.listSet); return; }
-  const hireBtn = e.target.closest(".set-hire-btn");
-  if (hireBtn && hireBtn.dataset.hireCraft && !hireBtn.disabled) { hireCraftHomie(hireBtn.dataset.hireCraft); return; }
+  const hireSlot = e.target.closest(".craft-homie-slot.empty");
+  if (hireSlot && !hireSlot.classList.contains("disabled") && hireSlot.dataset.hireRarity) {
+    hireCraftHomie(hireSlot.dataset.hireRarity);
+    return;
+  }
 });
 $("sand-canvas").addEventListener("click", (e) => {
   const canvas = $("sand-canvas");
