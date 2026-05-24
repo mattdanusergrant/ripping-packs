@@ -87,9 +87,14 @@
   .buy-btn .cost { color: var(--gold); font-size: 0.9rem; margin-top: 4px; font-weight: bold; }
   .buy-btn .save { color: var(--uncommon); font-size: 0.65rem; }
 
-  #pack-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 0; position: relative; }
+  #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 0; position: relative; }
+  /* Positioning container for homie sprites — sized exactly to the pack so
+     "top: 25/50/75%" map to vertical thirds of the pack itself, not of a
+     fluid pack-area. */
+  #pack-wrap { position: relative; }
   /* Six fixed slots: 0-2 stacked to the left of the pack, 3-5 to the right.
-     Slot 0 / 3 are closest to the pack; 2 / 5 are the outermost. */
+     Slot 0 / 3 are at the top, 2 / 5 at the bottom. Sprite is centered on
+     `left` via translateX so the offset reads symmetrically. */
   .homie-sprite {
     position: absolute;
     display: flex; flex-direction: column; align-items: center;
@@ -97,13 +102,14 @@
     pointer-events: none;
     animation: homie-bob 0.7s ease-in-out infinite alternate;
     z-index: 5;
+    transform: translate(-50%, -50%);
   }
-  .homie-sprite[data-slot="0"] { left: calc(50% - 165px); bottom: 200px; }
-  .homie-sprite[data-slot="1"] { left: calc(50% - 165px); bottom: 320px; }
-  .homie-sprite[data-slot="2"] { left: calc(50% - 165px); bottom: 440px; }
-  .homie-sprite[data-slot="3"] { left: calc(50% + 115px); bottom: 200px; }
-  .homie-sprite[data-slot="4"] { left: calc(50% + 115px); bottom: 320px; }
-  .homie-sprite[data-slot="5"] { left: calc(50% + 115px); bottom: 440px; }
+  .homie-sprite[data-slot="0"] { left: calc(50% - 130px); top: 22%; }
+  .homie-sprite[data-slot="1"] { left: calc(50% - 130px); top: 50%; }
+  .homie-sprite[data-slot="2"] { left: calc(50% - 130px); top: 78%; }
+  .homie-sprite[data-slot="3"] { left: calc(50% + 130px); top: 22%; }
+  .homie-sprite[data-slot="4"] { left: calc(50% + 130px); top: 50%; }
+  .homie-sprite[data-slot="5"] { left: calc(50% + 130px); top: 78%; }
   .homie-sprite .homie-emoji { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
   .homie-sprite .homie-set {
     background: rgba(255,216,77,0.22); color: #ffd84d;
@@ -145,8 +151,11 @@
   .homie-sprite.empty .homie-plus { line-height: 1; }
   .homie-sprite.empty .homie-meta { font-size: 0.5rem; letter-spacing: 1px; color: inherit; }
   @keyframes homie-bob {
-    from { transform: translateY(0); }
-    to   { transform: translateY(-6px); }
+    /* Preserves the translate(-50%, -50%) base offset that centers the
+       sprite on its (left, top) anchor — without these, the bob would
+       snap the sprite by +50%/+50% from its anchor. */
+    from { transform: translate(-50%, -50%); }
+    to   { transform: translate(-50%, calc(-50% - 6px)); }
   }
   #typing-zone {
     display: flex; flex-direction: column; align-items: center;
@@ -1074,6 +1083,9 @@
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
+    /* Tighter homie offset for the narrower mobile pack. */
+    .homie-sprite[data-slot="0"], .homie-sprite[data-slot="1"], .homie-sprite[data-slot="2"] { left: calc(50% - 100px); }
+    .homie-sprite[data-slot="3"], .homie-sprite[data-slot="4"], .homie-sprite[data-slot="5"] { left: calc(50% + 100px); }
     #sand-canvas { width: 100%; height: auto; aspect-ratio: 5 / 2; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
@@ -1179,8 +1191,10 @@
   </div>
   <div id="set-progress"></div>
   <div id="pack-area">
-    <div class="pack" id="pack">
-      <div class="label"><span id="pack-set-label">SET 30 · 2030</span><br>BOOSTER<small id="supply-label">Supply: 0</small></div>
+    <div id="pack-wrap">
+      <div class="pack" id="pack">
+        <div class="label"><span id="pack-set-label">SET 30 · 2030</span><br>BOOSTER<small id="supply-label">Supply: 0</small></div>
+      </div>
     </div>
     <div id="typing-zone">
       <div class="typing-hint">type to rip</div>
@@ -3817,7 +3831,10 @@ function renderStaff() {
 }
 
 function renderHomieSprites() {
-  const area = $("pack-area");
+  // Render into #pack-wrap (a thin positioning container around the pack)
+  // so the homie slots track the pack's actual box, not the looser
+  // pack-area which also holds the typing zone + hint line.
+  const area = $("pack-wrap");
   if (!area) return;
   const homies = state.homies || [];
   const bySlot = new Map(homies.map(h => [h.slot, h]));
