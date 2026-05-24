@@ -538,19 +538,19 @@
     padding: 1px 5px; font-weight: bold;
   }
   /* Action row — fixed column widths so values stack into clean vertical
-     columns across multiple sorters: rate, ⬆ SPD, spacer, sorted, ⬆ BUF,
-     spacer, LOAD (flex), COLLECT (flex). The two spacer cells widen the
-     visual gap between clusters without making any cluster's columns
-     flex with content. */
+     columns across multiple sorters: hopper, rate, ⬆ SPD, spacer, sorted,
+     ⬆ BUF, spacer, LOAD (flex), COLLECT (flex). The two spacer cells
+     widen the visual gap between clusters without making any cluster's
+     columns flex with content. */
   .sorter-row {
     display: grid;
-    grid-template-columns: 64px 78px 12px 96px 78px 12px 1fr 1fr;
+    grid-template-columns: 64px 56px 78px 12px 100px 78px 12px 1fr 1fr;
     align-items: stretch;
     gap: 4px;
   }
   .sorter-spacer { /* gap-widening column, intentionally empty */ }
   .sorter-cell {
-    display: flex; align-items: center; justify-content: flex-end; gap: 3px;
+    display: flex; align-items: center; justify-content: flex-end; gap: 4px;
     padding: 4px 8px;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.08);
@@ -558,10 +558,13 @@
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
+  .sorter-cell .cell-icon { opacity: 0.55; font-size: 0.7rem; }
   .sorter-cell .cell-val { font-weight: bold; color: var(--ink); font-size: 0.85rem; }
   .sorter-cell .cell-unit { color: var(--muted); font-size: 0.6rem; letter-spacing: 1px; }
-  .sorter-cell.rate   .cell-val { color: #5aa8ff; }
+  /* Color flow: blue (in via hopper) → neutral (rate) → gold (out via sorted). */
+  .sorter-cell.hopper .cell-val { color: #5aa8ff; }
   .sorter-cell.sorted .cell-val { color: var(--gold); }
+  .sorter-cell.sorted.full .cell-val { color: #ff7a3d; }
   .sorter-cell.sorted.full .cell-val { color: #ff7a3d; }
   .sorter-load, .sorter-collect, .sorter-upgrade {
     background: transparent; border: 1px solid rgba(255,255,255,0.22);
@@ -4594,13 +4597,16 @@ function buildSorterCard(uid) {
       <span class="sorter-set"></span>
     </div>
     <div class="sorter-row">
+      <div class="sorter-cell hopper" title="In hopper — waiting to be sorted">
+        <span class="cell-icon">⌛</span><span class="cell-val sorter-hopper-val"></span>
+      </div>
       <div class="sorter-cell rate" title="">
         <span class="cell-val sorter-rate-val"></span><span class="cell-unit">/s</span>
       </div>
       <button class="sorter-upgrade speed" data-upgrade-speed="${uid}" title=""></button>
       <div class="sorter-spacer"></div>
       <div class="sorter-cell sorted" title="Sorted — ready to collect">
-        <span class="cell-val sorter-sorted-val"></span>
+        <span class="cell-icon">✓</span><span class="cell-val sorter-sorted-val"></span>
       </div>
       <button class="sorter-upgrade buffer" data-upgrade-buffer="${uid}" title=""></button>
       <div class="sorter-spacer"></div>
@@ -4660,12 +4666,17 @@ function renderSorters() {
     const setText = `S${s.setId != null ? s.setId : CURRENT_SET_ID}`;
     if (setEl.textContent !== setText) setEl.textContent = setText;
 
-    // Rate display + hopper info as a tooltip (no longer a visible cell).
+    // Hopper count (unsorted input waiting to be processed).
+    const hopperVal = card.querySelector(".sorter-hopper-val");
+    const hopperText = String(inputN);
+    if (hopperVal.textContent !== hopperText) hopperVal.textContent = hopperText;
+
+    // Rate display.
     const rateCellEl = card.querySelector(".sorter-cell.rate");
     const rateVal = card.querySelector(".sorter-rate-val");
     const rateText = String(sortsPerSecond(speedLevel));
     if (rateVal.textContent !== rateText) rateVal.textContent = rateText;
-    const rateTitle = `${rateText} cards/s — ${inputN} in hopper`;
+    const rateTitle = `Current sort rate: ${rateText} cards/s`;
     if (rateCellEl.title !== rateTitle) rateCellEl.title = rateTitle;
 
     // Speed upgrade button — compact "⬆ $500".
