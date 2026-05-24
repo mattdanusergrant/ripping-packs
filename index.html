@@ -537,27 +537,30 @@
     border-radius: 3px; font-size: 0.58rem; letter-spacing: 1px;
     padding: 1px 5px; font-weight: bold;
   }
-  /* Seven-column action row: hopper · rate · speed-upgrade · sorted ·
-     buffer-upgrade · LOAD · COLLECT. auto-sized cells flank fr-sized
-     action buttons so the row breathes on wider modals. */
+  /* Action row — fixed column widths so values stack into clean vertical
+     columns across multiple sorters: rate, ⬆ SPD, spacer, sorted, ⬆ BUF,
+     spacer, LOAD (flex), COLLECT (flex). The two spacer cells widen the
+     visual gap between clusters without making any cluster's columns
+     flex with content. */
   .sorter-row {
     display: grid;
-    grid-template-columns: auto auto 1fr auto 1fr 1fr 1fr;
+    grid-template-columns: 64px 78px 12px 96px 78px 12px 1fr 1fr;
     align-items: stretch;
-    gap: 6px;
+    gap: 4px;
   }
+  .sorter-spacer { /* gap-widening column, intentionally empty */ }
   .sorter-cell {
-    display: flex; align-items: center; justify-content: center; gap: 3px;
+    display: flex; align-items: center; justify-content: flex-end; gap: 3px;
     padding: 4px 8px;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 4px;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
-  .sorter-cell .cell-icon { opacity: 0.7; font-size: 0.75rem; }
-  .sorter-cell .cell-val { font-weight: bold; color: var(--ink); font-size: 0.8rem; }
+  .sorter-cell .cell-val { font-weight: bold; color: var(--ink); font-size: 0.85rem; }
   .sorter-cell .cell-unit { color: var(--muted); font-size: 0.6rem; letter-spacing: 1px; }
-  .sorter-cell.hopper .cell-val { color: #5aa8ff; }
+  .sorter-cell.rate   .cell-val { color: #5aa8ff; }
   .sorter-cell.sorted .cell-val { color: var(--gold); }
   .sorter-cell.sorted.full .cell-val { color: #ff7a3d; }
   .sorter-load, .sorter-collect, .sorter-upgrade {
@@ -4580,26 +4583,27 @@ function buildSorterCard(uid) {
   const card = document.createElement("div");
   card.className = "sorter-card";
   card.dataset.uid = uid;
-  // Header strip (sorter index + year chip) followed by the seven-column
-  // action row: hopper · rate · speed-upgrade · sorted · buffer-upgrade ·
-  // LOAD · COLLECT.
+  // Header strip (sorter index + level + year chip) on top, then the
+  // action row in a strict fixed-width grid so columns align vertically
+  // across every stacked sorter card. Spacer cells widen the gap between
+  // the rate / sorted / load clusters without making each cluster's
+  // columns flex with content.
   card.innerHTML = `
     <div class="sorter-header">
       <span class="sorter-name"></span>
       <span class="sorter-set"></span>
     </div>
     <div class="sorter-row">
-      <div class="sorter-cell hopper"  title="In hopper — waiting to be sorted">
-        <span class="cell-icon">⌛</span><span class="cell-val sorter-hopper-val"></span>
-      </div>
-      <div class="sorter-cell rate"    title="Current sort rate">
+      <div class="sorter-cell rate" title="">
         <span class="cell-val sorter-rate-val"></span><span class="cell-unit">/s</span>
       </div>
       <button class="sorter-upgrade speed" data-upgrade-speed="${uid}" title=""></button>
-      <div class="sorter-cell sorted"  title="Sorted — ready to collect">
-        <span class="cell-icon">✓</span><span class="cell-val sorter-sorted-val"></span>
+      <div class="sorter-spacer"></div>
+      <div class="sorter-cell sorted" title="Sorted — ready to collect">
+        <span class="cell-val sorter-sorted-val"></span>
       </div>
       <button class="sorter-upgrade buffer" data-upgrade-buffer="${uid}" title=""></button>
+      <div class="sorter-spacer"></div>
       <button class="sorter-load"    data-load="${uid}"></button>
       <button class="sorter-collect" data-collect="${uid}"></button>
     </div>`;
@@ -4656,25 +4660,21 @@ function renderSorters() {
     const setText = `S${s.setId != null ? s.setId : CURRENT_SET_ID}`;
     if (setEl.textContent !== setText) setEl.textContent = setText;
 
-    // Hopper count (unsorted input).
-    const hopperVal = card.querySelector(".sorter-hopper-val");
-    const hopperText = String(inputN);
-    if (hopperVal.textContent !== hopperText) hopperVal.textContent = hopperText;
-
-    // Rate display.
+    // Rate display + hopper info as a tooltip (no longer a visible cell).
+    const rateCellEl = card.querySelector(".sorter-cell.rate");
     const rateVal = card.querySelector(".sorter-rate-val");
-    const rateText = sortsPerSecond(speedLevel).toFixed(speedLevel >= 3 ? 1 : 1);
+    const rateText = String(sortsPerSecond(speedLevel));
     if (rateVal.textContent !== rateText) rateVal.textContent = rateText;
+    const rateTitle = `${rateText} cards/s — ${inputN} in hopper`;
+    if (rateCellEl.title !== rateTitle) rateCellEl.title = rateTitle;
 
-    // Speed upgrade button.
+    // Speed upgrade button — compact "⬆ $500".
     const speedBtn = card.querySelector(".sorter-upgrade.speed");
-    const speedText = speedAtMax
-      ? "SPD MAX"
-      : `⬆ SPD ${usd(speedCost)}`;
+    const speedText = speedAtMax ? "MAX" : `⬆ ${usd(speedCost)}`;
     if (speedBtn.textContent !== speedText) speedBtn.textContent = speedText;
     const speedTitle = speedAtMax
       ? "Speed at max level"
-      : `Upgrade speed Lv ${speedLevel} → ${speedLevel + 1}: ${sortsPerSecond(speedLevel).toFixed(1)} → ${sortsPerSecond(speedLevel + 1).toFixed(1)} cards/s (${usd(speedCost)})`;
+      : `Upgrade speed Lv ${speedLevel} → ${speedLevel + 1}: ${sortsPerSecond(speedLevel)} → ${sortsPerSecond(speedLevel + 1)} cards/s (${usd(speedCost)})`;
     if (speedBtn.title !== speedTitle) speedBtn.title = speedTitle;
     if (speedBtn.disabled !== !canUpSpeed) speedBtn.disabled = !canUpSpeed;
 
@@ -4684,11 +4684,9 @@ function renderSorters() {
     if (sortedVal.textContent !== sortedText) sortedVal.textContent = sortedText;
     card.querySelector(".sorter-cell.sorted").classList.toggle("full", totalN >= cap);
 
-    // Buffer upgrade button.
+    // Buffer upgrade button — compact "⬆ $500".
     const bufBtn = card.querySelector(".sorter-upgrade.buffer");
-    const bufBtnText = bufferAtMax
-      ? "BUF MAX"
-      : `⬆ BUF ${usd(bufferCost)}`;
+    const bufBtnText = bufferAtMax ? "MAX" : `⬆ ${usd(bufferCost)}`;
     if (bufBtn.textContent !== bufBtnText) bufBtn.textContent = bufBtnText;
     const bufBtnTitle = bufferAtMax
       ? "Buffer at max level"
