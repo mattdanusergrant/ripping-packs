@@ -1281,7 +1281,7 @@
   <div id="pack-area">
     <div id="pack-wrap">
       <div class="pack" id="pack">
-        <div class="label"><span id="pack-set-label">SET 30 · 2030</span><br>BOOSTER<small id="supply-label">Supply: 0</small></div>
+        <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER<small id="supply-label">Supply: 0</small></div>
         <div class="pack-cta">CLICK TO RIP</div>
       </div>
     </div>
@@ -2503,7 +2503,7 @@ function renderHeader() {
   $("packs-opened").textContent = state.packsOpened;
   $("foils-pulled").textContent = totalFoilsOpened();
   const activeSet = state.activeSetId;
-  const setLabel = `SET ${activeSet} · ${setYearLabel(activeSet)}`;
+  const setLabel = `The ${setYearLabel(activeSet)} Set`;
   $("pack-set-label").textContent = setLabel;
   // Patina tier applied to the pack + vault grid so older years carry a
   // visible sepia treatment. We only mutate the active set's surfaces —
