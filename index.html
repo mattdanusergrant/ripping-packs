@@ -401,6 +401,80 @@
     to { background-position: 200% center; }
   }
 
+  /* ---- Opening splash --------------------------------------------------
+     Full-page intro that greets the player on every page load. Two stacked
+     foil-rainbow lines fade up out of black with a heavy glow, a pulsing
+     "click to begin" prompt appears once the lines settle, and the entire
+     overlay fades out on click (or any key). The element is removed from
+     the DOM after the fade so it never costs paint cycles in normal play. */
+  #opening-screen {
+    position: fixed; inset: 0; z-index: 99999;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, #1a1530 0%, #0e0a1a 55%, #000 100%);
+    cursor: pointer; user-select: none;
+    animation: opening-bg-in 0.45s ease-out;
+  }
+  #opening-screen.dismissing {
+    animation: opening-bg-out 0.5s ease-out forwards;
+    pointer-events: none;
+  }
+  .opening-content {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 18px;
+    text-align: center;
+    padding: 0 20px;
+  }
+  .opening-title-row { line-height: 1; }
+  .opening-title-row.delay .opening-title { animation-delay: 0.45s, 0.45s; }
+  .opening-title {
+    font-size: clamp(2.6rem, 10vw, 7rem);
+    font-weight: 900;
+    letter-spacing: clamp(4px, 1.2vw, 12px);
+    background: linear-gradient(90deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3);
+    background-size: 250% auto;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 28px rgba(255,126,179,0.55))
+            drop-shadow(0 0 60px rgba(245,197,66,0.35));
+    animation:
+      opening-title-in 1.2s cubic-bezier(0.16, 1, 0.3, 1) backwards,
+      foil-text-scroll 4s linear infinite 1.2s;
+    display: inline-block;
+  }
+  @keyframes opening-title-in {
+    from {
+      opacity: 0;
+      transform: scale(0.78) translateY(18px);
+      filter: blur(18px) drop-shadow(0 0 0 transparent);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      filter: blur(0)
+              drop-shadow(0 0 28px rgba(255,126,179,0.55))
+              drop-shadow(0 0 60px rgba(245,197,66,0.35));
+    }
+  }
+  .opening-hint {
+    margin-top: 28px;
+    font-size: 0.8rem;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    animation:
+      opening-hint-in 0.6s ease-out 1.5s backwards,
+      opening-hint-pulse 2.2s ease-in-out 2.1s infinite;
+  }
+  @keyframes opening-hint-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 0.8; transform: translateY(0); }
+  }
+  @keyframes opening-hint-pulse {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 0.95; text-shadow: 0 0 12px rgba(245,197,66,0.5); }
+  }
+  @keyframes opening-bg-in  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes opening-bg-out { to   { opacity: 0; } }
+
   @keyframes shimmer { 0% { background-position: 0% 50%; } 100% { background-position: 250% 50%; } }
 
   /* ---- Vault collection grid -------------------------------------------- */
@@ -1256,6 +1330,14 @@
 </style>
 </head>
 <body>
+
+<div id="opening-screen" role="presentation" aria-label="Opening">
+  <div class="opening-content">
+    <div class="opening-title-row"><span class="opening-title">RIP AND TEAR</span></div>
+    <div class="opening-title-row delay"><span class="opening-title">UNTIL IT IS DONE</span></div>
+    <div class="opening-hint">click anywhere to begin</div>
+  </div>
+</div>
 
 <header>
   <div class="header-top">
@@ -5482,6 +5564,30 @@ window.addEventListener("keydown", (e) => {
 updateSandSizing();
 renderAll();
 renderTypingZone();
+
+// ---- Opening splash dismiss ----------------------------------------------
+// Any click or keypress closes the splash, but only after the entrance
+// animation has had ~600ms to settle — stops a stray click during page
+// load from instantly skipping the moment.
+(() => {
+  const openingEl = document.getElementById("opening-screen");
+  if (!openingEl) return;
+  const READY_AT = performance.now() + 600;
+  let dismissed = false;
+  function dismissOpening() {
+    if (dismissed) return;
+    if (performance.now() < READY_AT) return;
+    dismissed = true;
+    SFX.unlock();
+    openingEl.classList.add("dismissing");
+    setTimeout(() => openingEl.remove(), 520);
+    window.removeEventListener("keydown", onKey, true);
+  }
+  function onKey() { dismissOpening(); }
+  openingEl.addEventListener("click", dismissOpening);
+  // Capture phase so it preempts the typing-mini-game key handler.
+  window.addEventListener("keydown", onKey, true);
+})();
 </script>
 
 </body>
