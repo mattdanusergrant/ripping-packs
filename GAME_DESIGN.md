@@ -489,25 +489,29 @@ This makes the whole game a live design sandbox — every drop-rate, every basel
 ## 16. Out-of-Scope (current build) / Roadmap Hooks
 
 - **Multiplayer / trades:** none.
-- **Cosmetics:** no custom card art or alternate sleeve themes yet. (Cards
-  across years are visually distinguished only by the patina tint and corner
-  setId chip — no per-set art exists.)
-- **Achievements / quests:** none.
+- **Cosmetics:** no custom card art or alternate sleeve themes yet. Cards across years are visually distinguished only by the patina tint applied to the active workspace + a corner setId chip on listings.
+- **Achievements / quests:** none. The closest analog is the 60-claim CLOUT collection arc (§8b).
 - **Mobile-first polish:** layout adapts but interaction is desktop-pointed (the canvas crit is generous enough for touch, but the typing mini-game is desktop-only).
-- **Sorter upgrades beyond Lv 5:** capped for now; future levels could specialize (e.g. foil-only sorter, rare-priority sorter).
-- **Homie variants:** currently one type. Future: rare-finder homies, fast-rip homies, sorting homies.
+- **Homie variants:** two kinds now (rip + craft, see §9). Future: rare-finder homies, focused-rarity sorter homies.
+- **Schema versioning:** `state.setVersion` / `state.marketVersion` fields are still written on boot but no current `load()` path reads them — the v4→v5 SAVE_KEY bump invalidated the only consumer that would have used them. If a future bump needs the dynamic migration (card-ID clamping etc.), the migration path needs to be re-implemented; presently no such migration runs.
+- **CLOUT-bought sorter scaling:** retired entirely. Sorter speed + buffer are cash-only paid via each sorter card's ⬆ buttons.
 
 ---
 
 ## 17. Pacing — One Player's Day
 
-| Time-in     | Coins range | Activity                                                           |
-|------------:|-------------|--------------------------------------------------------------------|
-| 0–5 min     | $0–$50      | Crack starter box. Click-rip + type-rip first 36 packs. Hand-sort. |
-| 5–20 min    | $50–$500    | Hire first homie. Buy boxes. Spot-list a first mythic / foil rare. |
-| 20–60 min   | $500–$3k    | Buy first sorter. Start crafting Standard Sets reliably.           |
-| 1–3 hrs     | $3k–$20k    | Multiple sorters, Lv 2–3. Working on Foil Standard Set.            |
-| 3+ hrs      | $20k+       | Max sorter levels. Rare Set completions. Chasing foil mythic.      |
+Approximate. The economy was re-grounded around Set-only liquidation (§5), the starter is a case (216 packs), and sorters scale to 10 cards/s + 1,400 cap. Numbers below are rough horizons, not targets.
+
+| Time-in     | Cash range  | Activity                                                                            |
+|------------:|-------------|-------------------------------------------------------------------------------------|
+| 0–10 min    | $50 → $300  | Crack starter case (6 boxes auto into supply). Hand-rip + type-rip. Sort the pile.  |
+| 10–30 min   | $300 → $2k  | First Standard + Rare Sets land. List them; buy more packs. Hire first rip homie.   |
+| 30–90 min   | $2k → $10k  | Buy first Sorter ($1k). Speed L2-3. Hire craft homies on Standard + Rare rows.      |
+| 1.5–4 hrs   | $10k → $50k | 2–3 sorters. Crafting Epic + Legendary Sets. First non-foil Complete Set vault (50 CLOUT). First vintage shop pack click; Set N unlocks. |
+| 4–12 hrs    | $50k → $250k| Sorters maxing (~$91k each). Foil Standard / Foil Rare Sets. CLOUT spent on PAINT + LISTINGS branches. Multiple vintage years partially populated. |
+| 12+ hrs     | $250k+      | Foil Epic / Foil Legendary Sets. First Complete Foil Set vault (500 CLOUT, more for vintage). VINTAGE branch upgrades unlock Box Hunter for case-heavy rolls. Chasing the 60-variant CLOUT collection arc. |
+
+CLOUT progression isn't gated on cash — it's gated on the **once-per-(year × foil-variant)** redemption (§8b). The full game offers 60 vault claims; collecting all of them is the long-game prestige arc.
 
 ---
 
@@ -770,26 +774,9 @@ and individual listing cards each carry their own tier class — so when
 viewing the marketplace, you can read each listing's year tier (current,
 midcentury, vintage) at a glance.
 
-### 19.10 Vault summary
+### 19.10 Vault summary (retired)
 
-A new horizontal strip of "vault stamps" lives between the marketplace
-listings and the per-year vault grid. Each stamp:
-
-```
-[S30 '30 ★1]  [S29 '29 —]  [S28 '28 —]  ... [S25 '25 ★1 ✨1]
-```
-
-- Visible for any year with vault activity OR unlock status OR any owned
-  cards (Set 30 is always visible as the anchor)
-- Shows non-foil count (`★N`) and foil count (`✨N`) of vaulted Complete
-  Sets
-- Tooltip includes the per-year unique-card-owned total
-- Active year highlighted gold
-- Patina tier class applied so old years read as antique stamps
-- Click → switch active set (same gate as the year picker)
-
-Per-year vault grid title shows `COLLECTION · SET {N} · {year}` so the
-title bar always tells you which year you're inspecting.
+An earlier iteration had a horizontal "vault stamps" strip between the marketplace listings and the per-year collection grid, showing one stamp per year with vault activity. It was removed — the year-picker dropdown is the sole year-switching surface now. The collection grid's title (`COLLECTION · SET N · YYYY`, h2-sized) is the only year identifier in the marketplace column.
 
 ### 19.11 Sold / expired / cancelled messages
 
@@ -824,6 +811,38 @@ These were intentionally left as v1 defaults pending real playtest:
   differ only by their setId tag and the patina filter applied at the
   grid level. Per-year card art, alternate frames, or holo variants
   are pure cosmetics work and out of scope so far.
+
+---
+
+## 20. Audio + Cash celebration
+
+### Web Audio SFX module
+
+No asset files, no preloading. Each named sound is a tiny oscillator + ADSR envelope (~60–200ms, mostly two/three-note motifs). The module lazy-creates one `AudioContext` and resumes it on every play attempt so the first user gesture wakes it (browser autoplay policy).
+
+| Name | Tone | Event |
+|---|---|---|
+| `sale` | two-note ascending chime ("ka-ching") | listing sells |
+| `rip` | short downward sawtooth | pack tear (manual + watched homie) |
+| `sort` | brief square tick | sand-pile click |
+| `pullFoil` | high two-note sparkle | foil pull (non-standard) |
+| `pullMythic` | three-note ascending triangle | mythic/legendary pull |
+| `craft` | C-E-G triangle arpeggio | set craft (manual + non-silent craft-homie) |
+| `vault` | A-E-A descending-low resonant | Complete Set vault deposit |
+| `buy` | quick upward sine | purchase confirm |
+| `switch` | short upward triangle | year picker change |
+| `unlock` | C-G-C ascending triangle | new vintage year unlocked |
+| `error` | low sawtooth thud | refused action (no supply, locked year, busy switch, dupe vault, etc.) |
+
+Off-screen homie rips set a `_silentPulls` flag around the addPull batch so foil / mythic chimes only fire for pulls the player can see. Craft homies use `craftSet(key, { silent: true })` for the same reason — no audio leakage from background workers.
+
+### Cash gain celebration
+
+`celebrateCashGain($)` pulses the header `#coins` with a `cash-bump` keyframe (gold scale-up + glow) and spawns a `+$N` popup floating 64px upward over 1.4s. Wired into `resolveListings()` — every sold listing fires it alongside `SFX.sale()`.
+
+### Mute toggle
+
+🔊 / 🔇 button in the header next to Game Design / Reset. Persists to `localStorage[SFX_MUTE_KEY]`. When muted, `audioCtx()` returns null and every `SFX.*` call becomes a no-op.
 
 ---
 
