@@ -268,9 +268,11 @@
     display: flex; flex-direction: column; gap: 10px;
   }
   .vault-grid-title {
-    font-size: 0.7rem; letter-spacing: 3px; color: var(--muted);
+    /* Matches the section h2 size so the active-year title reads as a
+       peer to the SHOP / MARKETPLACE headers, not as a sub-label. */
+    font-size: 1rem; letter-spacing: 1px; font-weight: bold; color: var(--ink);
     border-bottom: 1px solid rgba(255,255,255,0.08);
-    padding-bottom: 4px; margin-bottom: 2px;
+    padding-bottom: 6px; margin-bottom: 6px;
   }
   .collection-row { display: flex; flex-direction: column; gap: 4px; }
   .collection-supercol-row {
@@ -797,6 +799,12 @@
     box-shadow: 0 0 6px rgba(255,126,179,0.3);
   }
   .set-vault-btn:not(:disabled):hover { background: rgba(255,126,179,0.18); color: #fff; }
+  /* Once-claimed CLOUT — the button is disabled but tinted gold to read as
+     "you've completed this milestone" rather than "you don't have one yet". */
+  .set-vault-btn.redeemed {
+    color: var(--gold); border-color: rgba(255,216,77,0.55);
+    opacity: 0.85;
+  }
   .set-craft-btn:disabled, .set-list-btn:disabled, .set-vault-btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .set-owned-badge {
     display: inline-block; margin-left: 4px;
@@ -1192,7 +1200,7 @@
 </section>
 
 <section id="vault">
-  <h2>VAULT</h2>
+  <h2>MARKETPLACE</h2>
   <div id="vintage-shop">
     <h3>VINTAGE PACKS</h3>
     <div class="vintage-slots" id="vintage-slots"></div>
@@ -1296,7 +1304,9 @@ const SET_ITEM_KEYS = [
 // Complete Sets: two apex crafts, split by foil status so the (much rarer)
 // foil ingredients don't gate progress entirely. Either is craftable from 5
 // per-rarity sets and can be vaulted for CLOUT or listed for cash.
-const COMPLETE_SET_KEYS = ["completeSet", "foilCompleteSet"];
+// Foil first so it renders at the top of the vault column (the rarer prize
+// sits above the more accessible one).
+const COMPLETE_SET_KEYS = ["foilCompleteSet", "completeSet"];
 function completeSetDef(key) {
   if (key === "completeSet") return {
     key, foil: false, label: "COMPLETE SET",
@@ -1304,7 +1314,7 @@ function completeSetDef(key) {
     clout: COMPLETE_SET_CLOUT,
   };
   if (key === "foilCompleteSet") return {
-    key, foil: true, label: "FOIL COMPLETE SET",
+    key, foil: true, label: "COMPLETE FOIL SET",
     ingredients: ["foilStandardSet", "foilRareSet", "foilEpicSet", "foilLegendarySet", "foilMythicSet"],
     clout: FOIL_COMPLETE_SET_CLOUT,
   };
@@ -2247,14 +2257,25 @@ function renderVault() {
     const price = marketPriceFor(state.activeSetId, key, 1);
     const slotsFull = listingSlotsFull();
     const canList  = owned > 0 && !slotsFull;
-    const canVault = owned > 0;
+    // CLOUT is a once-per-(year, foil-variant) reward — the system pushes
+    // you to vault one of each Complete Set across all 30 years (60 total
+    // claims max ever) rather than grind a single easy year for infinite
+    // CLOUT. Subsequent crafts of the same variant can still be listed for
+    // cash, just not re-vaulted.
+    const alreadyVaulted = ((cur().vaultedSets || {})[key] || 0) > 0;
+    const canVault = owned > 0 && !alreadyVaulted;
     const craftLabel = ready ? `CRAFT ${def.label}` : `${def.label} ${have}/${need}`;
     const listLabel  = owned === 0 ? "—" : (slotsFull ? "FULL" : `LIST · ${compactUsd(price)}`);
     const scaledClout = Math.round(def.clout * cloutScaleFor(state.activeSetId));
-    const vaultLabel = owned === 0 ? "—" : `VAULT · +${scaledClout}`;
+    const vaultLabel = alreadyVaulted
+      ? `VAULTED ✓`
+      : (owned === 0 ? "—" : `VAULT · +${scaledClout}`);
+    const vaultTitle = alreadyVaulted
+      ? `Already vaulted a Set ${state.activeSetId} ${def.label} — CLOUT is a one-time reward per variant. List extras for cash.`
+      : `Stash a Set ${state.activeSetId} ${def.label} — earns ${scaledClout} CLOUT (one-time per year + foil status)`;
     const ownedBadge = owned > 0 ? ` <span class="set-owned-badge">×${owned}</span>` : "";
     const rowGlyph = def.foil ? "✨" : "★";
-    const rowName  = def.foil ? "FOIL COMPLETE" : "COMPLETE";
+    const rowName  = def.foil ? "COMPLETE FOIL" : "COMPLETE";
     const foilCls  = def.foil ? " foil" : "";
     const row = document.createElement("div");
     row.className = "stock-row complete-set" + foilCls;
@@ -2264,7 +2285,7 @@ function renderVault() {
         <div class="set-actions">
           <button class="set-craft-btn complete${foilCls}" data-craft-complete="${key}" ${ready ? "" : "disabled"} title="Crafts a ${def.label} — consumes 1 of each: ${def.ingredients.join(", ")} (${have}/${need} ready)">${craftLabel}${ownedBadge}</button>
           <button class="set-list-btn complete${foilCls}" data-list-complete="${key}" ${canList ? "" : "disabled"} title="List a ${def.label} — current market ${usd(price)}">${listLabel}</button>
-          <button class="set-vault-btn complete${foilCls}" data-vault-complete="${key}" ${canVault ? "" : "disabled"} title="Stash a ${def.label} — earns ${def.clout} CLOUT">${vaultLabel}</button>
+          <button class="set-vault-btn complete${foilCls}${alreadyVaulted ? " redeemed" : ""}" data-vault-complete="${key}" ${canVault ? "" : "disabled"} title="${vaultTitle}">${vaultLabel}</button>
         </div>
       </div>`;
     grid.appendChild(row);
@@ -2589,18 +2610,24 @@ function craftCompleteSet(key) {
 function vaultCompleteSet(key) {
   const def = completeSetDef(key);
   if (!def) return;
+  const setId = state.activeSetId;
+  // One-time CLOUT redemption per (year × foil-variant). Vaulting again
+  // is refused outright — list extras for cash via the marketplace.
+  if (((cur().vaultedSets || {})[key] || 0) > 0) {
+    $("hint").textContent = `Set ${setId} ${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`;
+    return;
+  }
   const inv = cur().invById[key];
   if (!inv || !inv[1]) return;
   inv[1] -= 1;
   if (inv[1] <= 0) delete inv[1];
   if (!cur().vaultedSets) cur().vaultedSets = {};
-  cur().vaultedSets[key] = (cur().vaultedSets[key] || 0) + 1;
-  const setId = state.activeSetId;
+  cur().vaultedSets[key] = 1; // permanent flag — only ever 1, never increments
   const award = Math.round(def.clout * cloutScaleFor(setId));
   state.clout = (state.clout || 0) + award;
   renderAll(); save();
   const tag = setId === CURRENT_SET_ID ? "" : ` (×${cloutScaleFor(setId).toFixed(2)} vintage bonus)`;
-  $("hint").textContent = `Vaulted a Set ${setId} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}).`;
+  $("hint").textContent = `Vaulted a Set ${setId} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}). 🔒 Variant claimed.`;
 }
 
 function listCompleteSet(key) {
@@ -2756,7 +2783,7 @@ function renderListings() {
   const empties = Math.max(0, slots - used);
   let html = `
     <div class="listings-header">
-      <span>MARKETPLACE</span>
+      <span>LISTINGS</span>
       <span class="listings-count">${used} / ${slots} slots</span>
       <span class="listings-upgrades">
         <button class="upgrade-trigger" data-upgrade-branch="listings" type="button">⬆ SLOTS</button>
@@ -2774,7 +2801,7 @@ function renderListings() {
       const color = def.foil ? "#ff7eb3" : "#ffd84d";
       const cls = "listing-card set complete" + (def.foil ? " foil" : "") + patinaCls;
       const glyph = def.foil ? "✨" : "★";
-      const idLabel = def.foil ? "FOIL COMP" : "COMPLETE";
+      const idLabel = def.foil ? "COMP FOIL" : "COMPLETE";
       html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${def.label} · ${usd(l.askPrice)}\nClick to cancel">`
             + setChip
             + `<span class="lst-glyph">${glyph}</span>`
@@ -3458,12 +3485,12 @@ const DESIGN_FIELDS = [
   { group: "Market baselines", key: "BASELINE.foilLegendarySet",       path: "BASELINE.foilLegendarySet",     label: "Foil Legendary Set ($)", step: 500,  min: 0 },
   { group: "Market baselines", key: "BASELINE.foilMythicSet",          path: "BASELINE.foilMythicSet",        label: "Foil Mythic Set ($)",    step: 1000, min: 0 },
   { group: "Market baselines", key: "BASELINE.completeSet",            path: "BASELINE.completeSet",          label: "Complete Set ($)",       step: 100,  min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilCompleteSet",        path: "BASELINE.foilCompleteSet",      label: "Foil Complete Set ($)",  step: 1000, min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilCompleteSet",        path: "BASELINE.foilCompleteSet",      label: "Complete Foil Set ($)",  step: 1000, min: 0 },
   { group: "Market baselines", key: "SET_CRAFT_MULTIPLIER",            path: "SET_CRAFT_MULTIPLIER",          label: "Global Set sell multiplier",     step: 0.05, min: 0.1 },
   { group: "Market baselines", key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",             label: "Scarcity floor (× baseline)",    step: 0.05, min: 0.1 },
   { group: "Market baselines", key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",              label: "Scarcity ceiling (× baseline)",  step: 0.05, min: 1   },
   { group: "Market baselines", key: "COMPLETE_SET_CLOUT",              path: "COMPLETE_SET_CLOUT",            label: "Complete Set vault → CLOUT",         step: 5,    min: 1, int: true },
-  { group: "Market baselines", key: "FOIL_COMPLETE_SET_CLOUT",         path: "FOIL_COMPLETE_SET_CLOUT",       label: "Foil Complete Set vault → CLOUT",    step: 25,   min: 1, int: true },
+  { group: "Market baselines", key: "FOIL_COMPLETE_SET_CLOUT",         path: "FOIL_COMPLETE_SET_CLOUT",       label: "Complete Foil Set vault → CLOUT",    step: 25,   min: 1, int: true },
 
   // Set sizes
   { group: "Set sizes",        key: "SET_SIZES.standard",              path: "SET_SIZES.standard",        label: "Standard card count",          step: 1, min: 1, int: true },
