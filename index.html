@@ -218,6 +218,9 @@
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     width: 220px;
   }
+  /* display: flex above outranks the user-agent [hidden] rule, so without
+     this the bar stays visible after bar.hidden = true. */
+  .rip-progress[hidden] { display: none; }
   .rip-progress-label {
     font-size: 0.6rem; color: var(--muted);
     letter-spacing: 2px; text-transform: uppercase;
