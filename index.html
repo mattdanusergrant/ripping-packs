@@ -462,7 +462,7 @@
   }
   .vintage-slots { display: flex; gap: 6px; flex-wrap: wrap; }
   .vintage-pack {
-    flex: 1 1 0; min-width: 86px;
+    flex: 1 1 0; min-width: 104px;
     border: 1px solid #444; background: #1c1c1c; color: #ddd;
     border-radius: 6px; padding: 6px 4px;
     font-family: monospace; font-size: 0.65rem;
@@ -474,9 +474,9 @@
   .vintage-pack:hover:not(.cooling):not(.unaffordable) {
     background: #2a2a2a; border-color: #777; transform: translateY(-1px);
   }
-  .vintage-pack .vp-pack { font-size: 1.1rem; line-height: 1; }
-  .vintage-pack .vp-set  { font-size: 0.75rem; font-weight: bold; letter-spacing: 0.5px; }
-  .vintage-pack .vp-cost { color: var(--gold); font-weight: bold; margin-top: 1px; }
+  .vintage-pack .vp-pack { font-size: 1.3rem; line-height: 1; }
+  .vintage-pack .vp-set  { font-size: 0.95rem; font-weight: bold; letter-spacing: 0.5px; }
+  .vintage-pack .vp-cost { color: var(--gold); font-weight: bold; font-size: 0.85rem; margin-top: 1px; }
   .vintage-pack.unaffordable { opacity: 0.55; cursor: not-allowed; }
   .vintage-pack.unaffordable .vp-cost { color: #ff7a3d; }
   .vintage-pack.cooling { opacity: 0.42; cursor: wait; background: #131313; border-color: #2a2a2a; }
@@ -1851,6 +1851,10 @@ const defaultState = () => ({
   // Lifetime non-foil Complete Set crafts per setId — kept as a stat
   // (used by the vault summary, not the unlock gate anymore).
   completeSetCrafts: {},
+  // Flipped true the first time the player crafts any per-rarity Set.
+  // Gates the Vintage Packs shop + year picker visibility in renderAll
+  // so the first session is just the core rip → sort → craft → list loop.
+  firstSetCrafted: false,
   // Which years have been unlocked in the year picker. A year unlocks the
   // moment you buy a booster pack of it (via the vintage shop).
   yearUnlocked: {},
@@ -2008,6 +2012,15 @@ function load() {
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
+    // Backfill the vintage-unlock gate flag from prior progress: if any
+    // year already has any set-item in invById, the player has crafted a
+    // Set before this gate landed and shouldn't lose the vintage UI.
+    if (typeof parsed.firstSetCrafted !== "boolean") {
+      const everCrafted = Object.values(parsed.sets || {}).some(b =>
+        SET_ITEM_KEYS.some(k => ((b.invById || {})[k] || {})[1] > 0)
+      ) || Object.values(parsed.completeSetCrafts || {}).some(n => n > 0);
+      parsed.firstSetCrafted = everCrafted;
+    }
     if (!parsed.yearUnlocked || typeof parsed.yearUnlocked !== "object") {
       parsed.yearUnlocked = {};
       // Migration: derive unlock state from any prior progress so existing
@@ -2389,6 +2402,12 @@ function tickVintageShop() {
 function renderVintageShop() {
   const wrap = $("vintage-slots");
   if (!wrap) return;
+  // Hide the whole vintage section until the player crafts their first Set.
+  // Toggle the outer #vintage-shop container so the "VINTAGE PACKS" header
+  // and the ⬆ VINTAGE upgrade trigger disappear too — not just the slots.
+  const outer = document.getElementById("vintage-shop");
+  if (outer) outer.hidden = !state.firstSetCrafted;
+  if (!state.firstSetCrafted) { wrap.innerHTML = ""; return; }
   syncVintageSlotCount();
   const slots = state.vintageShop.slots;
   const now = Date.now();
@@ -2429,6 +2448,11 @@ function renderVintageShop() {
 function renderYearPicker() {
   const sel = $("year-picker");
   if (!sel) return;
+  // Hide the entire year picker until the player crafts their first Set —
+  // first-session players only see the core current-year loop. Pinned to
+  // the same gate as the vintage shop section.
+  sel.hidden = !state.firstSetCrafted;
+  if (!state.firstSetCrafted) { sel.innerHTML = ""; return; }
   const opts = [];
   for (let s = CURRENT_SET_ID; s >= 1; s -= 1) {
     const year = setYearLabel(s);
@@ -2921,6 +2945,11 @@ function craftSet(key, opts = {}) {
   else            cur().stock[track.baseRarity]     = Math.max(0, (cur().stock[track.baseRarity]     || 0) - size);
   if (!cur().invById[track.itemKey]) cur().invById[track.itemKey] = {};
   cur().invById[track.itemKey][1] = (cur().invById[track.itemKey][1] || 0) + 1;
+  // First-ever Set craft unlocks the Vintage system (year picker + vintage
+  // shop). Players have to play the basic loop once before the multi-year
+  // surface area shows up, so the first session isn't visually overwhelming.
+  const firstUnlock = !state.firstSetCrafted;
+  state.firstSetCrafted = true;
   // Silent mode is used by the craft-homie tick: it batches the render +
   // save once at the end of the tick and suppresses the hint line so a
   // homie quietly working another year doesn't overwrite the player's
@@ -2928,7 +2957,12 @@ function craftSet(key, opts = {}) {
   if (opts.silent) return true;
   renderAll(); save();
   SFX.craft();
-  $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
+  if (firstUnlock) {
+    SFX.unlock();
+    $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. 🔓 Vintage Packs shop + year picker unlocked!`;
+  } else {
+    $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
+  }
   return true;
 }
 
