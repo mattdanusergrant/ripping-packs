@@ -374,6 +374,28 @@
   .year-chip.locked { opacity: 0.35; cursor: not-allowed; background: #131313; }
   .year-chip .yr { opacity: 0.7; font-size: 0.55rem; }
   .year-chip.active .yr { opacity: 0.9; }
+
+  #vault-summary {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    padding: 6px 8px; margin-bottom: 6px;
+    background: rgba(0,0,0,0.22); border-radius: 6px;
+    font-size: 0.7rem; font-family: monospace;
+  }
+  #vault-summary .vs-empty { color: var(--muted); font-style: italic; }
+  .vault-stamp {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 6px; border-radius: 4px;
+    background: #1c1c1c; border: 1px solid #333; color: #ccc;
+    cursor: pointer; line-height: 1.2;
+  }
+  .vault-stamp:hover:not(.active) { background: #2a2a2a; border-color: #555; }
+  .vault-stamp.active {
+    background: rgba(255,216,77,0.18); border-color: var(--gold); color: var(--gold);
+  }
+  .vault-stamp .vs-set { font-weight: bold; letter-spacing: 0.5px; }
+  .vault-stamp .vs-yr { opacity: 0.6; font-size: 0.6rem; }
+  .vault-stamp .vs-cnt { color: var(--gold); font-weight: bold; }
+  .vault-stamp .vs-foil { color: #ff7eb3; font-weight: bold; }
   .set-col-label {
     font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
     text-align: center; margin-bottom: 2px;
@@ -1118,6 +1140,7 @@
 <section id="vault">
   <h2>VAULT</h2>
   <div id="listings-panel"></div>
+  <div id="vault-summary"></div>
   <div id="vault-grid"></div>
   <div id="stock-rows"></div>
 </section>
@@ -1592,10 +1615,12 @@ function decayMarketInv(setId, key, id, now) {
   return decayed;
 }
 
-// Current market price for a (setId, key, id). Lazy — only computes when asked.
+// Current market price for a (setId, key, id). Lazy — only computes when
+// asked. Per-set scaling: vintage-set cards/sets sell for more.
 function marketPriceFor(setId, key, id) {
-  const baseline = BASELINE[key];
-  if (!baseline) return 0;
+  const baseRaw = BASELINE[key];
+  if (!baseRaw) return 0;
+  const baseline = baseRaw * cloutScaleFor(setId);
   const inv = decayMarketInv(setId, key, id, Date.now());
   const raw = baseline * (MARKET_TARGET_STOCK / Math.max(1, inv));
   const floor = baseline * PRICE_FLOOR_RATIO;
@@ -1781,6 +1806,14 @@ function packCost(setId) { return PACK_COST * setAgeMult(setId); }
 function boxCost(setId)  { return BOX_COST  * setAgeMult(setId); }
 function caseCost(setId) { return CASE_COST * setAgeMult(setId); }
 
+// Gentler scale for CLOUT vault deposits + sell-price baselines. A Set 01
+// Complete Set is worth ~3× what a Set 30 one is, both in CLOUT and listing
+// price. Vintage is the CLOUT play — apex prize is a Set 01 foil Complete.
+function cloutScaleFor(setId) {
+  const s = (setId == null) ? state.activeSetId : setId;
+  return 1 + Math.max(0, CURRENT_SET_ID - s) * 0.07;
+}
+
 // A year is available in the vintage shop if you've ever crafted a non-foil
 // Complete Set of the *next* year. Set 30 is always unlocked.
 function isSetUnlocked(setId) {
@@ -1794,6 +1827,43 @@ function setYearLabel(setId) { return 2000 + setId; }
 const $ = id => document.getElementById(id);
 
 let _lastCloutBalance = null;
+function renderVaultSummary() {
+  const wrap = $("vault-summary");
+  if (!wrap) return;
+  // Show one stamp per set that has either an unlocked status (S30 or
+  // anything you've earned), any vaulted Complete Set, or any owned cards.
+  // Crafted-but-not-yet-vaulted Complete Sets DON'T count — only deposits
+  // (and Set 30 always shows as a baseline anchor).
+  const stamps = [];
+  for (let s = CURRENT_SET_ID; s >= 1; s -= 1) {
+    const bundle = state.sets && state.sets[s];
+    const v = bundle ? (bundle.vaultedSets || {}) : {};
+    const nonFoil = v.completeSet      || 0;
+    const foil    = v.foilCompleteSet  || 0;
+    const ownedCards = bundle
+      ? RARITIES.reduce((n, r) => n + (bundle.owned[r]?.length || 0) + (bundle.ownedFoil[r]?.length || 0), 0)
+      : 0;
+    const visible = (s === CURRENT_SET_ID) || nonFoil > 0 || foil > 0 || ownedCards > 0 || isSetUnlocked(s);
+    if (!visible) continue;
+    const active = s === state.activeSetId;
+    const cls = "vault-stamp" + (active ? " active" : "");
+    const counts = [];
+    if (nonFoil > 0) counts.push(`<span class="vs-cnt">★${nonFoil}</span>`);
+    if (foil > 0)    counts.push(`<span class="vs-foil">✨${foil}</span>`);
+    if (counts.length === 0) counts.push(`<span class="vs-cnt" style="opacity:0.45">—</span>`);
+    stamps.push(`<button type="button" class="${cls}" data-set-id="${s}" title="Set ${s} (${setYearLabel(s)}) · ${nonFoil} non-foil + ${foil} foil Complete Sets vaulted · ${ownedCards} unique cards owned\nClick to view this year's collection">`
+              + `<span class="vs-set">S${s}</span>`
+              + `<span class="vs-yr">'${String(setYearLabel(s)).slice(2)}</span>`
+              + counts.join(" ")
+              + `</button>`);
+  }
+  if (stamps.length === 0) {
+    wrap.innerHTML = `<span class="vs-empty">No vaulted sets yet — craft a Complete Set to start your collection.</span>`;
+  } else {
+    wrap.innerHTML = stamps.join("");
+  }
+}
+
 function renderYearPicker() {
   const wrap = $("year-picker");
   if (!wrap) return;
@@ -1896,7 +1966,8 @@ function renderVault() {
     const canVault = owned > 0;
     const craftLabel = ready ? `CRAFT ${def.label}` : `${def.label} ${have}/${need}`;
     const listLabel  = owned === 0 ? "—" : (slotsFull ? "FULL" : `LIST · ${compactUsd(price)}`);
-    const vaultLabel = owned === 0 ? "—" : `VAULT · +${def.clout}`;
+    const scaledClout = Math.round(def.clout * cloutScaleFor(state.activeSetId));
+    const vaultLabel = owned === 0 ? "—" : `VAULT · +${scaledClout}`;
     const ownedBadge = owned > 0 ? ` <span class="set-owned-badge">×${owned}</span>` : "";
     const rowGlyph = def.foil ? "✨" : "★";
     const rowName  = def.foil ? "FOIL COMPLETE" : "COMPLETE";
@@ -2059,7 +2130,8 @@ function renderVaultGrid() {
 
   const title = document.createElement("div");
   title.className = "vault-grid-title";
-  title.textContent = "COLLECTION · SERIES I";
+  const sid = state.activeSetId;
+  title.textContent = `COLLECTION · SET ${sid} · ${setYearLabel(sid)}`;
   wrap.appendChild(title);
 
   // Mythic / Legendary / Epic / Rare share one horizontal strip — the small
@@ -2229,10 +2301,11 @@ function craftCompleteSet(key) {
     if (prior === 0 && nextSetId >= 1) unlockedNext = nextSetId;
   }
   renderAll(); save();
+  const vaultVal = Math.round(def.clout * cloutScaleFor(state.activeSetId));
   if (unlockedNext != null) {
-    $("hint").textContent = `Crafted a ${def.label}. +${def.clout} CLOUT vault value. 🔓 Set ${unlockedNext} (${setYearLabel(unlockedNext)}) unlocked in the vintage shop.`;
+    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. +${vaultVal} CLOUT vault value. 🔓 Set ${unlockedNext} (${setYearLabel(unlockedNext)}) unlocked in the vintage shop.`;
   } else {
-    $("hint").textContent = `Crafted a ${def.label}. Vault it for +${def.clout} CLOUT or list it for cash.`;
+    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
   }
 }
 
@@ -2245,9 +2318,12 @@ function vaultCompleteSet(key) {
   if (inv[1] <= 0) delete inv[1];
   if (!cur().vaultedSets) cur().vaultedSets = {};
   cur().vaultedSets[key] = (cur().vaultedSets[key] || 0) + 1;
-  state.clout = (state.clout || 0) + def.clout;
+  const setId = state.activeSetId;
+  const award = Math.round(def.clout * cloutScaleFor(setId));
+  state.clout = (state.clout || 0) + award;
   renderAll(); save();
-  $("hint").textContent = `Vaulted a ${def.label}. +${def.clout} CLOUT (balance: ${state.clout}).`;
+  const tag = setId === CURRENT_SET_ID ? "" : ` (×${cloutScaleFor(setId).toFixed(2)} vintage bonus)`;
+  $("hint").textContent = `Vaulted a Set ${setId} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}).`;
 }
 
 function listCompleteSet(key) {
@@ -3821,7 +3897,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultSummary(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -3999,10 +4075,7 @@ $("pack").addEventListener("click", ripOne);
 $("buy-pack").addEventListener("click", () => buyPacks(1, packCost(), "1 pack"));
 $("buy-box").addEventListener("click",  () => buyBoxes(1, boxCost(),  "1 sealed box"));
 $("buy-case").addEventListener("click", () => buyBoxes(Math.max(1, Math.round(CASE_SIZE / BOX_SIZE)), caseCost(), `a case (${Math.round(CASE_SIZE / BOX_SIZE)} sealed boxes)`));
-$("year-picker").addEventListener("click", (e) => {
-  const chip = e.target.closest(".year-chip");
-  if (!chip) return;
-  const sid = parseInt(chip.dataset.setId, 10);
+function switchToSet(sid) {
   if (!Number.isFinite(sid)) return;
   if (sid === state.activeSetId) return;
   if (!isSetUnlocked(sid)) {
@@ -4011,7 +4084,15 @@ $("year-picker").addEventListener("click", (e) => {
   }
   state.activeSetId = sid;
   renderAll(); save();
-  $("hint").textContent = `Now ripping Set ${sid} (${setYearLabel(sid)}). Packs ${usd(packCost())} each.`;
+  $("hint").textContent = `Now viewing Set ${sid} (${setYearLabel(sid)}). Packs ${usd(packCost())} each.`;
+}
+$("year-picker").addEventListener("click", (e) => {
+  const chip = e.target.closest(".year-chip");
+  if (chip) switchToSet(parseInt(chip.dataset.setId, 10));
+});
+$("vault-summary").addEventListener("click", (e) => {
+  const stamp = e.target.closest(".vault-stamp");
+  if (stamp) switchToSet(parseInt(stamp.dataset.setId, 10));
 });
 // Collection cells are display-only now — listing is exclusively done via
 // the Set-craft pipeline. No click handler on #vault-grid.
