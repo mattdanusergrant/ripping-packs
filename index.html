@@ -193,7 +193,14 @@
   }
   #typing-zone {
     display: flex; flex-direction: column; align-items: center;
+    justify-content: center;
     gap: 2px; user-select: none;
+    /* Locked to match the typing UI's natural height so the pre-unlock
+       progress bar and the typing interface occupy exactly the same slot —
+       swapping between them must not nudge anything below this zone.
+       Sized for: typing-hint (~14px) + 2px gap + current line (28px) +
+       2px gap + preview line (~18px) ≈ 64px. */
+    min-height: 64px;
   }
   .typing-hint {
     font-size: 0.6rem; color: var(--muted);
@@ -224,6 +231,62 @@
     background: linear-gradient(90deg, #ff7eb3, var(--gold));
     border-radius: 3px;
     transition: width 0.25s ease-out;
+  }
+  /* Celebration: 100% reached. Bar flashes white-hot, label inflates,
+     then the whole thing explodes outward. Triggered by .celebrating on
+     #rip-progress; JS removes the class + swaps in the typing UI when the
+     animation ends. Total duration here is ~1.2s. */
+  .rip-progress.celebrating {
+    animation: rip-celebrate-shake 0.55s ease-in-out;
+    transform-origin: 50% 50%;
+  }
+  .rip-progress.celebrating .rip-progress-label {
+    animation: rip-celebrate-label 1.2s ease-out forwards;
+  }
+  .rip-progress.celebrating .rip-progress-track {
+    animation: rip-celebrate-track 1.2s ease-out forwards;
+    transform-origin: 50% 50%;
+  }
+  .rip-progress.celebrating .rip-progress-fill {
+    animation: rip-celebrate-fill 1.2s ease-out forwards;
+    transition: none;
+  }
+  @keyframes rip-celebrate-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-3px); }
+    40% { transform: translateX(3px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
+  }
+  @keyframes rip-celebrate-label {
+    0%   { color: var(--gold); transform: scale(1); text-shadow: none; }
+    25%  { color: #fff; transform: scale(1.35);
+           text-shadow: 0 0 16px rgba(255,255,255,0.95),
+                        0 0 28px rgba(245,197,66,0.9); }
+    55%  { color: #fff; transform: scale(1.5);
+           text-shadow: 0 0 24px rgba(255,255,255,1),
+                        0 0 40px rgba(255,126,179,0.9); }
+    100% { opacity: 0; transform: scale(2.1);
+           text-shadow: 0 0 32px rgba(255,255,255,0); }
+  }
+  @keyframes rip-celebrate-fill {
+    0%   { filter: brightness(1) saturate(1);
+           box-shadow: 0 0 0 rgba(255,255,255,0); }
+    25%  { filter: brightness(2) saturate(1.6);
+           box-shadow: 0 0 18px rgba(255,255,255,0.9),
+                       0 0 32px rgba(245,197,66,0.8); }
+    55%  { filter: brightness(3.5) saturate(2);
+           box-shadow: 0 0 36px rgba(255,255,255,1),
+                       0 0 70px rgba(255,126,179,0.95),
+                       0 0 100px rgba(245,197,66,0.7);
+           transform: scaleY(1.4); }
+    100% { opacity: 0; transform: scaleY(0.05) scaleX(1.15);
+           filter: brightness(5); }
+  }
+  @keyframes rip-celebrate-track {
+    0%, 40% { transform: scale(1); }
+    55%     { transform: scale(1.08); }
+    100%    { transform: scaleX(1.2) scaleY(0.05); opacity: 0; }
   }
   .typ-line {
     display: flex; gap: 5px;
@@ -4900,14 +4963,20 @@ function ensureTypingWord() {
 // hidden and a horizontal progress bar fills 1% per manual click in its
 // place. Toggling display: none / "" lets both DOM trees coexist; the
 // existing renderTypingZone bails out via .hidden on its container.
+// Transient: true between the rip that crosses 100% and the moment the
+// flash-and-explode animation finishes. Keeps the bar visible (at 100% +
+// .celebrating) and defers the swap to the typing UI.
+let typingCelebrating = false;
+const TYPING_CELEBRATE_MS = 1200;
 function renderRipUnlock() {
   const bar  = $("rip-progress");
   const hint = document.querySelector("#typing-zone .typing-hint");
   const word = $("typing-word");
   if (!bar || !hint || !word) return;
   const unlocked = (state.manualRips || 0) >= TYPING_UNLOCK_RIPS;
-  if (unlocked) {
+  if (unlocked && !typingCelebrating) {
     bar.hidden = true;
+    bar.classList.remove("celebrating");
     hint.style.display = "";
     word.style.display = "";
     // First time we reveal the typing UI the word DOM is empty, since
@@ -4916,15 +4985,65 @@ function renderRipUnlock() {
     if (!word.firstChild) renderTypingZone();
     return;
   }
-  // Pre-unlock view: progress bar instead of typing.
+  // Pre-unlock view (or mid-celebration): progress bar instead of typing.
   bar.hidden = false;
   hint.style.display = "none";
   word.style.display = "none";
   const pct = Math.min(100, Math.round((state.manualRips || 0) * 100 / TYPING_UNLOCK_RIPS));
   const labelEl = bar.querySelector(".rip-progress-label");
   const fillEl  = bar.querySelector(".rip-progress-fill");
-  if (labelEl) labelEl.textContent = `KEEP RIPPING · ${pct}%`;
+  if (labelEl) labelEl.textContent = typingCelebrating ? "UNLOCKED!" : `KEEP RIPPING · ${pct}%`;
   if (fillEl)  fillEl.style.width  = pct + "%";
+}
+// Confetti-style burst centred on the progress bar — visual exclamation
+// point on the typing unlock. Reuses the existing .particle class so the
+// burst sits in the same visual family as the per-rip pulls.
+function spawnTypingUnlockBurst() {
+  const bar = $("rip-progress");
+  if (!bar) return;
+  const rect = bar.getBoundingClientRect();
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  const glyphs = ["★", "✦", "✸", "✺", "✹", "✷"];
+  const colours = ["#ff7eb3", "#ffd84d", "#65d6ff", "#b8ff5a", "#fff"];
+  for (let i = 0; i < 22; i++) {
+    const el = document.createElement("span");
+    el.className = "particle foil";
+    el.textContent = glyphs[i % glyphs.length];
+    el.style.color = colours[i % colours.length];
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = 90 + Math.random() * 140;
+    el.style.setProperty("--dx", (Math.cos(angle) * dist) + "px");
+    el.style.setProperty("--dy", (Math.sin(angle) * dist) + "px");
+    el.style.left = cx + "px";
+    el.style.top  = cy + "px";
+    el.style.animationDelay = (i * 18) + "ms";
+    document.body.appendChild(el);
+    el.addEventListener("animationend", () => el.remove(), { once: true });
+  }
+}
+// Drives the flash → explode → swap sequence when the player crosses
+// TYPING_UNLOCK_RIPS. Called from ripOne() on the unlock tick.
+function startTypingUnlockCelebration() {
+  typingCelebrating = true;
+  const bar = $("rip-progress");
+  // Render first so the bar reads 100% / "UNLOCKED!" before the animation
+  // class is added — otherwise the very first frame of the keyframes runs
+  // against the stale label.
+  renderRipUnlock();
+  if (bar) {
+    bar.classList.remove("celebrating");
+    // Force a reflow so re-adding the class restarts the animation cleanly,
+    // even if the player somehow re-triggered this (defensive — unlock only
+    // fires once normally).
+    void bar.offsetWidth;
+    bar.classList.add("celebrating");
+  }
+  spawnTypingUnlockBurst();
+  setTimeout(() => {
+    typingCelebrating = false;
+    renderRipUnlock();
+  }, TYPING_CELEBRATE_MS);
 }
 
 function renderTypingZone() {
@@ -5013,7 +5132,7 @@ function ripOne() {
   const justUnlockedTyping = (state.manualRips || 0) < TYPING_UNLOCK_RIPS
                           && (state.manualRips || 0) + 1 >= TYPING_UNLOCK_RIPS;
   state.manualRips = (state.manualRips || 0) + 1;
-  if (justUnlockedTyping) SFX.unlock();
+  if (justUnlockedTyping) { SFX.unlock(); startTypingUnlockCelebration(); }
   const pulls = rollPack();
   let newCount = 0;
   const completions = []; // {rarity, foil}
