@@ -353,31 +353,28 @@
     background: rgba(0,0,0,0.18);
     border-radius: 6px;
   }
-  .year-picker {
-    display: flex; flex-wrap: wrap; gap: 3px;
-    padding: 6px 8px; margin-bottom: 8px;
-    background: rgba(0,0,0,0.22); border-radius: 6px;
-    max-height: 92px; overflow-y: auto;
+  .year-select {
+    display: block; width: 100%;
+    margin-bottom: 8px; padding: 6px 10px;
+    background: #1c1c1c; color: #ddd;
+    border: 1px solid #444; border-radius: 6px;
+    font-family: monospace; font-size: 0.8rem; letter-spacing: 0.5px;
+    cursor: pointer;
+    appearance: none; -webkit-appearance: none;
+    /* Custom caret — gold chevron on the right edge. */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='%23ffd84d'><path d='M0 0h12L6 8z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 10px 7px;
+    padding-right: 28px;
   }
-  .year-chip {
-    border: 1px solid #444; background: #1c1c1c; color: #ccc;
-    padding: 3px 6px; border-radius: 4px;
-    font-family: monospace; font-size: 0.65rem; line-height: 1.1;
-    cursor: pointer; min-width: 38px; text-align: center;
-    display: inline-flex; flex-direction: column; align-items: center;
-  }
-  .year-chip:hover:not(.locked):not(.active) { background: #2a2a2a; border-color: #666; }
-  .year-chip.active {
-    background: #ffd84d; color: #000; border-color: #ffd84d;
-    box-shadow: 0 0 6px rgba(255,216,77,0.5);
-  }
-  .year-chip.locked { opacity: 0.35; cursor: not-allowed; background: #131313; }
-  .year-chip .yr { opacity: 0.7; font-size: 0.55rem; }
-  .year-chip.active .yr { opacity: 0.9; }
-  /* Vintage chips (Set 01–09) read patina-yellow even when inactive so the
-     player can spot the oldest years at a glance in the picker. */
-  .year-chip.vintage:not(.locked):not(.active) { color: #d4a55e; border-color: #5a4a2a; }
-  .year-chip.midcentury:not(.locked):not(.active) { color: #c8b88a; border-color: #4a4030; }
+  .year-select:hover { background-color: #262626; border-color: #666; }
+  .year-select:focus { outline: 2px solid var(--gold); outline-offset: -1px; }
+  /* Active-year patina mirrored on the chrome itself. */
+  .year-select.vintage    { color: #d4a55e; border-color: #5a4a2a; background-color: #1a140a; }
+  .year-select.midcentury { color: #c8b88a; border-color: #4a4030; background-color: #1a1810; }
+  .year-select option { background: #1c1c1c; color: #ddd; }
+  .year-select option:disabled { color: #555; }
 
   /* Patina filters layered onto the active workspace when viewing older
      years. Sepia is graded — heavier for pre-2010 sets, lighter mid-tier. */
@@ -1151,7 +1148,7 @@
 
 <section id="shop">
   <h2 id="shop-title">SHOP · SET 30 · 2030</h2>
-  <div class="year-picker" id="year-picker"></div>
+  <select id="year-picker" class="year-select" aria-label="Active set"></select>
   <div class="buy-buttons">
     <button class="buy-btn" id="buy-pack">
       <div class="lbl">PACK</div>
@@ -1170,10 +1167,6 @@
       <div class="cost" id="cost-case">$500</div>
       <div class="save">save 23%</div>
     </button>
-  </div>
-  <div id="vintage-shop">
-    <h3>VINTAGE PACKS</h3>
-    <div class="vintage-slots" id="vintage-slots"></div>
   </div>
   <div id="set-progress"></div>
   <div id="pack-area">
@@ -1202,6 +1195,10 @@
 
 <section id="vault">
   <h2>VAULT</h2>
+  <div id="vintage-shop">
+    <h3>VINTAGE PACKS</h3>
+    <div class="vintage-slots" id="vintage-slots"></div>
+  </div>
   <div id="listings-panel"></div>
   <div id="vault-summary"></div>
   <div id="vault-grid"></div>
@@ -2091,28 +2088,26 @@ function renderVintageShop() {
 }
 
 function renderYearPicker() {
-  const wrap = $("year-picker");
-  if (!wrap) return;
-  const out = [];
+  const sel = $("year-picker");
+  if (!sel) return;
+  const opts = [];
   for (let s = CURRENT_SET_ID; s >= 1; s -= 1) {
     const year = setYearLabel(s);
     const unlocked = isSetUnlocked(s);
-    const active = s === state.activeSetId;
-    const cls = ["year-chip"];
-    if (active) cls.push("active");
-    if (!unlocked) cls.push("locked");
     const tier = patinaTierFor(s);
-    if (tier) cls.push(tier);
-    const title = unlocked
-      ? `Set ${s} (${year}) · pack ${usd(packCost(s))}`
-      : `Locked — craft a Set ${s + 1} (${setYearLabel(s + 1)}) Complete Set to unlock`;
-    const prefix = unlocked ? "" : "🔒";
-    out.push(`<button type="button" class="${cls.join(" ")}" data-set-id="${s}" title="${title}">`
-           + `<span>${prefix}S${s}</span>`
-           + `<span class="yr">'${String(year).slice(2)}</span>`
-           + `</button>`);
+    const tierTag = tier === "vintage" ? " — vintage" : tier === "midcentury" ? " — midcentury" : "";
+    const currentTag = s === CURRENT_SET_ID ? " — current year" : "";
+    const lockTag = unlocked ? "" : "🔒 ";
+    const sel_attr = (s === state.activeSetId) ? " selected" : "";
+    const dis_attr = unlocked ? "" : " disabled";
+    opts.push(`<option value="${s}"${sel_attr}${dis_attr}>${lockTag}Set ${s} · ${year}${currentTag}${tierTag}</option>`);
   }
-  wrap.innerHTML = out.join("");
+  sel.innerHTML = opts.join("");
+  // Mirror the active year's patina tier on the <select> itself so the
+  // chrome color shifts with the era you're shopping.
+  sel.classList.remove("vintage", "midcentury");
+  const tier = patinaTierFor(state.activeSetId);
+  if (tier) sel.classList.add(tier);
 }
 
 function renderHeader() {
@@ -4334,9 +4329,9 @@ function switchToSet(sid) {
   renderAll(); save();
   $("hint").textContent = `Now viewing Set ${sid} (${setYearLabel(sid)}). Packs ${usd(packCost())} each.`;
 }
-$("year-picker").addEventListener("click", (e) => {
-  const chip = e.target.closest(".year-chip");
-  if (chip) switchToSet(parseInt(chip.dataset.setId, 10));
+$("year-picker").addEventListener("change", (e) => {
+  const sid = parseInt(e.target.value, 10);
+  if (Number.isFinite(sid)) switchToSet(sid);
 });
 $("vault-summary").addEventListener("click", (e) => {
   const stamp = e.target.closest(".vault-stamp");
