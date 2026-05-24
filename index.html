@@ -441,8 +441,12 @@
     background: rgba(0,0,0,0.22); border-radius: 6px;
   }
   #vintage-shop h3 {
-    margin: 0 0 6px; font-size: 0.65rem; letter-spacing: 2px;
+    margin: 0; font-size: 0.65rem; letter-spacing: 2px;
     color: var(--muted); font-weight: bold;
+  }
+  #vintage-shop .vintage-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
   }
   .vintage-slots { display: flex; gap: 6px; flex-wrap: wrap; }
   .vintage-pack {
@@ -1328,7 +1332,10 @@
 <section id="vault">
   <h2>MARKETPLACE</h2>
   <div id="vintage-shop">
-    <h3>VINTAGE PACKS</h3>
+    <div class="vintage-header">
+      <h3>VINTAGE PACKS</h3>
+      <button class="upgrade-trigger" data-upgrade-branch="vintage" type="button">⬆ VINTAGE</button>
+    </div>
     <div class="vintage-slots" id="vintage-slots"></div>
   </div>
   <div id="listings-panel"></div>
@@ -2287,19 +2294,23 @@ function isSetUnlocked(setId) {
   return !!(state.yearUnlocked && state.yearUnlocked[setId]);
 }
 
-// Block year switching while there's pending work the player would lose
-// track of by switching — active homies, sorters mid-job, or any bulk in
-// the active year's pile. Returns a human-readable reason or null when OK.
+// Block year switching only when there's pending work *on the current
+// year* the player would lose track of. Cross-year staff (homies / sorters
+// pinned to a different year) keep working in the background via
+// withActiveSet and don't gate switching — that was the whole point of
+// pinning them. Returns a human-readable reason or null when OK.
 function yearSwitchBlockReason() {
-  const homies = state.homies || [];
-  if (homies.length > 0) {
-    return `Can't switch years — ${homies.length} homie${homies.length > 1 ? "s" : ""} still on the clock. Wait for them to finish.`;
+  const activeSid = state.activeSetId;
+  const activeHomies = (state.homies || []).filter(h => h.setId === activeSid);
+  if (activeHomies.length > 0) {
+    return `Can't switch — ${activeHomies.length} Set ${activeSid} homie${activeHomies.length > 1 ? "s" : ""} still on the clock. Wait for them to finish.`;
   }
-  const busySorters = (state.sorters || []).filter(s =>
-    sorterInputTotal(s) > 0 || sorterOutputTotal(s) > 0
+  const activeSorters = (state.sorters || []).filter(s =>
+    (s.setId == null || s.setId === activeSid) &&
+    (sorterInputTotal(s) > 0 || sorterOutputTotal(s) > 0)
   );
-  if (busySorters.length > 0) {
-    return `Can't switch years — ${busySorters.length} sorter${busySorters.length > 1 ? "s" : ""} still loaded. Collect them first.`;
+  if (activeSorters.length > 0) {
+    return `Can't switch — ${activeSorters.length} Set ${activeSid} sorter${activeSorters.length > 1 ? "s" : ""} still loaded. Collect them first.`;
   }
   const bulk = unsortedTotal();
   if (bulk > 0) {
@@ -3098,7 +3109,7 @@ function resolveListings() {
         const meta = setItemMeta(l.rarity);
         lastMessage = `Sold ${setTag} ${meta.foil ? "FOIL " : ""}${RARITY_LABELS[meta.baseRarity]} SET @ ${usd(l.askPrice)}.`;
       } else {
-        lastMessage = `Sold ${setTag} ${l.foil ? "foil " : ""}${RARITY_LABELS[l.rarity].toLowerCase()}${l.cardId != null ? " " + cardFullId(l.rarity, l.cardId) : ""} @ ${usd(l.askPrice)}.`;
+        lastMessage = `Sold ${setTag} ${l.foil ? "foil " : ""}${RARITY_LABELS[l.rarity].toLowerCase()}${l.cardId != null ? " " + cardFullId(l.rarity, l.cardId, GAME_ID, l.setId) : ""} @ ${usd(l.askPrice)}.`;
       }
     } else {
       if (isSetListing(l)) {
@@ -3151,7 +3162,6 @@ function renderListings() {
       <span class="listings-count">${used} / ${slots} slots</span>
       <span class="listings-upgrades">
         <button class="upgrade-trigger" data-upgrade-branch="listings" type="button">⬆ SLOTS</button>
-        <button class="upgrade-trigger" data-upgrade-branch="market"   type="button">⬆ MARKET</button>
       </span>
     </div>
     <div class="listings-grid">`;
@@ -3186,7 +3196,7 @@ function renderListings() {
             + `<span class="lst-id">SET</span>`
             + `</button>`;
     } else {
-      const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId) : RARITY_LABELS[l.rarity].slice(0,1);
+      const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId, GAME_ID, lSetId) : RARITY_LABELS[l.rarity].slice(0,1);
       const color = RARITY_COLOURS[l.rarity];
       const cls = "listing-card" + (l.foil ? " foil" : "") + patinaCls;
       html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${(l.foil ? "Foil " : "") + RARITY_LABELS[l.rarity]} ${idLabel} · ${usd(l.askPrice)}\nClick to cancel">`
@@ -3886,8 +3896,11 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
 
   // Staff
-  { group: "Staff",            key: "HOMIE_COST",                      path: "HOMIE_COST",                label: "Hire homie ($, plus 1 box)",   step: 1,   min: 0 },
-  { group: "Staff",            key: "HOMIE_PACK_MS",                   path: "HOMIE_PACK_MS",             label: "Homie pack interval (sec)",    step: 0.5, min: 0.5, scale: 1000 },
+  { group: "Staff",            key: "HOMIE_COST",                      path: "HOMIE_COST",                label: "Hire rip homie ($, plus 1 box)",step: 1,   min: 0 },
+  { group: "Staff",            key: "HOMIE_PACK_MS",                   path: "HOMIE_PACK_MS",             label: "Rip homie pack interval (sec)", step: 0.5, min: 0.5, scale: 1000 },
+  { group: "Staff",            key: "CRAFT_HOMIE_COST",                path: "CRAFT_HOMIE_COST",          label: "Hire craft homie ($)",          step: 1,   min: 0 },
+  { group: "Staff",            key: "CRAFT_HOMIE_TICK_MS",             path: "CRAFT_HOMIE_TICK_MS",       label: "Craft homie tick (sec)",        step: 0.5, min: 0.5, scale: 1000 },
+  { group: "Staff",            key: "CRAFT_HOMIE_DURATION_MS",         path: "CRAFT_HOMIE_DURATION_MS",   label: "Craft homie lifetime (min)",    step: 0.5, min: 0.5, scale: 60000 },
   { group: "Staff",            key: "SORTER_COST",                     path: "SORTER_COST",               label: "Sorter base cost ($)",         step: 50,  min: 0 },
   { group: "Staff",            key: "SORTER_MAX",                      path: "SORTER_MAX",                label: "Max sorters",                  step: 1,   min: 1, int: true },
   { group: "Staff",            key: "SORTER_UPGRADE_BASE_COST",        path: "SORTER_UPGRADE_BASE_COST",  label: "Sorter L1→L2 upgrade cost ($)",step: 25,  min: 0 },
@@ -3907,6 +3920,13 @@ const DESIGN_FIELDS = [
   { group: "Marketplace",      key: "LISTING_COOLDOWN_MIN",            path: "LISTING_COOLDOWN_MIN",      label: "Listing cooldown min (sec)",   step: 1, min: 1 },
   { group: "Marketplace",      key: "LISTING_COOLDOWN_MAX",            path: "LISTING_COOLDOWN_MAX",      label: "Listing cooldown max (sec)",   step: 1, min: 1 },
   { group: "Marketplace",      key: "LISTING_SLOTS",                   path: "LISTING_SLOTS",             label: "Listing slots",                step: 1, min: 1, int: true },
+
+  // Vintage shop
+  { group: "Vintage shop",     key: "VINTAGE_SLOTS_BASE",              path: "VINTAGE_SLOTS_BASE",        label: "Vintage shop slots",            step: 1, min: 1, int: true },
+  { group: "Vintage shop",     key: "VINTAGE_REFRESH_MS",              path: "VINTAGE_REFRESH_MS",        label: "Vintage slot refresh (min)",    step: 0.5, min: 0.5, scale: 60000 },
+  { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.pack",       path: "VINTAGE_TYPE_WEIGHTS.pack", label: "Vintage roll: pack weight",     step: 1, min: 0, int: true },
+  { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.box",        path: "VINTAGE_TYPE_WEIGHTS.box",  label: "Vintage roll: box weight",      step: 1, min: 0, int: true },
+  { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.case",       path: "VINTAGE_TYPE_WEIGHTS.case", label: "Vintage roll: case weight",     step: 1, min: 0, int: true },
 ];
 
 function _resolvePath(root, path) {
@@ -3928,6 +3948,8 @@ function _liveDesignSnapshot() {
     SET_SIZES,
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
+    CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
+    VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
     SORTER_COST, SORTER_MAX,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
     SORTER_UPGRADE_BASE_COST, SORTER_UPGRADE_STEP, SORTER_BUFFER_PER_LEVEL,
@@ -4182,7 +4204,10 @@ function renderHomieSprites() {
   // pack-area which also holds the typing zone + hint line.
   const area = $("pack-wrap");
   if (!area) return;
-  const homies = state.homies || [];
+  // Pack-side sprites are rip-homies only — craft homies live in the vault
+  // rows and have no `slot` field. Without this filter every craft homie
+  // collapses into bySlot.get(undefined) and corrupts slot 0's sprite.
+  const homies = (state.homies || []).filter(h => h.kind !== "craft");
   const bySlot = new Map(homies.map(h => [h.slot, h]));
   const canAfford = state.coins >= HOMIE_COST && (cur().boxesOwned || 0) >= 1;
   // Always render 6 fixed slots; active ones show the working homie, empty
@@ -4232,13 +4257,14 @@ function renderHomieSprites() {
 }
 
 function firstFreeHomieSlot() {
-  const taken = new Set((state.homies || []).map(h => h.slot));
+  // Only rip-homies occupy pack-side sprite slots.
+  const taken = new Set((state.homies || []).filter(h => h.kind !== "craft").map(h => h.slot));
   for (let i = 0; i < HOMIE_MAX; i++) if (!taken.has(i)) return i;
   return -1;
 }
 
 function hireHomie(preferredSlot) {
-  if ((state.homies || []).length >= HOMIE_MAX) {
+  if ((state.homies || []).filter(h => h.kind !== "craft").length >= HOMIE_MAX) {
     $("hint").textContent = `Max homies (${HOMIE_MAX}) already on the clock.`;
     return;
   }
@@ -4251,8 +4277,9 @@ function hireHomie(preferredSlot) {
     return;
   }
   // Take the clicked slot if it's free; otherwise fall back to the lowest
-  // unused index so the button-click on the side panel still works.
-  const taken = new Set((state.homies || []).map(h => h.slot));
+  // unused index so the button-click on the side panel still works. Only
+  // rip-homies count against the 6 pack-side slots.
+  const taken = new Set((state.homies || []).filter(h => h.kind !== "craft").map(h => h.slot));
   let slot = -1;
   if (Number.isFinite(preferredSlot) && preferredSlot >= 0 && preferredSlot < HOMIE_MAX && !taken.has(preferredSlot)) {
     slot = preferredSlot;
@@ -4479,7 +4506,8 @@ function upgradeSorterBuffer(uid) {
 // capacity. LOAD always max-fills.
 function previewLoadGrains(s) {
   const cols = sandColCount();
-  const cap = sorterCapacity(s.level);
+  // Capacity is driven by the buffer track, not the speed track.
+  const cap = sorterCapacity(s.bufferLevel || 1);
   const remaining = cap - sorterTotal(s);
   let available = 0;
   for (let c = 0; c < cols; c++) {

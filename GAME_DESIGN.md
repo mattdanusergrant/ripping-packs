@@ -182,33 +182,40 @@ The handler is suppressed when focus is on an input/textarea or any modifier is 
 
 ---
 
-## 8b. CLOUT — craft + vault a Complete Set
+## 8b. CLOUT — vault a Complete Set, once per variant
 
-CLOUT comes from one path only: **vaulting a COMPLETE SET**. There are two flavors, split by foil status so the (much rarer) foil ingredients don't gate progress entirely:
+CLOUT comes from one path only: **vaulting a Complete Set**. There are two flavors split by foil status — foil first in the UI since it's the rarer prize:
 
-| Set                  | Ingredients (5 each)                                           | Baseline   | Vault → CLOUT |
-|----------------------|----------------------------------------------------------------|-----------:|--------------:|
-| **Complete Set**     | standardSet, rareSet, epicSet, legendarySet, mythicSet         |  $1,500    |  50           |
-| **Foil Complete Set**| foilStandardSet, foilRareSet, foilEpicSet, foilLegendarySet, foilMythicSet | $35,000 | 500           |
+| Set                  | Ingredients (5 each)                                           | List $    | Vault → CLOUT (Set 30) |
+|----------------------|----------------------------------------------------------------|-----------:|------------------------:|
+| **Complete Foil Set**| foilStandardSet, foilRareSet, foilEpicSet, foilLegendarySet, foilMythicSet | $120,000 | 500 |
+| **Complete Set**     | standardSet, rareSet, epicSet, legendarySet, mythicSet         |  $4,000   |  50 |
 
-The non-foil path is the "starter" trickle of CLOUT — quick to assemble once you have a couple of full sets, modest payout. The foil path is the late-game push — 5× the per-set value but each ingredient takes orders of magnitude longer to pull.
+**Each vault redemption is once per (year × foil-variant), ever.** The full game holds 30 years × 2 variants = **60 total CLOUT vault claims** for a player who chases every set across every year. Subsequent crafts of the same variant can still be listed for cash, just not re-vaulted — the VAULT button reads "VAULTED ✓" in gold once the variant is claimed and is permanently disabled.
 
-Each Complete Set lands in `state.invById[key]` and can be:
+The design intent: CLOUT pulls the player toward a "complete the whole game" collection arc rather than grinding one easy set on repeat for infinite progress.
 
-- **Vaulted** for the set's flat `clout` value — one-way, consumes the Complete Set.
-- **Listed** for cash on the marketplace at the baseline price.
+Vintage years multiply the CLOUT reward by `cloutScaleFor(setId) = 1 + (30 − setId) × 0.07` — see §19.5. Set 01's Complete Foil Set vaults for **1,515 CLOUT** at the apex.
 
-Per-rarity sets have no vault path anymore — they're ingredients (or cash, via LIST). Both Complete Set rows sit at the top of the vault column. The non-foil row uses a gold accent; the foil row gets a full rainbow border + shimmering label. Each row's CRAFT button shows `X/5` progress until all five matching ingredients are held, then lights up.
+Each Complete Set crafted lands in `state.sets[setId].invById[key]` and can be:
+- **Vaulted** (first time only) — consumes the Complete Set, grants scaled CLOUT.
+- **Listed** for cash at the marketplace baseline (~$4k non-foil / ~$120k foil at Set 30, scaled for vintage years).
 
-Sorter upgrades are no longer CLOUT-bought — they cost cash via each sorter card's `⬆ $X` button. Three branches remain on the upgrade grid:
+Per-rarity sets have no vault path — they're ingredients (or cash, via LIST). Both Complete Set rows sit at the top of the marketplace column, foil first; the foil row gets a rainbow border + shimmering label, the non-foil row uses a gold accent. Each row's CRAFT button shows `X/5` ingredient progress until all five are held, then lights up.
 
-| Branch | Tier 1 → ... | What it does |
-|--------|-------------|-------------|
-| PAINT  | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Steady Aim (250), Bigger Brush (100) → Massive Brush (300) → Mop Brush (700), Quick Eye (40) → Snap Focus (120) → Reflexes (350) | +marks / +cursor radius / -paint dwell |
-| LISTINGS | Side Hustle (5) → Shop Front (20) → Storefront (60) → Online Empire (200) | +1 / +1 / +2 / +3 marketplace slots |
-| MARKET | Quick Sales (20) → Hot Demand (80) → Premium Sets (250) | listing cooldown -3s, NPC absorb +0.03/s, set craft mult +0.10 |
+### Sorter upgrades — cash, not CLOUT
 
-Costs in CLOUT; numbers above are the node cost. Effects are deltas added to the base constants via `unlockedNodeEffects()`.
+Sorter speed + buffer upgrades are paid in cash from each sorter card's `⬆ $X` button (see §9). They never showed up in the CLOUT tree.
+
+### CLOUT upgrade tree — three branches
+
+| Branch | Nodes (CLOUT cost) | What it does |
+|--------|-------------------|--------------|
+| **PAINT** | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Steady Aim (250); Bigger Brush (100) → Massive Brush (300) → Mop Brush (700); Quick Eye (40) → Snap Focus (120) → Reflexes (350) | +max highlight marks, +cursor paint radius, −paint dwell time |
+| **LISTINGS** | Side Hustle (5) → Shop Front (20) → Storefront (60) → Online Empire (200) | +1 / +1 / +2 / +3 marketplace slots |
+| **VINTAGE** | Curator's Pick (50) → Faster Restock (100) → Estate Sale (200) → Box Hunter (350) → Time Traveler (600) | +slots / −60s refresh / +slot / box+12 case+6 weight / +slot −60s |
+
+The VINTAGE branch was previously called MARKET — it's been fully retargeted at the Vintage Packs shop. Earlier MARKET-branch effects (listing cooldown delta, NPC absorb delta, Set craft multiplier delta) are no-op delta hooks that still exist in code but no node carries them anymore.
 
 **CLOUT is a spendable balance**, not a running total. The header pink chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. Click any **available** node to spend CLOUT and apply the bonus live — effective caps recompute on the spot.
 
@@ -218,47 +225,95 @@ Modal UI: three columns (one per branch), each node card shows its name, effect,
 
 ## 9. Helpers — Homies & Sorters
 
-### Hire Homie — temporary auto-ripper
+Three kinds of helper now: **rip homies** (auto-rip packs), **craft homies** (auto-craft a rarity's Sets), and **sorters** (auto-process sand-pile grains). All three are *year-pinned* — they record the active set at hire/install time and only ever touch that year's bundle, even if the player switches active.
 
-- **Cost:** $20 + 1 sealed box
+### Rip Homie — temporary auto-ripper
+
+- **Cost:** $20 + 1 sealed box (consumed from the active year's stash)
 - **Effect:** spawns an animated 🧢 sprite next to the pack opener with a live progress bar; auto-rips one pack every 3s from its personal 36-pack pool
-- **Lifetime:** until the box is empty (~108s total, faster if you bought multiple homies — they tile to the right)
-- Homie rips trigger the same pull / sand-pile / particle animations as manual rips, but don't drain `state.packSupply`
+- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — six fixed slots flanking the pack)
+- **Slot selection:** clicking an empty slot hires *that specific slot*, not the lowest free one
+- **Year binding:** homie remembers `setId` at hire; if you switch years mid-job, they keep ripping the original year silently in the background (no canvas spam, no SFX leakage)
 
-### Buy Sorter — permanent two-stage sorting machine
+### Craft Homie — temporary per-rarity auto-crafter (NEW)
 
-- **Cost:** $500 each, max **3** per save
+One slot per rarity row (5 total) sits between the rarity name and the foil/non-foil action stacks. Empty slots show `+ HIRE $20`; click to spawn a craft homie for that rarity.
+
+- **Cost:** $20, no box required
+- **Lifetime:** 8 minutes (`CRAFT_HOMIE_DURATION_MS`)
+- **Cadence:** every 5s (`CRAFT_HOMIE_TICK_MS`) the homie attempts to craft. **Foil track first, then non-foil track** — both can succeed in the same tick if both have ingredients ready.
+- **Cap:** one craft homie per (rarity × year). Hiring a duplicate is refused.
+- **Visual:** when active, the slot shows a bobbing 🧢, a green countdown badge (`8m` → `45s`), and a green progress bar that drains over the 8-minute lifetime.
+- **Year binding:** same model as rip homies — pinned at hire, mutations route through `withActiveSet(setId, …)`, silent if the player isn't viewing that year.
+
+The 1Hz countdown repaint is an in-place DOM patch (`paintCraftHomieCountdowns`) — not a full vault rebuild — so the surrounding CRAFT / LIST buttons don't flicker or lose hover state every second.
+
+### Sorter — permanent two-stage sorting machine
+
+- **Cost:** $1,000 each, max **3** per save (`SORTER_MAX`)
 - **Two buffers:** `input` (raw, manually loaded from the pile) and `output` (processed, ready to collect). The sorter only moves cards from `input` → `output`; it never reaches into the pile on its own.
-- **Manual LOAD:** Click the blue **LOAD** button to scoop the entire bottom row of the sand pile into the sorter's input. LOAD is **all-or-nothing** — it requires both a *complete* bottom row (a live grain in every column) AND enough free combined capacity to fit the whole row. The button's `title` attribute names the failing constraint when disabled. Each loaded grain leaves a tombstone in the pile, and the rest of the pile gravity-settles down by one row.
-- **Tick:** Every `sorterInterval(level)` ms the sorter pops one grain from input (weighted by what's loaded) into output. With input empty, the sorter idles.
-- **Buffer cap:** 500 at Lv 1 (+10 per level). Counted across input + output combined. When at cap, LOAD refuses until you collect.
-- **Manual COLLECT:** Click the gold-glowing **COLLECT** button to flush output into the collection — set-progress + flash animations fire as the cards land.
+- **Manual LOAD:** Click the blue **LOAD N** button to scoop *every grain in the pile* (bottom-up across all columns) into the sorter's input, capped by remaining capacity. The `N` shows the number that will actually be moved. Each loaded grain leaves a tombstone in the pile, and the rest of the pile gravity-settles down to fill the gaps.
+- **Tick:** every `sorterInterval(level)` ms the sorter pops one grain from input (weighted by what's loaded) into output. With input empty, the sorter idles.
+- **Buffer cap:** 500 at Lv 1 (`SORTER_BASE_CAPACITY`), +100 slots per buffer level (`SORTER_BUFFER_PER_LEVEL`). Counted across input + output combined. When at cap, LOAD refuses until you COLLECT.
+- **Manual COLLECT:** click the gold-glowing **COLLECT N** button to flush output into stock — set-progress + flash animations fire as the cards land.
+- **Year binding:** pinned at install. LOAD scoops the bound year's pile; COLLECT writes to that year's stock; both wrap in `withActiveSet(setId, …)`.
 
-### Sorter upgrades
+### Sorter row layout
 
-| Level | Interval | Capacity | Upgrade cost |
-|------:|---------:|---------:|-------------:|
-| 1     | 2000 ms  | 500      | —            |
-| 2     | 1000 ms  | 510      | $500         |
-| 3     |  667 ms  | 520      | $2,000       |
-| 4     |  500 ms  | 530      | $4,500       |
-| 5     |  400 ms  | 540      | $8,000       |
+Each sorter renders as a fixed-width row inside the sorters modal so columns align vertically when multiple sorters are stacked:
 
-Floor on interval is 250ms; `SORTER_LEVEL_MAX = 5`. Upgrades are rate-focused — capacity grows by only +10 per level since 500 is already enough for many bottom-row loads in a row. Upgrade cost = `SORTER_UPGRADE_BASE × level²` ($500 base).
+```
+[ ⌛ hopper ] [ rate /s ] [⬆ SPD $X] [ ] [ ✓ sorted/cap ] [⬆ BUF $X] [ ] [ LOAD N ] [ COLLECT N ]
+   64px        56px        78px      gap     100px           78px      gap    88px       88px
+```
+
+Color flow signals data direction: **blue ⌛ hopper** (going in) → **neutral rate** (process) → **gold ✓ sorted** (going out, **orange** when full).
+
+### Sorter upgrades — split tracks
+
+Speed and buffer are **independent paid tracks**, both capped at L10. Each track shares the same cost ladder: `BASE + STEP × (L − 1)` with `SORTER_UPGRADE_BASE_COST = $1,000` and `SORTER_UPGRADE_STEP = $1,000`.
+
+| Level | Speed (cards/s) | Capacity | SPD upgrade | BUF upgrade |
+|------:|----------------:|---------:|------------:|------------:|
+| 1     | 1.0             | 500      | —           | —           |
+| 2     | 2.0             | 600      | $1,000      | $1,000      |
+| 3     | 3.0             | 700      | $2,000      | $2,000      |
+| 4     | 4.0             | 800      | $3,000      | $3,000      |
+| 5     | 5.0             | 900      | $4,000      | $4,000      |
+| 6     | 6.0             | 1,000    | $5,000      | $5,000      |
+| 7     | 7.0             | 1,100    | $6,000      | $6,000      |
+| 8     | 8.0             | 1,200    | $7,000      | $7,000      |
+| 9     | 9.0             | 1,300    | $8,000      | $8,000      |
+| 10    | 10.0            | 1,400    | $9,000      | $9,000      |
+
+Speed: `sorterInterval(level) = max(50, SORTER_BASE_MS / level)`. Interval floor 50ms.
+Capacity: `sorterCapacity(bufferLevel) = SORTER_BASE_CAPACITY + (bufferLevel − 1) × 100`.
+
+Per-sorter cost to fully max: $1,000 buy + $45,000 speed + $45,000 buffer = **$91,000**. Three maxed sorters = $273k — late-game commitment territory, on par with foil Complete Set listing income.
 
 ---
 
 ## 10. Boxes — Sealed Inventory
 
-Boxes are an **owned resource** (`state.boxesOwned`), distinct from loose packs (`state.packSupply`).
+Boxes are an **owned resource**, distinct from loose packs. Both live per-year under `state.sets[setId].boxesOwned` and `state.sets[setId].packSupply`.
 
-- Buying a Box: `+1 boxesOwned` (no longer +36 loose packs)
-- Buying a Case: `+6 boxesOwned`
-- Clicking the pack auto-cracks a sealed box into 36 loose packs when supply is dry
-- Hiring a Homie consumes 1 box and gives the homie a personal 36-pack pool (independent of `packSupply`)
+- Buying a Box: `+1` to that year's boxesOwned (no longer +36 loose packs)
+- Buying a Case: `+6` boxesOwned (= `CASE_SIZE / BOX_SIZE`)
+- Clicking the pack auto-cracks a sealed box into 36 loose packs when supply is dry (`maybeCrackBox`)
+- Hiring a rip homie consumes 1 box from the active year and gives the homie a personal 36-pack pool (independent of `packSupply`)
 - Supply readout: `Supply: N · 📦 M`
 
-This lets the player choose between immediate manual ripping (crack a box → 36 in supply) and delegated ripping (give a box to a homie).
+### Starter inventory
+
+Fresh boot grants a full **case** (`CASE_SIZE / BOX_SIZE = 6` boxes = 216 packs) on the house, plus $50 coins. Earlier iterations gave a single box, but with foil completes and the no-singles economy, 36 packs wasn't enough to actually complete a sellable Set in the first session. A case gives ~$50–$150 of expected first-session revenue, enough to bootstrap into buy → rip → sort → craft → list.
+
+Hint at boot: *"A case on the house — start ripping!"*
+
+### Unsorted pile cap
+
+`UNSORTED_CAPACITY = 1000` cards (down from 2000). The sand canvas is `SAND_COLS × SAND_ROWS = 50 × 20 = 1000` cells, so the pile visually fills the canvas exactly at the cap. The pack opener refuses to rip when the active year's pile is at cap; the typing mini-game silently drops keys.
+
+Canvas height halved alongside the cap drop — 200px desktop (was 400px), aspect-ratio `5:2` mobile. Cells stay 10×10 square.
 
 ---
 
@@ -269,11 +324,15 @@ Pack/box/case costs:
 - **Box:** $100 (36 packs worth, ~7% discount)
 - **Case:** $500 (6 boxes worth, ~23% discount)
 
+Pack/box/case prices scale linearly with set age in the **vintage shop** — `packCost(setId) = PACK_COST × (31 − setId)`. The regular buy buttons only sell current-year (Set 30) stock; vintage years are exclusively serviced by the Vintage Packs shop (see §19.4). A Set 01 vintage pack costs $90; a Set 01 case costs $15,000.
+
 Market baselines — see §5 for the full per-Set table. Quick reference:
 
 - Standard $50, Rare $150, Epic $300, Legendary $700, Mythic $2,000
 - Foil Standard $500, Foil Rare $2,000, Foil Epic $7,000, Foil Legendary $20,000, Foil Mythic $60,000
-- Complete Set $4,000, Foil Complete Set $120,000
+- Complete Set $4,000, Complete Foil Set $120,000
+
+Vintage years multiply sell-price baselines by `cloutScaleFor(setId) = 1 + (30 − setId) × 0.07`. Set 01 mythic sets list for **~3.03×** their Set 30 baseline (see §19.5).
 
 At ~$3/pack cost and the long-horizon revenue curve above, a player who completes every non-foil Set across 2,500 packs (the mythic-completion median) walks away with roughly $16k in Set listings — a $4k–$6k positive ROI for the grind, plus 50 CLOUT and the option to vault for the Complete Set. Foils are pure prestige; they're ROI-negative even as listings (~125k packs of $375k cost for a $60k Foil Mythic Set) and are worth grinding only for the CLOUT in §8b.
 
@@ -311,15 +370,33 @@ Dramaturgy: flood the market with foil epics in a session and prices visibly tan
 
 ---
 
-## 13. UI Layout (3-column at desktop)
+## 13. UI Layout (2-column at desktop)
 
-| Column         | Contains                                                          |
-|----------------|-------------------------------------------------------------------|
-| **Shop** (left)| Buy buttons (Pack/Box/Case), Hire Homie / Buy Sorter, set-progress meters, the pack opener, typing zone, hint line, sand canvas, sorter cards |
-| **Vault** (mid)| Header (coins, packs opened, foils), marketplace listings panel, collection grid (cells per rarity row, foil row beneath each), then the three bulk tracking rows (Rare / Foil Standard / Standard) with set craft + list buttons |
-| **Footer**     | One-line flavor copy                                              |
+Header carries the cash + CLOUT chips, packs/foils stats, mute toggle (🔊 / 🔇), Game Design button, Reset button.
 
-Mobile collapses to single column. Cells shrink to 28px and the standard grid stays 18-wide.
+| Column            | Contains                                                                  |
+|-------------------|---------------------------------------------------------------------------|
+| **OPENING** (left)| H2 "OPENING" · year-picker dropdown (select element, locked years dimmed) · Pack/Box/Case buy buttons (disabled on vintage years with explanatory tooltip) · set-progress meters · pack opener with bobbing 🧢 homie sprites flanking it · typing zone · hint line · sand canvas (200px tall) · sorter shop button |
+| **MARKETPLACE** (right) | H2 "MARKETPLACE" · Vintage Packs slot row (5 slots, packs/boxes/cases) · LISTINGS panel (10-slot marketplace) · collection grid titled "COLLECTION · SET N · YYYY" at h2 size · per-rarity action rows: rarity name + craft-homie slot + foil action stack + non-foil action stack |
+| **Footer**        | One-line flavor copy                                                      |
+
+Mobile collapses to single column. Cells shrink to 16px and the standard grid stays 36-wide; pack box is 150×215.
+
+### Pack visual
+
+Booster pack has the set/year label at the top, "BOOSTER" middle, supply count beneath, and a pulsing "CLICK TO RIP" call-to-action near the bottom (gentle 1.6s opacity pulse, mutes when `.disabled`).
+
+### Year picker
+
+A `<select>` dropdown (was a chip array). Each option reads `Set N · YYYY [— tag]` where the tag is `current year` for Set 30, `midcentury` for Sets 10–19, or `vintage` for Sets 01–09. Locked years prefix with 🔒 and carry the `disabled` attribute. The select chrome inherits the active year's patina tier so the whole control shifts color when shopping a vintage year. While year-switching is blocked (busy state), the select gets a `.locked` class (dashed border, dimmed) and its tooltip explains the specific reason.
+
+### Sorter modal
+
+Opens via the **SORTERS** button beneath the sand canvas. Each sorter card uses the fixed-width grid described in §9 so columns align vertically when stacking multiple sorters.
+
+### Vault Summary
+
+Removed. The old per-year stamp row above the marketplace was deleted; the year picker dropdown is the sole year-switching surface.
 
 ---
 
@@ -338,12 +415,21 @@ state = {
   clout, cloutSpent,             // spendable balance + lifetime spend
   unlockedNodes: [],             // upgrade tree (CLOUT-bought, global)
   completeSetCrafts: { [setId]: count },
-                                 // lifetime non-foil Complete Set crafts
-                                 // per year — drives the vintage unlock gate
-  homies:   [{ uid, slot, setId, packsRemaining, lastRipAt, startAt }],
-  sorters:  [{ uid, level, setId, input{}, output{}, lastSortAt }],
+                                 // lifetime non-foil Complete Set crafts —
+                                 // STAT ONLY now, no longer drives unlocks
+  yearUnlocked:    { [setId]: bool },
+                                 // years the player has bought packs of
+                                 // (Set 30 always unlocked by definition)
+  homies:   [
+    // rip homie (legacy default — no `kind` field):
+    { uid, slot, setId, packsRemaining, lastRipAt, startAt },
+    // craft homie:
+    { uid, kind: "craft", setId, craftRarity, startAt, expiresAt, lastCraftAt }
+  ],
+  sorters:  [{ uid, level, bufferLevel, setId, input{}, output{}, lastSortAt }],
   listings: [{ uid, setId, rarity, cardId, foil, askPrice, resolveAt,
                willResolve }],
+  vintageShop: { slots: [{ year, type, cooldownEndsAt } | null × N] },
   listingsUidCounter, homieUidCounter, sorterUidCounter,
   marketVersion, setVersion,     // schema stamps
 
@@ -361,7 +447,7 @@ state = {
       setsCelebrated, setsCelebratedFoil,   // first-completion flags
       invById:     { [marketKey]: {id:count} },   // priced + set items
       bulkInvById: { standard, rare, foilStandard: {id:count} },
-      vaultedSets: { [completeSetKey]: count },   // lifetime vault deposits
+      vaultedSets: { [completeSetKey]: 0 | 1 }, // permanent flag — capped at 1
       marketInv,                                  // NPC market level per
       marketInvUpdated,                           // (key,id), per year
     },
@@ -469,41 +555,74 @@ The active set drives:
 
 ### 19.2 The year picker
 
-A horizontal scroll of 30 chips sits above the buy buttons:
+A `<select>` dropdown beneath the "OPENING" h2 (was a chip array — replaced for compactness once 30 years were in play). Each option text:
 
 ```
-[S30 '30 ★] [S29 '29] [S28 '28 🔒] [S27 '27 🔒] ... [S01 '01 🔒]
+Set 30 · 2030 — current year       (active, selected)
+Set 29 · 2029
+Set 25 · 2025                       (unlocked via vintage pack purchase)
+🔒 Set 24 · 2024
+🔒 Set 20 · 2020 — midcentury
+🔒 Set 5 · 2005 — vintage
 ```
 
-- Active year highlighted in gold
-- Unlocked years readable in their patina tier color
-- Locked years are dimmed with a 🔒 prefix and a tooltip explaining how to
-  unlock
-- Click an unlocked chip → switch active set (full re-render, save fires)
-- Click a locked chip → hint line explains the unlock requirement
+- Locked years prefix with 🔒 and carry the `disabled` attribute (un-selectable in the UI)
+- The select's own chrome inherits the active year's patina tier (sepia for vintage)
+- While year-switching is blocked (busy state — see §19.3.1), the select gets a `.locked` class and its tooltip names the blocker
+- Selecting a year fires `change` → `switchToSet(sid)`; refused switches snap the dropdown back to the actual active
 
-### 19.3 Unlock gate — "graduate to vintage"
+### 19.3 Unlock gate — "buy a vintage pack"
 
-A year **Set N** unlocks when you've crafted at least one **non-foil Complete
-Set in Set N+1**. Set 30 is always unlocked.
+A year unlocks the moment you **buy a booster pack of that year** from the Vintage Packs shop. Tracked at `state.yearUnlocked[setId]`. Set 30 is always unlocked.
 
 ```
 isSetUnlocked(setId):
   if (setId == 30) return true
-  return state.completeSetCrafts[setId + 1] > 0
+  return state.yearUnlocked[setId] === true
 ```
 
-Lifetime non-foil crafts are tracked at `state.completeSetCrafts[setId]`;
-the counter increments inside `craftCompleteSet` for non-foil only. Foil
-Complete Sets are not a shortcut — they're the apex prize, not the
-progression gate.
+Earlier iterations gated unlocks behind crafting a Set N+1 non-foil Complete Set (29 sequential crafts to walk back from Set 30 to Set 01). The current model is simpler and player-driven: see a Set 17 pack in the vintage shop, buy it, Set 17 is now in the year picker. `state.completeSetCrafts` is still tracked for stats but no longer drives the gate.
 
-The full vintage ladder takes **29 sequential non-foil Complete Set crafts**
-to walk back from Set 30 to Set 01.
+#### 19.3.1 Switch gating — "finish what you started"
 
-### 19.4 Pricing curve — buying
+Even an unlocked year can be temporarily blocked from being switched to. `yearSwitchBlockReason()` checks three conditions; any one of them refuses the switch with an explanatory hint and a snap-back on the dropdown:
 
-Pack / box / case cost scales **linearly** with set age:
+1. **Any homie hired** (`state.homies.length > 0`) — wait for them to finish
+2. **Any sorter has non-zero input or output** — collect them first
+3. **Active year's pile has unsorted bulk** (`unsortedTotal() > 0`) — sort them first
+
+The intent: the player can't abandon a year mid-session leaving in-flight work behind. Switching feels like a deliberate "I'm done here, moving on" gesture. Side effect: each session has a natural sorting beat between year visits.
+
+### 19.3.2 Migration from the old unlock model
+
+Existing saves had `state.completeSetCrafts` populated but no `state.yearUnlocked`. The `load()` backfill seeds yearUnlocked from any prior progress: any year N where the old rule would have applied (Set N+1 crafted) is grandfathered, and any year with prior pack-opening activity is also grandfathered. No player loses access to a year they were previously working on.
+
+### 19.4 The Vintage Packs shop — and pricing curve
+
+A 5-slot widget (`VINTAGE_SLOTS_BASE = 5`, upgradeable to 8 via VINTAGE CLOUT nodes) lives in the right-hand MARKETPLACE column, directly above the listings panel. Each slot displays a random past-year offering — pack, box, or case — refreshing on a per-slot 5-minute cooldown after purchase (`VINTAGE_REFRESH_MS = 5 min`, reducible by upgrade nodes).
+
+**Year roll** is weighted toward recent years (`1/age` where `age = 31 − setId`): Set 29 ≈ 18%, Set 25 ≈ 6%, Set 1 ≈ 1%. Set 30 is excluded — vintage means past years only.
+
+**Type roll** (`VINTAGE_TYPE_WEIGHTS`, design-panel tunable): pack 80, box 16, case 4 → ~80% / 16% / 4%. The Box Hunter upgrade node bumps box +12 / case +6 → ~67% / 24% / 9%.
+
+#### Buy flow — supply, not auto-rip
+
+Clicking a vintage slot:
+
+1. Charges the per-year price (see ladder below)
+2. Adds to that year's supply: pack = +1 packSupply; box = +1 boxesOwned; case = +6 boxesOwned (= `CASE_SIZE / BOX_SIZE`)
+3. Flips `state.yearUnlocked[year] = true` (unlocks the year picker — see §19.3)
+4. Empties the slot and starts its cooldown
+
+The pack is **not auto-ripped**. To open it, the player switches to that year via the picker (subject to switch gating, §19.3.1) and rips manually from supply.
+
+#### Vintage-only sales path
+
+Once a vintage year is unlocked, the **regular** buy-pack / buy-box / buy-case buttons in the shop column are disabled with the tooltip *"Vintage years only sell via the Vintage Packs shop — switch to Set 30 to buy current-year stock."* The vintage shop is the **only** way to acquire old-year stock. Every old-year session starts at the vintage shop for resupply.
+
+#### Pricing curve
+
+Pack / box / case cost scales **linearly** with set age — same formula whether you buy via the vintage shop or the regular buttons at Set 30:
 
 ```
 setAgeMult(setId)  = max(1, 31 − setId)
@@ -512,11 +631,11 @@ boxCost(setId)     = BOX_COST  * setAgeMult(setId)
 caseCost(setId)    = CASE_COST * setAgeMult(setId)
 ```
 
-| Set | Mult | Pack | Box   | Case  |
-|----:|----:|------|-------|-------|
-| 30  | 1×  | $3   | $100  | $500  |
-| 25  | 6×  | $18  | $600  | $3,000|
-| 15  | 16× | $48  | $1,600| $8,000|
+| Set | Mult | Pack | Box   | Case   |
+|----:|----:|------|-------|--------|
+| 30  | 1×  | $3   | $100  | $500   |
+| 25  | 6×  | $18  | $600  | $3,000 |
+| 15  | 16× | $48  | $1,600| $8,000 |
 | 01  | 30× | $90  | $3,000| $15,000|
 
 Vintage packs cost a lot; the rewards scale separately (next section).
