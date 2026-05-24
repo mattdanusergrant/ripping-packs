@@ -434,31 +434,6 @@
   .vintage-pack.t-box  .vp-pack { font-size: 1.25rem; }
   .vintage-pack.t-case .vp-pack { font-size: 1.35rem; }
 
-  #vault-summary {
-    display: flex; flex-wrap: wrap; gap: 4px;
-    padding: 6px 8px; margin-bottom: 6px;
-    background: rgba(0,0,0,0.22); border-radius: 6px;
-    font-size: 0.7rem; font-family: monospace;
-  }
-  #vault-summary .vs-empty { color: var(--muted); font-style: italic; }
-  .vault-stamp {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 6px; border-radius: 4px;
-    background: #1c1c1c; border: 1px solid #333; color: #ccc;
-    cursor: pointer; line-height: 1.2;
-  }
-  .vault-stamp:hover:not(.active) { background: #2a2a2a; border-color: #555; }
-  .vault-stamp.active {
-    background: rgba(255,216,77,0.18); border-color: var(--gold); color: var(--gold);
-  }
-  .vault-stamp.vintage    { background: #1a140a; border-color: #5a4a2a; color: #d4a55e; }
-  .vault-stamp.vintage.active { background: rgba(212,165,94,0.22); border-color: #d4a55e; color: #f4d4a0; }
-  .vault-stamp.midcentury { background: #1a1810; border-color: #4a4030; color: #c8b88a; }
-  .vault-stamp.midcentury.active { background: rgba(200,184,138,0.18); border-color: #c8b88a; color: #e8dfb8; }
-  .vault-stamp .vs-set { font-weight: bold; letter-spacing: 0.5px; }
-  .vault-stamp .vs-yr { opacity: 0.6; font-size: 0.6rem; }
-  .vault-stamp .vs-cnt { color: var(--gold); font-weight: bold; }
-  .vault-stamp .vs-foil { color: #ff7eb3; font-weight: bold; }
   .set-col-label {
     font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
     text-align: center; margin-bottom: 2px;
@@ -1223,7 +1198,6 @@
     <div class="vintage-slots" id="vintage-slots"></div>
   </div>
   <div id="listings-panel"></div>
-  <div id="vault-summary"></div>
   <div id="vault-grid"></div>
   <div id="stock-rows"></div>
 </section>
@@ -2054,43 +2028,6 @@ function patinaClassFor(setId) {
 const $ = id => document.getElementById(id);
 
 let _lastCloutBalance = null;
-function renderVaultSummary() {
-  const wrap = $("vault-summary");
-  if (!wrap) return;
-  // Show one stamp per set that has either an unlocked status (S30 or
-  // anything you've earned), any vaulted Complete Set, or any owned cards.
-  // Crafted-but-not-yet-vaulted Complete Sets DON'T count — only deposits
-  // (and Set 30 always shows as a baseline anchor).
-  const stamps = [];
-  for (let s = CURRENT_SET_ID; s >= 1; s -= 1) {
-    const bundle = state.sets && state.sets[s];
-    const v = bundle ? (bundle.vaultedSets || {}) : {};
-    const nonFoil = v.completeSet      || 0;
-    const foil    = v.foilCompleteSet  || 0;
-    const ownedCards = bundle
-      ? RARITIES.reduce((n, r) => n + (bundle.owned[r]?.length || 0) + (bundle.ownedFoil[r]?.length || 0), 0)
-      : 0;
-    const visible = (s === CURRENT_SET_ID) || nonFoil > 0 || foil > 0 || ownedCards > 0 || isSetUnlocked(s);
-    if (!visible) continue;
-    const active = s === state.activeSetId;
-    const cls = "vault-stamp" + (active ? " active" : "") + patinaClassFor(s);
-    const counts = [];
-    if (nonFoil > 0) counts.push(`<span class="vs-cnt">★${nonFoil}</span>`);
-    if (foil > 0)    counts.push(`<span class="vs-foil">✨${foil}</span>`);
-    if (counts.length === 0) counts.push(`<span class="vs-cnt" style="opacity:0.45">—</span>`);
-    stamps.push(`<button type="button" class="${cls}" data-set-id="${s}" title="Set ${s} (${setYearLabel(s)}) · ${nonFoil} non-foil + ${foil} foil Complete Sets vaulted · ${ownedCards} unique cards owned\nClick to view this year's collection">`
-              + `<span class="vs-set">S${s}</span>`
-              + `<span class="vs-yr">'${String(setYearLabel(s)).slice(2)}</span>`
-              + counts.join(" ")
-              + `</button>`);
-  }
-  if (stamps.length === 0) {
-    wrap.innerHTML = `<span class="vs-empty">No vaulted sets yet — craft a Complete Set to start your collection.</span>`;
-  } else {
-    wrap.innerHTML = stamps.join("");
-  }
-}
-
 function buyVintagePack(slotIdx) {
   const slot = state.vintageShop?.slots?.[slotIdx];
   if (!slot || !slot.year) return;
@@ -4249,7 +4186,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultSummary(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -4462,10 +4399,6 @@ function syncYearPickerSelection() {
 $("year-picker").addEventListener("change", (e) => {
   const sid = parseInt(e.target.value, 10);
   if (Number.isFinite(sid)) switchToSet(sid);
-});
-$("vault-summary").addEventListener("click", (e) => {
-  const stamp = e.target.closest(".vault-stamp");
-  if (stamp) switchToSet(parseInt(stamp.dataset.setId, 10));
 });
 $("vintage-slots").addEventListener("click", (e) => {
   const tile = e.target.closest(".vintage-pack");
