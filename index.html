@@ -2084,15 +2084,20 @@ function load() {
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
-    // Backfill the vintage-unlock gate flag from prior progress: if any
-    // year already has any set-item in invById, the player has crafted a
-    // Set before this gate landed and shouldn't lose the vintage UI.
-    if (typeof parsed.firstSetCrafted !== "boolean") {
-      const everCrafted = Object.values(parsed.sets || {}).some(b =>
-        SET_ITEM_KEYS.some(k => ((b.invById || {})[k] || {})[1] > 0)
-      ) || Object.values(parsed.completeSetCrafts || {}).some(n => n > 0);
-      parsed.firstSetCrafted = everCrafted;
-    }
+    // Recompute the vintage-unlock gate flag from complete-set evidence
+    // only — per-rarity Set crafts no longer unlock the Vintage system.
+    // Runs unconditionally so legacy saves that were unlocked by the older
+    // per-rarity rule get corrected on next load.
+    const everCompleteCrafted =
+      Object.values(parsed.sets || {}).some(b => {
+        const inv  = b.invById || {};
+        const vlt  = b.vaultedSets || {};
+        return COMPLETE_SET_KEYS.some(k => ((inv[k] || {})[1] || 0) > 0)
+            || COMPLETE_SET_KEYS.some(k => (vlt[k] || 0) > 0);
+      })
+      || Object.values(parsed.completeSetCrafts || {}).some(n => n > 0)
+      || Object.values(parsed.foilCompleteSetCrafts || {}).some(n => n > 0);
+    parsed.firstSetCrafted = everCompleteCrafted;
     // Backfill the typing-unlock counter. Older saves that pre-date the
     // gate get capped at the threshold so the typing UI doesn't re-lock
     // mid-session — the player has clearly already opened plenty of packs.
@@ -3045,16 +3050,6 @@ function craftSet(key, opts = {}) {
   else            cur().stock[track.baseRarity]     = Math.max(0, (cur().stock[track.baseRarity]     || 0) - size);
   if (!cur().invById[track.itemKey]) cur().invById[track.itemKey] = {};
   cur().invById[track.itemKey][1] = (cur().invById[track.itemKey][1] || 0) + 1;
-  // First-ever Set craft unlocks the Vintage system (year picker + vintage
-  // shop). Always fire the celebration — even in opts.silent (craft-homie
-  // tick) — because the unlock is a one-shot life event the player would
-  // otherwise miss if a homie produced the first Set.
-  const firstUnlock = !state.firstSetCrafted;
-  state.firstSetCrafted = true;
-  if (firstUnlock) {
-    SFX.unlock();
-    $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. 🔓 Vintage Packs shop + year picker unlocked!`;
-  }
   // Silent mode is used by the craft-homie tick: it batches the render +
   // save once at the end of the tick and suppresses the routine "Ready to
   // list" hint so a homie quietly working another year doesn't overwrite
@@ -3062,9 +3057,7 @@ function craftSet(key, opts = {}) {
   if (opts.silent) return true;
   renderAll(); save();
   SFX.craft();
-  if (!firstUnlock) {
-    $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
-  }
+  $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
   return true;
 }
 
@@ -3100,11 +3093,26 @@ function craftCompleteSet(key) {
   if (!def.foil) {
     if (!state.completeSetCrafts) state.completeSetCrafts = {};
     state.completeSetCrafts[state.activeSetId] = (state.completeSetCrafts[state.activeSetId] || 0) + 1;
+  } else {
+    // Parallel lifetime counter for foil complete crafts. Lets the load()
+    // backfill detect prior foil-complete activity even after the player
+    // has listed/sold everything (invById + vaultedSets both empty).
+    if (!state.foilCompleteSetCrafts) state.foilCompleteSetCrafts = {};
+    state.foilCompleteSetCrafts[state.activeSetId] = (state.foilCompleteSetCrafts[state.activeSetId] || 0) + 1;
   }
+  // First-ever Complete Set craft unlocks the Vintage system (year picker
+  // + vintage shop). Fires once across the player's lifetime.
+  const firstUnlock = !state.firstSetCrafted;
+  state.firstSetCrafted = true;
   renderAll(); save();
   const vaultVal = Math.round(def.clout * cloutScaleFor(state.activeSetId));
   SFX.craft();
-  $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
+  if (firstUnlock) {
+    SFX.unlock();
+    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}! 🔓 Vintage Packs shop + year picker unlocked!`;
+  } else {
+    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
+  }
 }
 
 function vaultCompleteSet(key) {
