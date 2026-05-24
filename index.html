@@ -4019,7 +4019,7 @@ function firstFreeHomieSlot() {
   return -1;
 }
 
-function hireHomie() {
+function hireHomie(preferredSlot) {
   if ((state.homies || []).length >= HOMIE_MAX) {
     $("hint").textContent = `Max homies (${HOMIE_MAX}) already on the clock.`;
     return;
@@ -4032,7 +4032,15 @@ function hireHomie() {
     $("hint").textContent = `Need a sealed box first — buy one from the shop.`;
     return;
   }
-  const slot = firstFreeHomieSlot();
+  // Take the clicked slot if it's free; otherwise fall back to the lowest
+  // unused index so the button-click on the side panel still works.
+  const taken = new Set((state.homies || []).map(h => h.slot));
+  let slot = -1;
+  if (Number.isFinite(preferredSlot) && preferredSlot >= 0 && preferredSlot < HOMIE_MAX && !taken.has(preferredSlot)) {
+    slot = preferredSlot;
+  } else {
+    slot = firstFreeHomieSlot();
+  }
   if (slot < 0) {
     $("hint").textContent = `All ${HOMIE_MAX} homie slots full.`;
     return;
@@ -4696,10 +4704,14 @@ $("sand-canvas").addEventListener("contextmenu", (e) => {
   clearMarkedGrains();
 });
 $("reset-btn").addEventListener("click", resetGame);
-// Empty homie slots double as the "hire a homie" trigger (one per slot).
+// Empty homie slots double as the "hire a homie" trigger (one per slot). The
+// clicked slot is the one that gets occupied, not whichever slot is lowest-
+// indexed — letting the player choose which sprite the new homie inhabits.
 $("pack-area").addEventListener("click", (e) => {
   const slot = e.target.closest(".homie-sprite.empty");
-  if (slot && !slot.classList.contains("disabled")) hireHomie();
+  if (!slot || slot.classList.contains("disabled")) return;
+  const slotIdx = parseInt(slot.dataset.slot, 10);
+  hireHomie(Number.isFinite(slotIdx) ? slotIdx : undefined);
 });
 // Pre-purchase the button buys the first sorter; once any sorter is owned it
 // opens the SORTERS modal where the player can buy more / load / collect.
