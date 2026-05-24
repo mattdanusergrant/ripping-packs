@@ -180,6 +180,18 @@ A typing zone under the pack opener shows a 3–7 letter word from a curated the
 
 The handler is suppressed when focus is on an input/textarea or any modifier is held, so the Game Design panel and other text inputs still work normally.
 
+### 8a. First-session gates
+
+Three player-facing surfaces are hidden on a fresh save and unlock progressively, so the first session is just the core current-year loop instead of a wall of widgets:
+
+| Gate | What it hides | Unlock condition | State field |
+|------|---------------|------------------|-------------|
+| **Type-to-rip** | the typing mini-game (replaced by a pink→gold "KEEP RIPPING · X%" progress bar that fills 1% per manual `ripOne()`) | 100 manual rips (`TYPING_UNLOCK_RIPS`) — homie rips don't count | `state.manualRips` |
+| **Year picker** | the `<select>` dropdown (replaced by a static label `The 2030 Set` with identical chrome) | First successful per-rarity `craftSet()` | `state.firstSetCrafted` |
+| **Vintage Packs shop** | the entire `#vintage-shop` widget incl. its `⬆ VINTAGE` upgrade trigger | Same flag — `state.firstSetCrafted` | (shared with year picker) |
+
+Each unlock fires `SFX.unlock()` + a hint message. `handleTypingKey` silently drops keys pre-unlock so the player can't accidentally rip-by-leaning on the keyboard. `renderTypingZone` bails before building the per-letter word DOM until unlocked. Both state fields persist in the save and backfill from prior progress in `load()` — existing playtest saves don't lose the post-unlock UI.
+
 ---
 
 ## 8b. CLOUT — vault a Complete Set, once per variant
@@ -211,7 +223,7 @@ Sorter speed + buffer upgrades are paid in cash from each sorter card's `⬆ $X`
 
 | Branch | Nodes (CLOUT cost) | What it does |
 |--------|-------------------|--------------|
-| **PAINT** | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Steady Aim (250); Bigger Brush (100) → Massive Brush (300) → Mop Brush (700); Quick Eye (40) → Snap Focus (120) → Reflexes (350) | +max highlight marks, +cursor paint radius, −paint dwell time |
+| **MARKING** | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Steady Aim (250); Bigger Brush (100) → Massive Brush (300) → Mop Brush (700); Quick Eye (40) → Snap Focus (120) → Reflexes (350) | +max highlight marks, +cursor radius, −marking-mode dwell time |
 | **LISTINGS** | Side Hustle (5) → Shop Front (20) → Storefront (60) → Online Empire (200) | +1 / +1 / +2 / +3 marketplace slots |
 | **VINTAGE** | Curator's Pick (50) → Faster Restock (100) → Estate Sale (200) → Box Hunter (350) → Time Traveler (600) | +slots / −60s refresh / +slot / box+12 case+6 weight / +slot −60s |
 
@@ -240,10 +252,11 @@ Three kinds of helper now: **rip homies** (auto-rip packs), **craft homies** (au
 One slot per rarity row (5 total) sits between the rarity name and the foil/non-foil action stacks. Empty slots show `+ HIRE $20`; click to spawn a craft homie for that rarity.
 
 - **Cost:** $20, no box required
-- **Lifetime:** 8 minutes (`CRAFT_HOMIE_DURATION_MS`)
+- **Lifetime:** 2 minutes (`CRAFT_HOMIE_DURATION_MS`)
 - **Cadence:** every 5s (`CRAFT_HOMIE_TICK_MS`) the homie attempts to craft. **Foil track first, then non-foil track** — both can succeed in the same tick if both have ingredients ready.
 - **Cap:** one craft homie per (rarity × year). Hiring a duplicate is refused.
-- **Visual:** when active, the slot shows a bobbing 🧢, a green countdown badge (`8m` → `45s`), and a green progress bar that drains over the 8-minute lifetime.
+- **Disabled when nothing to craft:** the hire slot is greyed out unless the player has either (a) ever completed that rarity's foil or non-foil collection in the active year (`setsCelebrated[r] || setsCelebratedFoil[r]`) — permanent unlock — OR (b) currently has a craftable Set queued. Tooltip on disabled: *"Collect a full RARITY set before hiring a craft homie — nothing for them to do yet."* `hireCraftHomie()` re-checks the gate as defense in depth.
+- **Visual:** when active, the slot shows a bobbing 🧢, a green countdown badge (`2m` → `45s`), and a green progress bar that drains over the 2-minute lifetime.
 - **Year binding:** same model as rip homies — pinned at hire, mutations route through `withActiveSet(setId, …)`, silent if the player isn't viewing that year.
 
 The 1Hz countdown repaint is an in-place DOM patch (`paintCraftHomieCountdowns`) — not a full vault rebuild — so the surrounding CRAFT / LIST buttons don't flicker or lose hover state every second.
@@ -311,9 +324,13 @@ Hint at boot: *"A case on the house — start ripping!"*
 
 ### Unsorted pile cap
 
-`UNSORTED_CAPACITY = 1000` cards (down from 2000). The sand canvas is `SAND_COLS × SAND_ROWS = 50 × 20 = 1000` cells, so the pile visually fills the canvas exactly at the cap. The pack opener refuses to rip when the active year's pile is at cap; the typing mini-game silently drops keys.
+`UNSORTED_CAPACITY = 1000` cards (down from 2000). The grid is `SAND_COLS × SAND_ROWS = 50 × 20 = 1000` cells. The pack opener refuses to rip when the active year's pile is at cap; the typing mini-game silently drops keys.
 
-Canvas height halved alongside the cap drop — 200px desktop (was 400px), aspect-ratio `5:2` mobile. Cells stay 10×10 square.
+### Click buffer
+
+`SAND_BUFFER_ROWS = 1` reserved at the **bottom** of the canvas — grains never settle there, but clicks in that strip still hit the lowest grain in the column via the existing `SORT_CLICK_RADIUS_CELLS` Manhattan-radius search. Bottom-row picks used to require pixel-perfect aim at the canvas edge; the buffer adds a 10px tall "safety net" hit-zone beneath every column's lowest grain.
+
+Canvas is `500 × 210` desktop, aspect-ratio `50/21` mobile. The buffer is purely visual — `SAND_ROWS` (grain capacity per column) stays 20. The three canvas-row → pile-row hit-tests (`findClickedGrain`, `cellsWithinRadius`, hover dwell) subtract `SAND_BUFFER_ROWS` to convert click coords back to pile indices.
 
 ---
 
@@ -376,8 +393,8 @@ Header carries the cash + CLOUT chips, packs/foils stats, mute toggle (🔊 / �
 
 | Column            | Contains                                                                  |
 |-------------------|---------------------------------------------------------------------------|
-| **OPENING** (left)| H2 "OPENING" · year-picker dropdown (select element, locked years dimmed) · Pack/Box/Case buy buttons (disabled on vintage years with explanatory tooltip) · set-progress meters · pack opener with bobbing 🧢 homie sprites flanking it · typing zone · hint line · sand canvas (200px tall) · sorter shop button |
-| **MARKETPLACE** (right) | H2 "MARKETPLACE" · Vintage Packs slot row (5 slots, packs/boxes/cases) · LISTINGS panel (10-slot marketplace) · collection grid titled "COLLECTION · SET N · YYYY" at h2 size · per-rarity action rows: rarity name + craft-homie slot + foil action stack + non-foil action stack |
+| **OPENING** (left)| H2 "OPENING" · static year label `The 2030 Set` (pre-unlock) or dropdown of all 30 years (post-`firstSetCrafted`) · Pack/Box/Case buy buttons (disabled on vintage years with explanatory tooltip) · set-progress meters · pack opener with bobbing 🧢 homie sprites flanking it · typing zone (progress bar or mini-game per `manualRips`) · hint line · sand canvas (210px = 20 grain rows + 1 click buffer) · sorter shop button |
+| **MARKETPLACE** (right) | H2 "MARKETPLACE" · Vintage Packs row with 5 tiles + `⬆ VINTAGE` upgrade trigger (hidden until `firstSetCrafted`) · LISTINGS panel (10-slot marketplace) · collection grid titled "COLLECTION · SET N · YYYY" at h2 size · per-rarity action rows: rarity name + craft-homie slot (greyed when nothing to craft) + foil action stack + non-foil action stack |
 | **Footer**        | One-line flavor copy                                                      |
 
 Mobile collapses to single column. Cells shrink to 16px and the standard grid stays 36-wide; pack box is 150×215.
@@ -388,7 +405,7 @@ Booster pack has the set/year label at the top, "BOOSTER" middle, supply count b
 
 ### Year picker
 
-A `<select>` dropdown (was a chip array). Each option reads `Set N · YYYY [— tag]` where the tag is `current year` for Set 30, `midcentury` for Sets 10–19, or `vintage` for Sets 01–09. Locked years prefix with 🔒 and carry the `disabled` attribute. The select chrome inherits the active year's patina tier so the whole control shifts color when shopping a vintage year. While year-switching is blocked (busy state), the select gets a `.locked` class (dashed border, dimmed) and its tooltip explains the specific reason.
+A `<select>` dropdown post-unlock; before the vintage gate flips, a static `<div id="active-set-label">` with identical chrome shows the same text. Each option reads `The YYYY Set` (with a 🔒 prefix on years the player hasn't bought a pack of yet — those carry the `disabled` attribute). The select inherits the active year's patina tier so the chrome shifts sepia when shopping a vintage year. While year-switching is temporarily blocked (busy state — see §19.3.1), the select gets a `.locked` class (dashed border, dimmed) and its tooltip explains the specific reason. `renderYearPicker` explicitly toggles `display: block/none` on the label and the select per render — relying on the `hidden` attribute alone didn't work since the CSS rules use `display: block`.
 
 ### Sorter modal
 
@@ -417,6 +434,11 @@ state = {
   completeSetCrafts: { [setId]: count },
                                  // lifetime non-foil Complete Set crafts —
                                  // STAT ONLY now, no longer drives unlocks
+  firstSetCrafted: bool,         // flipped once any per-rarity craftSet()
+                                 // succeeds; gates year picker + vintage
+                                 // shop visibility (§8a)
+  manualRips:      int,          // ripOne() count (not homie rips);
+                                 // unlocks typing mini-game at 100 (§8a)
   yearUnlocked:    { [setId]: bool },
                                  // years the player has bought packs of
                                  // (Set 30 always unlocked by definition)
@@ -508,7 +530,7 @@ Approximate. The economy was re-grounded around Set-only liquidation (§5), the 
 | 10–30 min   | $300 → $2k  | First Standard + Rare Sets land. List them; buy more packs. Hire first rip homie.   |
 | 30–90 min   | $2k → $10k  | Buy first Sorter ($1k). Speed L2-3. Hire craft homies on Standard + Rare rows.      |
 | 1.5–4 hrs   | $10k → $50k | 2–3 sorters. Crafting Epic + Legendary Sets. First non-foil Complete Set vault (50 CLOUT). First vintage shop pack click; Set N unlocks. |
-| 4–12 hrs    | $50k → $250k| Sorters maxing (~$91k each). Foil Standard / Foil Rare Sets. CLOUT spent on PAINT + LISTINGS branches. Multiple vintage years partially populated. |
+| 4–12 hrs    | $50k → $250k| Sorters maxing (~$91k each). Foil Standard / Foil Rare Sets. CLOUT spent on MARKING + LISTINGS branches. Multiple vintage years partially populated. |
 | 12+ hrs     | $250k+      | Foil Epic / Foil Legendary Sets. First Complete Foil Set vault (500 CLOUT, more for vintage). VINTAGE branch upgrades unlock Box Hunter for case-heavy rolls. Chasing the 60-variant CLOUT collection arc. |
 
 CLOUT progression isn't gated on cash — it's gated on the **once-per-(year × foil-variant)** redemption (§8b). The full game offers 60 vault claims; collecting all of them is the long-game prestige arc.
