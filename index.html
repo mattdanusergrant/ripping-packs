@@ -1557,19 +1557,21 @@ let CRAFT_HOMIE_TICK_MS     = def("CRAFT_HOMIE_TICK_MS", 5000);
 let CRAFT_HOMIE_DURATION_MS = def("CRAFT_HOMIE_DURATION_MS", 8 * 60 * 1000);
 const HOMIE_TICK_MS = 250;
 
-let SORTER_COST          = def("SORTER_COST", 500);
+let SORTER_COST          = def("SORTER_COST", 1000);
 let SORTER_MAX           = def("SORTER_MAX", 3);
-// Speed track — divides the base interval by level (L5 = 5× rate).
+// Speed track — interval = SORTER_BASE_MS / level. L1 = 1 card/s, each
+// upgrade adds 1 card/s (L2 = 2/s, L3 = 3/s, ... L5 = 5/s).
 let SORTER_UPGRADE_BASE  = def("SORTER_UPGRADE_BASE", 500);
-let SORTER_BASE_MS       = def("SORTER_BASE_MS", 2000); // L1: 1 card / 2s
-// Buffer track — independent, paid separately. Cheaper since capacity is
-// less critical than throughput; +250 slots per level (was +10).
+let SORTER_BASE_MS       = def("SORTER_BASE_MS", 1000); // L1: 1 card / 1s
+// Buffer track — paid separately. +100 slots per level: L1 = 500, L5 = 900.
 let SORTER_BUFFER_UPGRADE_BASE = def("SORTER_BUFFER_UPGRADE_BASE", 200);
-let SORTER_BUFFER_PER_LEVEL    = def("SORTER_BUFFER_PER_LEVEL", 250);
+let SORTER_BUFFER_PER_LEVEL    = def("SORTER_BUFFER_PER_LEVEL", 100);
 let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 500);
 let SORTER_LEVEL_MAX     = def("SORTER_LEVEL_MAX", 5);
 const SORTER_TICK_MS     = 250;
-function sorterInterval(level)  { return Math.max(250, sorterBaseMsEffective() / Math.max(1, level)); }
+// 100ms floor lets L5 hit the intended 5 cards/s (1000/5 = 200ms) and still
+// keeps a safety net if SORTER_BASE_MS is tuned absurdly low.
+function sorterInterval(level)  { return Math.max(100, sorterBaseMsEffective() / Math.max(1, level)); }
 function sortsPerSecond(level)  { return 1000 / sorterInterval(level); }
 function sorterCapacity(bufferLevel) { return SORTER_BASE_CAPACITY + (Math.max(1, bufferLevel) - 1) * SORTER_BUFFER_PER_LEVEL; }
 function sorterSpeedUpgradeCost(level)        { return SORTER_UPGRADE_BASE * level * level; }
