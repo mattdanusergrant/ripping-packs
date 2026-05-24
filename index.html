@@ -1627,7 +1627,9 @@ function syncVintageSlotCount() {
 
 function blankSetState({ starterBox = false } = {}) {
   return {
-    packSupply: starterBox ? BOX_SIZE : 0,
+    // Starter gift: 1 sealed box, no loose packs. First rip auto-cracks
+    // the box via maybeCrackBox() and seeds packSupply with BOX_SIZE.
+    packSupply: 0,
     boxesOwned: starterBox ? 1 : 0,
     unsorted:   { standard: 0, rare: 0, foilStandard: 0 },
     stock:      { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
