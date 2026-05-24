@@ -407,25 +407,26 @@
   }
   .year-select {
     display: block; width: 100%;
-    margin-bottom: 8px; padding: 6px 10px;
+    margin-bottom: 8px; padding: 10px 14px;
     background: #1c1c1c; color: #ddd;
     border: 1px solid #444; border-radius: 6px;
-    font-family: monospace; font-size: 0.8rem; letter-spacing: 0.5px;
+    font-family: monospace; font-size: 1.1rem; font-weight: bold;
+    letter-spacing: 1px;
     cursor: pointer;
     appearance: none; -webkit-appearance: none;
     /* Custom caret — gold chevron on the right edge. */
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='%23ffd84d'><path d='M0 0h12L6 8z'/></svg>");
     background-repeat: no-repeat;
-    background-position: right 10px center;
-    background-size: 10px 7px;
-    padding-right: 28px;
+    background-position: right 14px center;
+    background-size: 12px 8px;
+    padding-right: 36px;
   }
   .year-select:hover { background-color: #262626; border-color: #666; }
   .year-select:focus { outline: 2px solid var(--gold); outline-offset: -1px; }
   /* Active-year patina mirrored on the chrome itself. */
   .year-select.vintage    { color: #d4a55e; border-color: #5a4a2a; background-color: #1a140a; }
   .year-select.midcentury { color: #c8b88a; border-color: #4a4030; background-color: #1a1810; }
-  .year-select option { background: #1c1c1c; color: #ddd; }
+  .year-select option { background: #1c1c1c; color: #ddd; font-size: 0.95rem; font-weight: bold; }
   .year-select option:disabled { color: #555; }
   /* Switch-blocked: visible "locked" treatment without disabling. */
   .year-select.locked { opacity: 0.55; cursor: not-allowed; border-style: dashed; }
@@ -1275,7 +1276,7 @@
 </div>
 
 <section id="shop">
-  <h2 id="shop-title">SHOP · SET 30 · 2030</h2>
+  <h2 id="shop-title">OPENING</h2>
   <select id="year-picker" class="year-select" aria-label="Active set"></select>
   <div class="buy-buttons">
     <button class="buy-btn" id="buy-pack">
@@ -2443,7 +2444,6 @@ function renderHeader() {
   $("foils-pulled").textContent = totalFoilsOpened();
   const activeSet = state.activeSetId;
   const setLabel = `SET ${activeSet} · ${setYearLabel(activeSet)}`;
-  $("shop-title").textContent = `SHOP · ${setLabel}`;
   $("pack-set-label").textContent = setLabel;
   // Patina tier applied to the pack + vault grid so older years carry a
   // visible sepia treatment. We only mutate the active set's surfaces —
