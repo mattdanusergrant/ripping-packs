@@ -384,6 +384,41 @@
   .patina-vintage    { filter: sepia(0.55) hue-rotate(-12deg) saturate(0.85) brightness(0.95); }
   .patina-midcentury { filter: sepia(0.25) hue-rotate(-6deg)  saturate(0.92); }
 
+  #vintage-shop {
+    margin: 8px 0; padding: 8px 10px;
+    background: rgba(0,0,0,0.22); border-radius: 6px;
+  }
+  #vintage-shop h3 {
+    margin: 0 0 6px; font-size: 0.65rem; letter-spacing: 2px;
+    color: var(--muted); font-weight: bold;
+  }
+  .vintage-slots { display: flex; gap: 6px; flex-wrap: wrap; }
+  .vintage-pack {
+    flex: 1 1 0; min-width: 62px;
+    border: 1px solid #444; background: #1c1c1c; color: #ddd;
+    border-radius: 6px; padding: 6px 4px;
+    font-family: monospace; font-size: 0.65rem;
+    cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    text-align: center;
+    transition: transform 0.08s ease, background 0.08s ease, border-color 0.08s ease;
+  }
+  .vintage-pack:hover:not(.cooling):not(.unaffordable) {
+    background: #2a2a2a; border-color: #777; transform: translateY(-1px);
+  }
+  .vintage-pack .vp-pack { font-size: 1.1rem; line-height: 1; }
+  .vintage-pack .vp-set  { font-size: 0.85rem; font-weight: bold; letter-spacing: 0.5px; }
+  .vintage-pack .vp-year { color: var(--muted); font-size: 0.55rem; }
+  .vintage-pack .vp-cost { color: var(--gold); font-weight: bold; margin-top: 1px; }
+  .vintage-pack.unaffordable { opacity: 0.55; cursor: not-allowed; }
+  .vintage-pack.unaffordable .vp-cost { color: #ff7a3d; }
+  .vintage-pack.cooling { opacity: 0.42; cursor: wait; background: #131313; border-color: #2a2a2a; }
+  .vintage-pack.cooling .vp-pack, .vintage-pack.cooling .vp-set { color: var(--muted); }
+  .vintage-pack.vintage    { color: #d4a55e; border-color: #5a4a2a; background: #1a140a; }
+  .vintage-pack.vintage:hover:not(.cooling):not(.unaffordable) { background: #261c10; border-color: #8a6a3a; }
+  .vintage-pack.midcentury { color: #c8b88a; border-color: #4a4030; background: #1a1810; }
+  .vintage-pack.midcentury:hover:not(.cooling):not(.unaffordable) { background: #251f15; border-color: #6a5e40; }
+
   #vault-summary {
     display: flex; flex-wrap: wrap; gap: 4px;
     padding: 6px 8px; margin-bottom: 6px;
@@ -1136,6 +1171,10 @@
       <div class="save">save 23%</div>
     </button>
   </div>
+  <div id="vintage-shop">
+    <h3>VINTAGE PACKS</h3>
+    <div class="vintage-slots" id="vintage-slots"></div>
+  </div>
   <div id="set-progress"></div>
   <div id="pack-area">
     <div class="pack" id="pack">
@@ -1448,6 +1487,8 @@ const UPGRADE_NODES = [
   { id: "mkt1",   branch: "market",   label: "Quick Sales",      desc: "Listing cooldown -3s",cost: 20,  effect: { listingCooldownDelta: -3 } },
   { id: "mkt2",   branch: "market",   label: "Hot Demand",       desc: "NPC absorb +0.03/s",  cost: 80,  effect: { marketDecayDelta: 0.03 }, prereq: ["mkt1"] },
   { id: "mkt3",   branch: "market",   label: "Premium Sets",     desc: "Set craft mult +0.10",cost: 250, effect: { setCraftMultDelta: 0.1 }, prereq: ["mkt2"] },
+  { id: "mkt4",   branch: "market",   label: "Vintage Picker",   desc: "+1 vintage shop slot",cost: 150, effect: { vintageSlots: 1 }, prereq: ["mkt3"] },
+  { id: "mkt5",   branch: "market",   label: "Estate Sale",      desc: "+1 vintage slot, refresh -1min",cost: 400, effect: { vintageSlots: 1, vintageRefreshDelta: -60000 }, prereq: ["mkt4"] },
 ];
 const UPGRADE_BRANCHES = [
   { key: "paint",    label: "PAINT",    color: "#ff7eb3", subtracks: [
@@ -1496,6 +1537,8 @@ function purchaseNode(id) {
   state.cloutSpent = (state.cloutSpent || 0) + node.cost;
   if (!Array.isArray(state.unlockedNodes)) state.unlockedNodes = [];
   state.unlockedNodes.push(node.id);
+  // Upgrades may grant more vintage slots — materialize them immediately.
+  syncVintageSlotCount();
   renderAll();
   renderUpgrades();
   save();
@@ -1545,7 +1588,35 @@ const defaultState = () => ({
   completeSetCrafts: {},
   listings: [],          // [{uid, setId, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
+  // Vintage shop: 3 (upgradeable) slots, each holds a random past-year pack
+  // or a cooldown timestamp after purchase. Filled at boot.
+  vintageShop: { slots: blankVintageSlots() },
 });
+
+function blankVintageSlots() {
+  // Fresh-state seeding: hardcode 3 starter slots. Upgrade nodes grow the
+  // pool live via syncVintageSlotCount() once state is initialized; the
+  // design-panel-tunable VINTAGE_SLOTS_BASE is read from there. Boot order
+  // means we can't read VINTAGE_SLOTS_BASE here — defaultState runs before
+  // its `let` declaration is reached.
+  const out = [];
+  for (let i = 0; i < 3; i++) {
+    out.push({ year: rollVintageYear(), cooldownEndsAt: 0 });
+  }
+  return out;
+}
+
+// Add new slots if an upgrade node bumped the effective count past what's
+// currently stored. Newly-added slots fill immediately so the player can see
+// the upgrade work right away.
+function syncVintageSlotCount() {
+  if (!state.vintageShop) state.vintageShop = { slots: [] };
+  if (!Array.isArray(state.vintageShop.slots)) state.vintageShop.slots = [];
+  const want = vintageSlotCountEffective();
+  while (state.vintageShop.slots.length < want) {
+    state.vintageShop.slots.push({ year: rollVintageYear(), cooldownEndsAt: 0 });
+  }
+}
 
 function blankSetState({ starterBox = false } = {}) {
   return {
@@ -1666,6 +1737,9 @@ function load() {
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
+    if (!parsed.vintageShop || !Array.isArray(parsed.vintageShop.slots)) {
+      parsed.vintageShop = { slots: blankVintageSlots() };
+    }
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     if (!Array.isArray(parsed.sorters)) parsed.sorters = [];
@@ -1826,6 +1900,39 @@ function cloutScaleFor(setId) {
   return 1 + Math.max(0, CURRENT_SET_ID - s) * 0.07;
 }
 
+// ---- Vintage Shop -------------------------------------------------------
+// A small additive widget that surfaces 3 random past-year booster packs at
+// any time, refreshing on a per-slot cooldown. Lets the player chase vintage
+// cards without committing to a full workspace switch. Cards land in their
+// year's bundle exactly as if ripped via the year picker.
+let VINTAGE_SLOTS_BASE = def("VINTAGE_SLOTS_BASE", 3);
+let VINTAGE_REFRESH_MS = def("VINTAGE_REFRESH_MS", 5 * 60 * 1000); // 5 min
+function vintageSlotCountEffective() {
+  return VINTAGE_SLOTS_BASE + (eff().vintageSlots || 0);
+}
+function vintageRefreshMsEffective() {
+  return Math.max(15000, VINTAGE_REFRESH_MS + (eff().vintageRefreshDelta || 0));
+}
+// Weighted random past-year, weight = 1/age (age = 31 − setId). Set 29 is
+// ~18%, Set 25 ~6%, Set 1 ~1%. Current year (Set 30) is excluded — vintage
+// means past years only.
+function rollVintageYear() {
+  const choices = [];
+  let total = 0;
+  for (let s = 1; s < CURRENT_SET_ID; s++) {
+    const age = 31 - s;
+    const w = 1 / age;
+    choices.push({ s, w });
+    total += w;
+  }
+  let roll = Math.random() * total;
+  for (const c of choices) {
+    roll -= c.w;
+    if (roll <= 0) return c.s;
+  }
+  return choices[choices.length - 1].s;
+}
+
 // A year is available in the vintage shop if you've ever crafted a non-foil
 // Complete Set of the *next* year. Set 30 is always unlocked.
 function isSetUnlocked(setId) {
@@ -1886,6 +1993,101 @@ function renderVaultSummary() {
   } else {
     wrap.innerHTML = stamps.join("");
   }
+}
+
+function buyVintagePack(slotIdx) {
+  const slot = state.vintageShop?.slots?.[slotIdx];
+  if (!slot || !slot.year) return;
+  const year = slot.year;
+  const cost = packCost(year);
+  if (state.coins < cost) {
+    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that Set ${year} vintage pack.`;
+    return;
+  }
+  const watching = year === state.activeSetId;
+  const ripped = withActiveSet(year, () => {
+    if (unsortedTotal() >= UNSORTED_CAPACITY) {
+      $("hint").textContent = `Set ${year} unsorted pile is full (${UNSORTED_CAPACITY}) — switch to Set ${year} and sort some first.`;
+      return false;
+    }
+    state.coins -= cost;
+    state.packsOpened += 1;
+    const pulls = rollPack();
+    const completions = [];
+    let newCount = 0;
+    pulls.forEach(card => {
+      const r = addPull(card);
+      if (r.isNew) newCount += 1;
+      if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
+    });
+    if (watching) {
+      spawnSandFromPulls(pulls);
+      spawnParticles(pulls);
+      showHits(pulls, { newCount, completions });
+      $("hint").textContent = `Cracked a vintage Set ${year} pack — ${newCount} new${pulls.filter(p=>p.foil).length ? `, ${pulls.filter(p=>p.foil).length} foil ✨` : ""}.`;
+    } else {
+      const foilCount = pulls.filter(p => p.foil).length;
+      const tail = foilCount ? `  ✨ ${foilCount} foil` : "";
+      $("hint").textContent = `🃏 Vintage Set ${year} pack ripped — +${newCount} new card${newCount !== 1 ? "s" : ""} to Set ${year} vault.${tail}`;
+    }
+    return true;
+  });
+  if (!ripped) return;
+  state.vintageShop.slots[slotIdx] = { year: null, cooldownEndsAt: Date.now() + vintageRefreshMsEffective() };
+  renderAll();
+  save();
+}
+
+function tickVintageShop() {
+  if (!state.vintageShop || !Array.isArray(state.vintageShop.slots)) return;
+  const now = Date.now();
+  let changed = false;
+  state.vintageShop.slots.forEach((slot, i) => {
+    if (!slot || slot.year != null) return;
+    if (now >= (slot.cooldownEndsAt || 0)) {
+      state.vintageShop.slots[i] = { year: rollVintageYear(), cooldownEndsAt: 0 };
+      changed = true;
+    }
+  });
+  if (changed) { renderVintageShop(); save(); }
+  // Always re-render so cooldown countdowns tick down each second.
+  else if (state.vintageShop.slots.some(s => s && s.year == null)) renderVintageShop();
+}
+
+function renderVintageShop() {
+  const wrap = $("vintage-slots");
+  if (!wrap) return;
+  syncVintageSlotCount();
+  const slots = state.vintageShop.slots;
+  const now = Date.now();
+  const tiles = slots.map((slot, i) => {
+    if (slot && slot.year != null) {
+      const yr = slot.year;
+      const cost = packCost(yr);
+      const tier = patinaTierFor(yr);
+      const tierCls = tier ? ` ${tier}` : "";
+      const unaffordable = state.coins < cost;
+      const cls = "vintage-pack" + tierCls + (unaffordable ? " unaffordable" : "");
+      const title = `Set ${yr} (${setYearLabel(yr)}) booster · ${usd(cost)}\nCards land in Set ${yr}'s vault. Click to crack.`;
+      return `<button type="button" class="${cls}" data-vintage-slot="${i}" title="${title}">`
+           + `<span class="vp-pack">🎴</span>`
+           + `<span class="vp-set">S${yr}</span>`
+           + `<span class="vp-year">'${String(setYearLabel(yr)).slice(2)}</span>`
+           + `<span class="vp-cost">${usd(cost)}</span>`
+           + `</button>`;
+    } else {
+      const cd = (slot && slot.cooldownEndsAt) || 0;
+      const ms = Math.max(0, cd - now);
+      const label = ms > 60000 ? `${Math.ceil(ms/60000)}m` : `${Math.ceil(ms/1000)}s`;
+      return `<button type="button" class="vintage-pack cooling" disabled data-vintage-slot="${i}" title="Restocking in ${label}">`
+           + `<span class="vp-pack">⏳</span>`
+           + `<span class="vp-set">—</span>`
+           + `<span class="vp-year">RESTOCK</span>`
+           + `<span class="vp-cost">${label}</span>`
+           + `</button>`;
+    }
+  });
+  wrap.innerHTML = tiles.join("");
 }
 
 function renderYearPicker() {
@@ -3943,7 +4145,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultSummary(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVaultSummary(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
@@ -4140,6 +4342,12 @@ $("vault-summary").addEventListener("click", (e) => {
   const stamp = e.target.closest(".vault-stamp");
   if (stamp) switchToSet(parseInt(stamp.dataset.setId, 10));
 });
+$("vintage-slots").addEventListener("click", (e) => {
+  const tile = e.target.closest(".vintage-pack");
+  if (!tile || tile.disabled) return;
+  const idx = parseInt(tile.dataset.vintageSlot, 10);
+  if (Number.isFinite(idx)) buyVintagePack(idx);
+});
 // Collection cells are display-only now — listing is exclusively done via
 // the Set-craft pipeline. No click handler on #vault-grid.
 $("listings-panel").addEventListener("click", (e) => {
@@ -4287,6 +4495,8 @@ setInterval(resolveListings, LISTING_TICK_MS);
 setInterval(() => {
   if (Array.isArray(state.listings) && state.listings.length > 0) renderListings();
 }, 1000);
+// Vintage shop tick — refills expired slots + repaints cooldown countdowns.
+setInterval(tickVintageShop, 1000);
 resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", () => {
