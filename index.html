@@ -3478,9 +3478,14 @@ function runChainCrit(startCol, startRow, onDone) {
   if (seedKey !== "standard") detonators.push({ col: startCol, row: startRow, key: seedKey });
   applyBlast(startCol, startRow, CLICK_AOE_OFFSETS, detonators, refs);
   startSandAnim();
+  // Mid-chain re-renders intentionally skip renderVaultGrid: rebuilding
+  // every collection cell every 90ms tears down in-flight .flash / .flash-
+  // fresh animations and restarts them on the new DOM, producing rapid
+  // visible stutter on collection highlights. The terminal renderAll() in
+  // the chain's onDone callback drains the accumulated flashQueue in one
+  // go after all waves settle.
   renderHeader();
   renderVault();
-  renderVaultGrid();
   renderSetProgress();
   renderSandPile();
 
@@ -3493,7 +3498,6 @@ function runChainCrit(startCol, startRow, onDone) {
     startSandAnim();
     renderHeader();
     renderVault();
-    renderVaultGrid();
     renderSetProgress();
     renderSandPile();
     detonators = next;
@@ -3563,14 +3567,16 @@ function runChainCritFromMarks(seedCells, onDone) {
   chainBusy = true;
   const finish = (n) => { chainBusy = false; onDone(n); };
   startSandAnim();
-  renderHeader(); renderVault(); renderVaultGrid(); renderSetProgress(); renderSandPile();
+  // Mid-chain: skip renderVaultGrid (see runChainCrit comment) — would
+  // restart the .flash animations on every wave.
+  renderHeader(); renderVault(); renderSetProgress(); renderSandPile();
   let queue = detonators;
   function step() {
     if (queue.length === 0) { finish(refs.total); return; }
     const next = [];
     queue.forEach(d => applyBlast(d.col, d.row, explosionOffsetsForKey(d.key), next, refs));
     startSandAnim();
-    renderHeader(); renderVault(); renderVaultGrid(); renderSetProgress(); renderSandPile();
+    renderHeader(); renderVault(); renderSetProgress(); renderSandPile();
     queue = next;
     setTimeout(step, CHAIN_STEP_MS);
   }
