@@ -375,6 +375,8 @@
   .year-select.midcentury { color: #c8b88a; border-color: #4a4030; background-color: #1a1810; }
   .year-select option { background: #1c1c1c; color: #ddd; }
   .year-select option:disabled { color: #555; }
+  /* Switch-blocked: visible "locked" treatment without disabling. */
+  .year-select.locked { opacity: 0.55; cursor: not-allowed; border-style: dashed; }
 
   /* Patina filters layered onto the active workspace when viewing older
      years. Sepia is graded — heavier for pre-2010 sets, lighter mid-tier. */
@@ -1580,9 +1582,12 @@ const defaultState = () => ({
   clout: 0,              // CLOUT balance — spent on upgrade nodes
   cloutSpent: 0,         // lifetime CLOUT spent
   unlockedNodes: [],     // ids of purchased upgrade nodes
-  // Lifetime non-foil Complete Set crafts per setId. Crafting a Set N
-  // Complete Set unlocks Set N-1 in the vintage shop.
+  // Lifetime non-foil Complete Set crafts per setId — kept as a stat
+  // (used by the vault summary, not the unlock gate anymore).
   completeSetCrafts: {},
+  // Which years have been unlocked in the year picker. A year unlocks the
+  // moment you buy a booster pack of it (via the vintage shop).
+  yearUnlocked: {},
   listings: [],          // [{uid, setId, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
   // Vintage shop: 3 (upgradeable) slots, each holds a random past-year pack
@@ -1734,6 +1739,25 @@ function load() {
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
+    if (!parsed.yearUnlocked || typeof parsed.yearUnlocked !== "object") {
+      parsed.yearUnlocked = {};
+      // Migration: derive unlock state from any prior progress so existing
+      // saves don't lose access. Legacy rule was "crafted Set N → unlocked
+      // Set N-1"; grandfather those. Also unlock any year with prior pack
+      // activity (opened > 0), since the player must have already been in
+      // that year by some means.
+      Object.entries(parsed.completeSetCrafts || {}).forEach(([k, n]) => {
+        const sid = parseInt(k, 10);
+        if (Number.isFinite(sid) && n > 0 && sid - 1 >= 1) parsed.yearUnlocked[sid - 1] = true;
+      });
+      Object.entries(parsed.sets || {}).forEach(([k, bundle]) => {
+        const sid = parseInt(k, 10);
+        if (!Number.isFinite(sid) || sid === CURRENT_SET_ID) return;
+        const totalOpened = Object.values(bundle.opened || {}).reduce((a, b) => a + b, 0) +
+                            Object.values(bundle.openedFoil || {}).reduce((a, b) => a + b, 0);
+        if (totalOpened > 0) parsed.yearUnlocked[sid] = true;
+      });
+    }
     if (!parsed.vintageShop || !Array.isArray(parsed.vintageShop.slots)) {
       parsed.vintageShop = { slots: blankVintageSlots() };
     }
@@ -1930,12 +1954,35 @@ function rollVintageYear() {
   return choices[choices.length - 1].s;
 }
 
-// A year is available in the vintage shop if you've ever crafted a non-foil
-// Complete Set of the *next* year. Set 30 is always unlocked.
+// A year is available in the picker once you've ever bought a booster pack
+// of that year (via the vintage shop). Set 30 is always unlocked — it's
+// the current year and the anchor. completeSetCrafts is no longer the
+// gate; it stays as a stat for crafting history.
 function isSetUnlocked(setId) {
   if (setId === CURRENT_SET_ID) return true;
   if (setId < 1 || setId > CURRENT_SET_ID) return false;
-  return ((state.completeSetCrafts || {})[setId + 1] || 0) > 0;
+  return !!(state.yearUnlocked && state.yearUnlocked[setId]);
+}
+
+// Block year switching while there's pending work the player would lose
+// track of by switching — active homies, sorters mid-job, or any bulk in
+// the active year's pile. Returns a human-readable reason or null when OK.
+function yearSwitchBlockReason() {
+  const homies = state.homies || [];
+  if (homies.length > 0) {
+    return `Can't switch years — ${homies.length} homie${homies.length > 1 ? "s" : ""} still ripping. Wait for them to finish.`;
+  }
+  const busySorters = (state.sorters || []).filter(s =>
+    sorterInputTotal(s) > 0 || sorterOutputTotal(s) > 0
+  );
+  if (busySorters.length > 0) {
+    return `Can't switch years — ${busySorters.length} sorter${busySorters.length > 1 ? "s" : ""} still loaded. Collect them first.`;
+  }
+  const bulk = unsortedTotal();
+  if (bulk > 0) {
+    return `Can't switch years — ${bulk} card${bulk !== 1 ? "s" : ""} in the pile. Sort them first.`;
+  }
+  return null;
 }
 function setYearLabel(setId) { return 2000 + setId; }
 // Visual age tier — drives sepia tint on listings, vault grid, year chips
@@ -2001,38 +2048,19 @@ function buyVintagePack(slotIdx) {
     $("hint").textContent = `Need ${usd(cost - state.coins)} more for that Set ${year} vintage pack.`;
     return;
   }
-  const watching = year === state.activeSetId;
-  const ripped = withActiveSet(year, () => {
-    if (unsortedTotal() >= UNSORTED_CAPACITY) {
-      $("hint").textContent = `Set ${year} unsorted pile is full (${UNSORTED_CAPACITY}) — switch to Set ${year} and sort some first.`;
-      return false;
-    }
-    state.coins -= cost;
-    state.packsOpened += 1;
-    const pulls = rollPack();
-    const completions = [];
-    let newCount = 0;
-    pulls.forEach(card => {
-      const r = addPull(card);
-      if (r.isNew) newCount += 1;
-      if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
-    });
-    if (watching) {
-      spawnSandFromPulls(pulls);
-      spawnParticles(pulls);
-      showHits(pulls, { newCount, completions });
-      $("hint").textContent = `Cracked a vintage Set ${year} pack — ${newCount} new${pulls.filter(p=>p.foil).length ? `, ${pulls.filter(p=>p.foil).length} foil ✨` : ""}.`;
-    } else {
-      const foilCount = pulls.filter(p => p.foil).length;
-      const tail = foilCount ? `  ✨ ${foilCount} foil` : "";
-      $("hint").textContent = `🃏 Vintage Set ${year} pack ripped — +${newCount} new card${newCount !== 1 ? "s" : ""} to Set ${year} vault.${tail}`;
-    }
-    return true;
-  });
-  if (!ripped) return;
+  state.coins -= cost;
+  // Pack lands in that year's supply, unopened. The year unlocks the
+  // moment of purchase — but the player still has to switch to it to rip.
+  const bundle = setStateFor(year);
+  bundle.packSupply = (bundle.packSupply || 0) + 1;
+  if (!state.yearUnlocked) state.yearUnlocked = {};
+  const newlyUnlocked = !state.yearUnlocked[year];
+  state.yearUnlocked[year] = true;
   state.vintageShop.slots[slotIdx] = { year: null, cooldownEndsAt: Date.now() + vintageRefreshMsEffective() };
   renderAll();
   save();
+  const unlockTag = newlyUnlocked ? ` 🔓 Set ${year} unlocked in the year picker.` : "";
+  $("hint").textContent = `Bought a Set ${year} (${setYearLabel(year)}) booster — +1 to Set ${year} supply.${unlockTag} Switch year to rip.`;
 }
 
 function tickVintageShop() {
@@ -2108,6 +2136,12 @@ function renderYearPicker() {
   sel.classList.remove("vintage", "midcentury");
   const tier = patinaTierFor(state.activeSetId);
   if (tier) sel.classList.add(tier);
+  // Reflect switch-blocked state: busy class + tooltip. The select stays
+  // technically enabled so the player can see what's unlocked, but any
+  // change attempt is refused in switchToSet.
+  const block = yearSwitchBlockReason();
+  sel.classList.toggle("locked", !!block);
+  sel.title = block || "Switch active set";
 }
 
 function renderHeader() {
@@ -2525,22 +2559,15 @@ function craftCompleteSet(key) {
   });
   if (!cur().invById[key]) cur().invById[key] = {};
   cur().invById[key][1] = (cur().invById[key][1] || 0) + 1;
-  let unlockedNext = null;
+  // Track lifetime non-foil Complete Set crafts as a stat (used by vault
+  // summary). Unlock gating moved to vintage-pack purchase.
   if (!def.foil) {
-    // Non-foil Complete Set crafts unlock the prior year in the vintage shop.
     if (!state.completeSetCrafts) state.completeSetCrafts = {};
-    const prior = state.completeSetCrafts[state.activeSetId] || 0;
-    state.completeSetCrafts[state.activeSetId] = prior + 1;
-    const nextSetId = state.activeSetId - 1;
-    if (prior === 0 && nextSetId >= 1) unlockedNext = nextSetId;
+    state.completeSetCrafts[state.activeSetId] = (state.completeSetCrafts[state.activeSetId] || 0) + 1;
   }
   renderAll(); save();
   const vaultVal = Math.round(def.clout * cloutScaleFor(state.activeSetId));
-  if (unlockedNext != null) {
-    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. +${vaultVal} CLOUT vault value. 🔓 Set ${unlockedNext} (${setYearLabel(unlockedNext)}) unlocked in the vintage shop.`;
-  } else {
-    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
-  }
+  $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
 }
 
 function vaultCompleteSet(key) {
@@ -4320,14 +4347,27 @@ $("buy-box").addEventListener("click",  () => buyBoxes(1, boxCost(),  "1 sealed 
 $("buy-case").addEventListener("click", () => buyBoxes(Math.max(1, Math.round(CASE_SIZE / BOX_SIZE)), caseCost(), `a case (${Math.round(CASE_SIZE / BOX_SIZE)} sealed boxes)`));
 function switchToSet(sid) {
   if (!Number.isFinite(sid)) return;
-  if (sid === state.activeSetId) return;
+  if (sid === state.activeSetId) { syncYearPickerSelection(); return; }
   if (!isSetUnlocked(sid)) {
-    $("hint").textContent = `Set ${sid} (${setYearLabel(sid)}) is locked — craft a Set ${sid + 1} Complete Set first.`;
+    $("hint").textContent = `Set ${sid} (${setYearLabel(sid)}) is locked — buy a Set ${sid} vintage pack first.`;
+    syncYearPickerSelection();
+    return;
+  }
+  const block = yearSwitchBlockReason();
+  if (block) {
+    $("hint").textContent = block;
+    syncYearPickerSelection();
     return;
   }
   state.activeSetId = sid;
   renderAll(); save();
   $("hint").textContent = `Now viewing Set ${sid} (${setYearLabel(sid)}). Packs ${usd(packCost())} each.`;
+}
+// Snap the dropdown back to the active set — used after a refused switch so
+// the visible selection mirrors the actual state.
+function syncYearPickerSelection() {
+  const sel = $("year-picker");
+  if (sel) sel.value = String(state.activeSetId);
 }
 $("year-picker").addEventListener("change", (e) => {
   const sid = parseInt(e.target.value, 10);
