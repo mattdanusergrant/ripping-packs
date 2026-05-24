@@ -1272,8 +1272,8 @@ function def(key, fallback) {
 // ---- Sorting -------------------------------------------------------------
 // Sorting is purely positional: the player clicks the sand pile, the nearest
 // grain detonates plus its 4 orthogonal neighbors, then non-standard grains
-// caught in the blast chain-explode (rare = 4-ortho, foil = 8-cell "+" at
-// reach 2).
+// caught in the blast chain-explode (rare = 5-cell "+" arm in each
+// cardinal direction, foil = 10-cell "+" arm in each cardinal direction).
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
@@ -3208,17 +3208,24 @@ function spawnCritPop(col, row, key) {
 // (4 orthos), regardless of seed type. Each non-standard destroyed then
 // detonates with this key-specific pattern next wave.
 const CLICK_AOE_OFFSETS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// Build a "+" arm of length `n` — every cell from 1..n along each of the
+// four cardinal axes (so 4n offsets total). Cached per length so we don't
+// rebuild the same array on every detonation.
+const _armCache = new Map();
+function armOffsets(n) {
+  if (_armCache.has(n)) return _armCache.get(n);
+  const out = [];
+  for (let i = 1; i <= n; i++) out.push([i, 0], [-i, 0], [0, i], [0, -i]);
+  _armCache.set(n, out);
+  return out;
+}
+const RARE_BLAST_REACH = 5;
+const FOIL_BLAST_REACH = 10;
 function explosionOffsetsForKey(key) {
-  if (bulkIsFoil(key)) {
-    // Foils throw a long "+" — 2 cells along each cardinal axis (8 cells).
-    return [
-      [1, 0], [-1, 0], [0, 1], [0, -1],
-      [2, 0], [-2, 0], [0, 2], [0, -2],
-    ];
-  }
-  // Rares (and standards, though standards never become detonators) use the
-  // standard 4-ortho blast.
-  return [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  // Foils throw a 10-cell "+" — long enough to chain across most piles.
+  // Rares throw a 5-cell "+". Both follow a clean ray shape (no diagonals).
+  return bulkIsFoil(key) ? armOffsets(FOIL_BLAST_REACH) : armOffsets(RARE_BLAST_REACH);
 }
 
 function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
@@ -3243,7 +3250,8 @@ function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
 // Wave-based chain detonation seeded from the player's click.
 // Wave 0:  destroy the seed + apply the click AoE (4 orthos around it).
 // Wave N+: every non-standard cell destroyed in the previous wave detonates
-//          with its own key's blast pattern (rare: 4 orthos, foil: 8-cell +).
+//          with its own key's "+" arm — rare reaches 5 cells in each
+//          cardinal direction, foil reaches 10.
 // Standards in any blast are consumed but don't propagate.
 function runChainCrit(startCol, startRow, onDone) {
   const seedKey = cur().pile[startCol] && cur().pile[startCol][startRow];
