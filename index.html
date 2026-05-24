@@ -2433,13 +2433,10 @@ function renderYearPicker() {
   for (let s = CURRENT_SET_ID; s >= 1; s -= 1) {
     const year = setYearLabel(s);
     const unlocked = isSetUnlocked(s);
-    const tier = patinaTierFor(s);
-    const tierTag = tier === "vintage" ? " — vintage" : tier === "midcentury" ? " — midcentury" : "";
-    const currentTag = s === CURRENT_SET_ID ? " — current year" : "";
     const lockTag = unlocked ? "" : "🔒 ";
     const sel_attr = (s === state.activeSetId) ? " selected" : "";
     const dis_attr = unlocked ? "" : " disabled";
-    opts.push(`<option value="${s}"${sel_attr}${dis_attr}>${lockTag}Set ${s} · ${year}${currentTag}${tierTag}</option>`);
+    opts.push(`<option value="${s}"${sel_attr}${dis_attr}>${lockTag}The ${year} Set</option>`);
   }
   sel.innerHTML = opts.join("");
   // Mirror the active year's patina tier on the <select> itself so the
