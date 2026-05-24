@@ -237,7 +237,7 @@ Sorter speed + buffer upgrades are paid in cash from each sorter card's `⬆ $X`
 
 The VINTAGE branch was previously called MARKET — it's been fully retargeted at the Vintage Packs shop. Earlier MARKET-branch effects (listing cooldown delta, NPC absorb delta, Set craft multiplier delta) are no-op delta hooks that still exist in code but no node carries them anymore.
 
-**CLOUT is a spendable balance**, not a running total. The header gold chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. (The hero-chip colors swapped recently: CASH moved onto a dollar-bill green `--cash: #85bb65`, CLOUT inherited the gold that CASH used to wear.) Click any **available** node to spend CLOUT and apply the bonus live — effective caps recompute on the spot.
+**CLOUT is a spendable balance**, not a running total. The header violet chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. The resource colors are now: **CASH** = dollar-bill green (`--cash: #85bb65`), applied to the hero chip and every USD label across the UI (pack/box/case prices, vintage prices, sorter shop, sell-prices, LIST buttons); **CLOUT** = violet (`--clout: #b35dff`), applied to the hero chip, the small ⬆ upgrade triggers, the upgrades modal title/balance/border/cost lines, and the VAULT button. Gold (`--gold`) remains the generic UI accent for non-money chrome: typing letters, hint text, sorter chrome, focus rings, completed-milestone markers, etc.
 
 Modal UI: three columns (one per branch), each node card shows its name, effect, cost, and status — **owned** (gold border), **available** (pink pulse, clickable), **unaffordable** (dim pink), **locked** (dashed, prereqs unmet).
 

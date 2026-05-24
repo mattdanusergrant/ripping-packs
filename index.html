@@ -18,6 +18,7 @@
     --muted: #8a82b8;
     --gold: #f5c542;
     --cash: #85bb65;  /* dollar-bill green */
+    --clout: #b35dff; /* CLOUT-only violet — distinct from foil pink, mythic orange, and the bg's dark purple */
     --common: #b8b8c8;
     --uncommon: #5ad06a;
     --rare: #5aa8ff;
@@ -48,7 +49,7 @@
   .hero-chip .hero-label { font-size: 0.55rem; letter-spacing: 2px; opacity: 0.75; }
   .hero-chip .hero-value { font-size: 1.25rem; font-weight: bold; letter-spacing: 0.5px; }
   .hero-chip.cash  { border-color: var(--cash);   background: rgba(133,187,101,0.12); color: var(--cash); }
-  .hero-chip.clout { border-color: var(--gold);   background: rgba(245,197,66,0.10); color: var(--gold); }
+  .hero-chip.clout { border-color: var(--clout);  background: rgba(179,93,255,0.12); color: var(--clout); }
 
   /* Cash gain celebration: a quick bump on the value + a floating +$N
      popup spawned in JS at the bottom edge of the cash chip. */
@@ -81,15 +82,15 @@
     animation: clout-pop 0.9s ease-out;
   }
   @keyframes clout-pop {
-    0%   { transform: scale(1);   box-shadow: 0 0 0 rgba(255,126,179,0); }
+    0%   { transform: scale(1);   box-shadow: 0 0 0 rgba(179,93,255,0); }
     30%  { transform: scale(1.10); box-shadow: 0 0 16px currentColor; }
-    100% { transform: scale(1);   box-shadow: 0 0 0 rgba(255,126,179,0); }
+    100% { transform: scale(1);   box-shadow: 0 0 0 rgba(179,93,255,0); }
   }
-  /* Small per-feature upgrade trigger — pink to match CLOUT. */
+  /* Small per-feature upgrade trigger — violet to match CLOUT. */
   .upgrade-trigger {
     background: transparent;
-    border: 1px solid rgba(255,126,179,0.55);
-    color: #ff7eb3;
+    border: 1px solid rgba(179,93,255,0.55);
+    color: var(--clout);
     border-radius: 10px;
     font: bold 0.62rem inherit;
     padding: 2px 8px;
@@ -97,9 +98,9 @@
     cursor: pointer;
     transition: all 0.12s;
   }
-  .upgrade-trigger:hover { background: rgba(255,126,179,0.15); }
+  .upgrade-trigger:hover { background: rgba(179,93,255,0.15); }
   .upgrade-trigger.ready {
-    box-shadow: 0 0 8px rgba(255,126,179,0.6);
+    box-shadow: 0 0 8px rgba(179,93,255,0.6);
     animation: clout-pop 1.8s ease-in-out infinite;
   }
 
@@ -119,7 +120,7 @@
   .buy-btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .buy-btn .lbl { font-weight: bold; font-size: 0.95rem; letter-spacing: 1px; }
   .buy-btn .qty { color: var(--muted); font-size: 0.7rem; }
-  .buy-btn .cost { color: var(--gold); font-size: 0.9rem; margin-top: 4px; font-weight: bold; }
+  .buy-btn .cost { color: var(--cash); font-size: 0.9rem; margin-top: 4px; font-weight: bold; }
   .buy-btn .save { color: var(--uncommon); font-size: 0.65rem; }
 
   #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 0; position: relative; }
@@ -643,7 +644,7 @@
   }
   .vintage-pack .vp-pack { font-size: 1.3rem; line-height: 1; }
   .vintage-pack .vp-set  { font-size: 0.95rem; font-weight: bold; letter-spacing: 0.5px; }
-  .vintage-pack .vp-cost { color: var(--gold); font-weight: bold; font-size: 0.85rem; margin-top: 1px; }
+  .vintage-pack .vp-cost { color: var(--cash); font-weight: bold; font-size: 0.85rem; margin-top: 1px; }
   .vintage-pack.unaffordable { opacity: 0.55; cursor: not-allowed; }
   .vintage-pack.unaffordable .vp-cost { color: #ff7a3d; }
   .vintage-pack.cooling { opacity: 0.42; cursor: wait; background: #131313; border-color: #2a2a2a; }
@@ -753,7 +754,7 @@
   .sorter-shop-btn:hover:not(:disabled) { background: #2e2752; border-color: var(--gold); }
   .sorter-shop-btn:active:not(:disabled) { transform: translateY(1px); }
   .sorter-shop-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .sorter-shop-btn .sorter-shop-cost { color: var(--gold); margin-left: 6px; }
+  .sorter-shop-btn .sorter-shop-cost { color: var(--cash); margin-left: 6px; }
 
   /* Sorters modal — reuses the upgrades-modal chrome but the body is a
      vertical list of sorter cards, not a 4-column upgrade grid. */
@@ -768,7 +769,7 @@
   }
   .sorter-buy-modal-btn:hover:not(:disabled) { background: #2e2752; border-color: var(--gold); }
   .sorter-buy-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .sorter-buy-modal-btn .cost { color: var(--gold); margin-left: 4px; }
+  .sorter-buy-modal-btn .cost { color: var(--cash); margin-left: 4px; }
 
   #sand-canvas {
     /* Fixed 500×260: 50 cols × (25 grain rows + 1 click-buffer row) of 10×10
@@ -978,7 +979,7 @@
   .counts b { color: var(--ink); font-size: 0.9rem; }
   .counts .foil-line b { color: #fff; }
   .counts .foil-line { background: rgba(255,255,255,0.04); padding: 2px 6px; border-radius: 4px; }
-  .counts .sell-price { font-size: 0.65rem; color: var(--gold); }
+  .counts .sell-price { font-size: 0.65rem; color: var(--cash); }
   .set-actions {
     display: flex; gap: 6px; align-items: stretch;
     margin-top: 4px;
@@ -1052,15 +1053,15 @@
   .set-craft-btn:not(:disabled):hover { background: var(--gold); color: #111; }
   .set-list-btn:not(:disabled) { color: var(--ink); border-color: rgba(255,255,255,0.45); }
   .set-list-btn:not(:disabled):hover { background: rgba(255,255,255,0.06); }
-  .set-list-btn b { color: var(--gold); }
-  /* Vault button = magenta accent so it visually separates from the gold
+  .set-list-btn b { color: var(--cash); }
+  /* Vault button = CLOUT violet so it visually separates from the green
      LIST action; it's the "trade money for XP" alternative. */
   .set-vault-btn:not(:disabled) {
-    color: #ff7eb3; border-color: #ff7eb3;
+    color: var(--clout); border-color: var(--clout);
     font-weight: bold;
-    box-shadow: 0 0 6px rgba(255,126,179,0.3);
+    box-shadow: 0 0 6px rgba(179,93,255,0.3);
   }
-  .set-vault-btn:not(:disabled):hover { background: rgba(255,126,179,0.18); color: #fff; }
+  .set-vault-btn:not(:disabled):hover { background: rgba(179,93,255,0.18); color: #fff; }
   /* Once-claimed CLOUT — the button is disabled but tinted gold to read as
      "you've completed this milestone" rather than "you don't have one yet". */
   .set-vault-btn.redeemed {
@@ -1118,7 +1119,7 @@
   .upgrades-panel {
     position: relative;
     background: var(--panel);
-    border: 1.5px solid rgba(255,126,179,0.45);
+    border: 1.5px solid rgba(179,93,255,0.45);
     border-radius: 14px;
     padding: 0;
     width: min(960px, 92vw);
@@ -1133,21 +1134,21 @@
   }
   .upgrades-header h2 {
     margin: 0; flex: 1;
-    letter-spacing: 3px; font-size: 1.05rem; color: #ff7eb3;
+    letter-spacing: 3px; font-size: 1.05rem; color: var(--clout);
   }
   .upgrades-balance {
-    background: rgba(255,126,179,0.14);
-    border: 1px solid rgba(255,126,179,0.6);
+    background: rgba(179,93,255,0.14);
+    border: 1px solid rgba(179,93,255,0.6);
     border-radius: 14px;
     padding: 4px 14px;
     font-size: 0.92rem;
   }
-  .upgrades-balance b { color: #ff7eb3; }
+  .upgrades-balance b { color: var(--clout); }
   .upgrades-close {
     background: transparent; color: var(--ink); border: 0;
     font-size: 1.4rem; cursor: pointer; padding: 0 6px;
   }
-  .upgrades-close:hover { color: #ff7eb3; }
+  .upgrades-close:hover { color: var(--clout); }
   .upgrades-body {
     padding: 18px 22px;
     overflow-y: auto;
@@ -1180,31 +1181,31 @@
   }
   .upgrade-node .un-label   { font-weight: bold; font-size: 0.82rem; letter-spacing: 0.5px; color: var(--ink); }
   .upgrade-node .un-desc    { font-size: 0.7rem; color: var(--muted); }
-  .upgrade-node .un-cost    { font-size: 0.72rem; font-weight: bold; color: #ff7eb3; margin-top: 2px; }
+  .upgrade-node .un-cost    { font-size: 0.72rem; font-weight: bold; color: var(--clout); margin-top: 2px; }
   .upgrade-node.owned       { background: rgba(245,197,66,0.10); border-color: var(--gold); }
   .upgrade-node.owned .un-cost { color: var(--gold); }
   .upgrade-node.owned .un-cost::before { content: "✓ UNLOCKED"; }
   .upgrade-node.owned .un-cost-text { display: none; }
   .upgrade-node.available {
-    border-color: #ff7eb3;
-    box-shadow: 0 0 10px rgba(255,126,179,0.45);
+    border-color: var(--clout);
+    box-shadow: 0 0 10px rgba(179,93,255,0.45);
     cursor: pointer;
     animation: upgr-pulse 1.6s ease-in-out infinite;
   }
-  .upgrade-node.available:hover { background: rgba(255,126,179,0.16); }
+  .upgrade-node.available:hover { background: rgba(179,93,255,0.16); }
   .upgrade-node.unaffordable {
-    border-color: rgba(255,126,179,0.25);
+    border-color: rgba(179,93,255,0.25);
     opacity: 0.7;
   }
-  .upgrade-node.unaffordable .un-cost { color: rgba(255,126,179,0.7); }
+  .upgrade-node.unaffordable .un-cost { color: rgba(179,93,255,0.7); }
   .upgrade-node.locked {
     opacity: 0.4;
     border-style: dashed;
   }
   .upgrade-node.locked .un-cost::before { content: "🔒 "; }
   @keyframes upgr-pulse {
-    0%, 100% { box-shadow: 0 0 6px rgba(255,126,179,0.35); }
-    50%      { box-shadow: 0 0 14px rgba(255,126,179,0.8); }
+    0%, 100% { box-shadow: 0 0 6px rgba(179,93,255,0.35); }
+    50%      { box-shadow: 0 0 14px rgba(179,93,255,0.8); }
   }
   @media (max-width: 900px) {
     .upgrades-body { grid-template-columns: repeat(2, 1fr); }
@@ -4234,7 +4235,7 @@ function renderUpgrades() {
   if (titleEl) {
     const branch = _openUpgradesBranch ? UPGRADE_BRANCHES.find(b => b.key === _openUpgradesBranch) : null;
     titleEl.textContent = branch ? `${branch.label} UPGRADES` : "UPGRADES";
-    titleEl.style.color = branch ? branch.color : "#ff7eb3";
+    titleEl.style.color = branch ? branch.color : "var(--clout)";
   }
   body.innerHTML = "";
   const branches = _openUpgradesBranch
