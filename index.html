@@ -1239,7 +1239,6 @@
     </div>
     <div class="design-modal-note">
       Edit any value, then <b>Apply &amp; Reload</b>. Overrides persist in this browser until reset.
-      Changing set sizes triggers a save migration that clamps out-of-range card IDs.
     </div>
     <form id="design-form" class="design-form"></form>
     <div class="design-modal-footer">
@@ -1379,8 +1378,6 @@ function computeCardOffsets(sizes) {
   return offsets;
 }
 let CARD_NUMBER_OFFSETS = computeCardOffsets(SET_SIZES);
-let TOTAL_SET_CARDS     = RARITIES.reduce((s, r) => s + (SET_SIZES[r] || 0), 0);
-const SET_VERSION = 10; // bump when SET_SIZES change so old saves get migrated
 
 function cardFullId(rarity, idx, game, set) {
   const g = game ?? GAME_ID;
@@ -1462,7 +1459,6 @@ function setItemKey(key) {
 function bulkBaseRarity(key) { return key === "foilStandard" ? "standard" : key; }
 function bulkIsFoil(key) { return key === "foilStandard"; }
 function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
-const MARKET_VERSION = 13; // bump to force regeneration when baselines change
 // All Set baselines are explicit since singles can't be listed — a Set is
 // the only exit point for a whole rarity, so the Set price has to capture
 // the rarity's full economic weight. Numbers reflect the expected number
@@ -1658,6 +1654,11 @@ function nodeStatus(node) {
   if ((state.clout || 0) < node.cost) return "unaffordable";
   return "available";
 }
+// Does the player have a node in this branch they can afford to buy
+// right now? Drives the .ready pulse on the ⬆ branch triggers.
+function branchHasAvailableNode(branchKey) {
+  return UPGRADE_NODES.some(n => n.branch === branchKey && nodeStatus(n) === "available");
+}
 function purchaseNode(id) {
   const node = UPGRADE_NODES.find(n => n.id === id);
   if (!node) return;
@@ -1816,8 +1817,6 @@ const defaultState = () => ({
   // sets are materialized lazily as the vintage shop comes online.
   activeSetId: CURRENT_SET_ID,
   sets: { [CURRENT_SET_ID]: blankSetState({ starterBox: true }) },
-  marketVersion: MARKET_VERSION,
-  setVersion: SET_VERSION,
   homies: [],     // [{uid, startAt, packsRemaining, lastRipAt, setId}]
   homieUidCounter: 0,
   sorters: [],    // [{uid, level, input:{}, output:{}, lastSortAt, setId}]
@@ -2497,7 +2496,7 @@ function craftHomieSlotHtml(rarity) {
     const pct = Math.max(0, Math.min(100, (leftMs / totalMs) * 100));
     const label = leftMs > 60000 ? `${Math.ceil(leftMs/60000)}m` : `${Math.ceil(leftMs/1000)}s`;
     const title = `${RARITY_LABELS[rarity]} craft homie · ${label} left · auto-crafts FOIL first, then non-foil every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s on Set ${state.activeSetId}`;
-    return `<div class="craft-homie-slot active" title="${title}">`
+    return `<div class="craft-homie-slot active" data-rarity="${rarity}" title="${title}">`
          + `<span class="homie-emoji">🧢</span>`
          + `<span class="homie-count">${label}</span>`
          + `<span class="homie-bar"><span style="width:${pct}%"></span></span>`
@@ -2528,13 +2527,10 @@ function paintCraftHomieCountdowns() {
   const now = Date.now();
   const slots = document.querySelectorAll(".craft-homie-slot.active");
   slots.forEach(el => {
-    const row = el.closest(".stock-row");
-    if (!row) return;
-    // Row carries the rarity as a class — pick the first RARITY token.
-    let rarity = null;
-    for (const r of RARITIES) {
-      if (row.classList.contains(r)) { rarity = r; break; }
-    }
+    // The slot's own data-rarity is the authoritative reference — was reading
+    // it off the parent .stock-row's class list, which broke on Complete Set
+    // rows and any future row class accidentally containing a rarity token.
+    const rarity = el.dataset.rarity;
     if (!rarity) return;
     const h = homies.find(x => x.setId === state.activeSetId && x.craftRarity === rarity);
     if (!h) return;
@@ -2671,7 +2667,7 @@ function spawnParticles(pulls) {
     el.style.top  = cy + "px";
     el.style.animationDelay = (i * 18) + "ms";
     document.body.appendChild(el);
-    el.addEventListener("animationend", () => el.remove());
+    el.addEventListener("animationend", () => el.remove(), { once: true });
   });
 }
 
@@ -2794,12 +2790,6 @@ function renderVaultGrid() {
 }
 
 // ---- Marketplace listings ----------------------------------------------
-// Legacy: no current code path creates non-foil bulk listings (standards
-// and rares are now sold via crafted Sets). Kept only so listings carried
-// over from old saves can still cancel/resolve cleanly.
-function isBulkListing(l) {
-  return !l.foil && SAND_BULK_RARITIES.includes(l.rarity);
-}
 
 function rollListingCooldown() {
   const lo = listingCooldownMinEffective();
@@ -3043,9 +3033,6 @@ function cancelListing(uid) {
   if (isSetListing(l)) {
     if (!bundle.invById[l.rarity]) bundle.invById[l.rarity] = {};
     bundle.invById[l.rarity][1] = (bundle.invById[l.rarity][1] || 0) + 1;
-  } else if (isBulkListing(l)) {
-    bundle.unsorted[l.rarity] = (bundle.unsorted[l.rarity] || 0) + 1;
-    syncPileWithStock();
   } else {
     const mk = marketKey(l.rarity, l.foil);
     if (mk) {
@@ -3088,10 +3075,6 @@ function resolveListings() {
         const bundle = setStateFor(l.setId);
         if (!bundle.invById[l.rarity]) bundle.invById[l.rarity] = {};
         bundle.invById[l.rarity][1] = (bundle.invById[l.rarity][1] || 0) + 1;
-      } else if (isBulkListing(l)) {
-        const bundle = setStateFor(l.setId);
-        bundle.unsorted[l.rarity] = (bundle.unsorted[l.rarity] || 0) + 1;
-        syncPileWithStock();
       } else {
         const bundle = setStateFor(l.setId);
         const mk = marketKey(l.rarity, l.foil);
@@ -4119,14 +4102,10 @@ function readFormOverrides() {
 
 function applyDesignAndReload() {
   const overrides = readFormOverrides();
-  const sizesChanged  = !!(overrides.SET_SIZES && Object.keys(overrides.SET_SIZES).length);
-  const marketChanged = sizesChanged
-    || (overrides.BASELINE && Object.keys(overrides.BASELINE).length);
-  if (state && typeof state === "object") {
-    if (sizesChanged)  state.setVersion    = -1;
-    if (marketChanged) state.marketVersion = -1;
-    if (sizesChanged || marketChanged) save();
-  }
+  // setVersion / marketVersion migration paths were removed during the v4→v5
+  // save-schema cleanup; no migration runs on load anymore. If a future schema
+  // bump needs dynamic ID-clamp / market-reseed, wire it up in load() and
+  // bump SAVE_KEY at the same time.
   localStorage.setItem(DESIGN_KEY, JSON.stringify(overrides));
   location.reload();
 }
@@ -4134,11 +4113,6 @@ function applyDesignAndReload() {
 function resetDesignOverrides() {
   if (!confirm("Reset all game design values to defaults? Your save (cards, cash, etc.) is kept.")) return;
   localStorage.removeItem(DESIGN_KEY);
-  if (state && typeof state === "object") {
-    // Force set-size migration to re-clamp any IDs from prior overrides
-    state.setVersion = -1;
-    save();
-  }
   location.reload();
 }
 
@@ -4747,7 +4721,18 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); paintUpgradeTriggers(); }
+
+// Pulse the upgrade-branch triggers (⬆ PAINT / ⬆ VINTAGE / ⬆ SLOTS) when
+// the player has CLOUT to spend on at least one node in that branch. Run
+// after every other renderer because renderListings / renderVintageShop
+// rebuild their containers' HTML and would wipe the class otherwise.
+function paintUpgradeTriggers() {
+  document.querySelectorAll(".upgrade-trigger").forEach(btn => {
+    const branch = btn.dataset.upgradeBranch || btn.dataset.branch;
+    btn.classList.toggle("ready", branch ? branchHasAvailableNode(branch) : false);
+  });
+}
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
