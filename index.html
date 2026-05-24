@@ -105,6 +105,11 @@
   .homie-sprite[data-slot="4"] { left: calc(50% + 115px); bottom: 320px; }
   .homie-sprite[data-slot="5"] { left: calc(50% + 115px); bottom: 440px; }
   .homie-sprite .homie-emoji { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+  .homie-sprite .homie-set {
+    background: rgba(255,216,77,0.22); color: #ffd84d;
+    border-radius: 3px; font-size: 0.55rem; font-weight: bold;
+    padding: 0 4px; line-height: 1.3; letter-spacing: 0.5px;
+  }
   .homie-sprite .homie-count {
     background: var(--gold); color: #111;
     border-radius: 8px; font-size: 0.6rem; font-weight: bold;
@@ -425,6 +430,11 @@
   .sorter-icon { font-size: 1.1rem; line-height: 1; }
   .sorter-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .sorter-info .sorter-lvl { color: var(--gold); font-weight: bold; font-size: 0.65rem; letter-spacing: 1px; }
+  .sorter-info .sorter-set {
+    display: inline-block; margin-left: 6px; padding: 0 4px;
+    background: rgba(255,216,77,0.18); color: var(--gold);
+    border-radius: 3px; font-size: 0.6rem; letter-spacing: 1px;
+  }
   .sorter-info .sorter-buffer { color: var(--muted); font-size: 0.68rem; }
   .sorter-info .sorter-buffer.full { color: #ff7a3d; font-weight: bold; }
   .sorter-info .sorter-buffer b { color: var(--ink); }
@@ -1538,6 +1548,17 @@ function setStateFor(setId) {
 // code path runs against the active set in Phase 1.
 function cur() { return setStateFor(state.activeSetId); }
 
+// Temporarily swap state.activeSetId for the duration of fn so every cur()
+// call inside routes to the requested set. Used to pin staff operations
+// (homies ripping, sorters sorting) to the year they were hired for, even
+// while the player is viewing a different year.
+function withActiveSet(setId, fn) {
+  const prev = state.activeSetId;
+  state.activeSetId = setId;
+  try { return fn(); }
+  finally { state.activeSetId = prev; }
+}
+
 function emptyInvById() {
   const o = {};
   MARKET_KEYS.forEach(k => { o[k] = {}; });
@@ -1734,7 +1755,7 @@ function addPull(card) {
   if (bulkPull) return { isNew: false, completed: false };
   const ownedList = card.foil ? cur().ownedFoil[card.rarity] : cur().owned[card.rarity];
   const wasNew = !ownedList.includes(card.id);
-  flashQueue.push({ rarity: card.rarity, id: card.id, foil: card.foil, fresh: wasNew });
+  flashQueue.push({ setId: state.activeSetId, rarity: card.rarity, id: card.id, foil: card.foil, fresh: wasNew });
   if (wasNew) {
     ownedList.push(card.id);
     const completed = ownedList.length >= SET_SIZES[card.rarity];
@@ -2000,6 +2021,7 @@ function buildCollectionCell(rarity, i, foil) {
     + (foil  ? " foil"  : "");
   cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
   const flashed = flashQueue.find(f =>
+    (f.setId == null || f.setId === state.activeSetId) &&
     f.rarity === rarity && f.id === i && f.foil === foil
   );
   if (flashed) cell.classList.add(flashed.fresh ? "flash-fresh" : "flash");
@@ -2102,6 +2124,7 @@ function trackBulkCard(key, id) {
   const wasNew = !ownedList.includes(id);
   if (wasNew) ownedList.push(id);
   flashQueue.push({
+    setId: state.activeSetId,
     rarity: bulkBaseRarity(key),
     id,
     foil: bulkIsFoil(key),
@@ -2562,6 +2585,11 @@ function pickFillColumn(cols) {
 
 function rebuildPileFromStock() {
   cur().pile = [];
+  // The new pile is the canonical materialization of unsorted; any in-flight
+  // grains for this set are already counted in unsorted and would double-count
+  // if they later landed, so drop them.
+  const sid = state.activeSetId;
+  fallingGrains = fallingGrains.filter(g => g.setId !== sid);
   ensurePileBuckets();
   const cols = sandColCount();
   // Flatten every grain key into one list, then Fisher-Yates shuffle so the
@@ -2580,8 +2608,13 @@ function rebuildPileFromStock() {
 }
 
 function syncPileWithStock() {
+  const sid = state.activeSetId;
   const unsortedBulk = SAND_BULK_KEYS.reduce((s, k) => s + (cur().unsorted[k] || 0), 0);
-  if (totalPileGrains() + fallingGrains.length !== unsortedBulk) {
+  // Only count falling grains belonging to the active set — grains from
+  // off-screen staff rips have their own setId tag and shouldn't affect
+  // this set's reconciliation.
+  const myFalling = fallingGrains.reduce((n, g) => n + (g.setId === sid ? 1 : 0), 0);
+  if (totalPileGrains() + myFalling !== unsortedBulk) {
     rebuildPileFromStock();
   }
 }
@@ -2736,8 +2769,10 @@ function settlePileAfterChain() {
       if (col[r] !== "__") survivors.push({ row: r, key: col[r] });
     }
     cur().pile[c] = [];
+    const sid = state.activeSetId;
     survivors.forEach(s => {
       fallingGrains.push({
+        setId: sid,
         col: c,
         y: h - (s.row + 1) * SAND_CELL_H,
         vy: 0,
@@ -2831,8 +2866,10 @@ function spawnSandFromPulls(pulls) {
   const bulk = pulls.map(c => ({ c, k: pullBulkKey(c) })).filter(x => x.k);
   ensurePileBuckets();
   const cols = sandColCount();
+  const sid = state.activeSetId;
   bulk.forEach(({ k }, i) => {
     fallingGrains.push({
+      setId: sid,
       col: pickFillColumn(cols),
       y: -SAND_CELL_H - i * (SAND_CELL_H * 1.6) - Math.random() * 5,
       vy: 0,
@@ -2864,7 +2901,9 @@ function drawSand() {
       ctx.fill();
     }
   }
+  const sid = state.activeSetId;
   fallingGrains.forEach(g => {
+    if (g.setId !== sid) return; // off-screen rips don't draw onto the active canvas
     const cx = g.col * SAND_CELL_W + SAND_CELL_W / 2;
     ctx.fillStyle = grainColorFor(g.key);
     ctx.beginPath();
@@ -2915,9 +2954,18 @@ function stepSandAnim() {
   const canvas = $("sand-canvas");
   const h = canvas.clientHeight || 90;
   ensurePileBuckets();
+  const activeSid = state.activeSetId;
   fallingGrains = fallingGrains.filter(g => {
     g.vy = Math.min(g.vy + 0.55, 11);
     g.y += g.vy;
+    // Off-screen grains (for a non-active set) settle instantly into their
+    // own pile — the player isn't watching them animate.
+    if (g.setId !== activeSid) {
+      const ownPile = setStateFor(g.setId).pile;
+      while (ownPile.length <= g.col) ownPile.push([]);
+      ownPile[g.col].push(g.key);
+      return false;
+    }
     const stackH = (cur().pile[g.col] || []).length;
     const landY = h - (stackH + 1) * SAND_CELL_H;
     if (g.y >= landY) {
@@ -3384,6 +3432,7 @@ function renderHomieSprites() {
       } else {
         el.innerHTML = `
           <span class="homie-emoji">🧢</span>
+          <span class="homie-set">S${h.setId != null ? h.setId : CURRENT_SET_ID}</span>
           <span class="homie-count">${h.packsRemaining}</span>
           <span class="homie-bar"><span style="width:0%"></span></span>`;
       }
@@ -3436,34 +3485,47 @@ function hireHomie() {
   cur().boxesOwned -= 1;
   state.homieUidCounter = (state.homieUidCounter || 0) + 1;
   if (!Array.isArray(state.homies)) state.homies = [];
+  // setId pins the homie to the year they were hired in — they keep ripping
+  // that year's packs even if the player switches the active year mid-job.
+  const hiredSetId = state.activeSetId;
   state.homies.push({
     uid: state.homieUidCounter,
     slot,
+    setId: hiredSetId,
     startAt: Date.now(),
     packsRemaining: BOX_SIZE,
     lastRipAt: 0,
   });
   renderAll(); save();
-  $("hint").textContent = `Hired a homie! They'll rip ${BOX_SIZE} packs from your box.`;
+  $("hint").textContent = `Hired a homie for Set ${hiredSetId} (${setYearLabel(hiredSetId)})! They'll rip ${BOX_SIZE} packs from your box.`;
 }
 
 function homieRipPack(homie) {
-  // Same as ripOne(), but consumes from the homie's personal pool instead of
-  // cur().packSupply, and bails out cleanly if the unsorted pile is full.
-  if (unsortedTotal() >= UNSORTED_CAPACITY) return false;
-  if (homie.packsRemaining <= 0) return false;
-  homie.packsRemaining -= 1;
-  state.packsOpened += 1;
-  const pulls = rollPack();
-  const completions = [];
-  pulls.forEach(card => {
-    const r = addPull(card);
-    if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
+  // Same as ripOne(), but consumes from the homie's personal pool instead
+  // of cur().packSupply, and bails out cleanly if that set's pile is full.
+  // Mutations route to the homie's bundle via withActiveSet; visuals
+  // (falling sand, hit pops, particles) only fire when the player is
+  // currently viewing the homie's set.
+  const hSetId = homie.setId != null ? homie.setId : state.activeSetId;
+  const watching = hSetId === state.activeSetId;
+  return withActiveSet(hSetId, () => {
+    if (unsortedTotal() >= UNSORTED_CAPACITY) return false;
+    if (homie.packsRemaining <= 0) return false;
+    homie.packsRemaining -= 1;
+    state.packsOpened += 1;
+    const pulls = rollPack();
+    const completions = [];
+    pulls.forEach(card => {
+      const r = addPull(card);
+      if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
+    });
+    if (watching) {
+      spawnSandFromPulls(pulls);
+      spawnParticles(pulls);
+      showHits(pulls, { newCount: 0, completions });
+    }
+    return true;
   });
-  spawnSandFromPulls(pulls);
-  spawnParticles(pulls);
-  showHits(pulls, { newCount: 0, completions });
-  return true;
 }
 
 function tickHomies() {
@@ -3503,15 +3565,20 @@ function buySorter() {
   state.coins -= SORTER_COST;
   state.sorterUidCounter = (state.sorterUidCounter || 0) + 1;
   if (!Array.isArray(state.sorters)) state.sorters = [];
+  // setId pins the sorter to the year's pile it was installed beside —
+  // LOAD scoops grains from that year's pile, COLLECT writes to that
+  // year's stock.
+  const installSetId = state.activeSetId;
   state.sorters.push({
     uid: state.sorterUidCounter,
     level: 1,
+    setId: installSetId,
     input:  { standard: 0, rare: 0, foilStandard: 0 },
     output: { standard: 0, rare: 0, foilStandard: 0 },
     lastSortAt: 0,
   });
   renderAll(); save();
-  $("hint").textContent = `Sorter installed. Click LOAD to scoop the pile's bottom row.`;
+  $("hint").textContent = `Sorter installed for Set ${installSetId} (${setYearLabel(installSetId)}). Click LOAD to scoop the pile's bottom row.`;
 }
 
 function upgradeSorter(uid) {
@@ -3556,7 +3623,16 @@ function loadSorter(uid) {
   if (chainBusy) return; // wait for an in-progress chain to finish settling
   const s = (state.sorters || []).find(x => x.uid === uid);
   if (!s) return;
+  const sSetId = s.setId != null ? s.setId : state.activeSetId;
+  return withActiveSet(sSetId, () => _loadSorterInner(s));
+}
+
+function _loadSorterInner(s) {
   ensureBulkInv();
+  // The pile only materializes when its set is rendered. A sorter pinned
+  // to a different year may have unsorted grains that haven't been laid
+  // out into pile[] yet — sync first so previewLoadGrains can see them.
+  syncPileWithStock();
   const preview = previewLoadGrains(s);
   if (preview.available === 0) {
     $("hint").textContent = "Pile is empty — nothing to load.";
@@ -3595,6 +3671,11 @@ function collectSorter(uid) {
   if (!s) return;
   const total = sorterOutputTotal(s);
   if (total === 0) return;
+  const sSetId = s.setId != null ? s.setId : state.activeSetId;
+  return withActiveSet(sSetId, () => _collectSorterInner(s, total));
+}
+
+function _collectSorterInner(s, total) {
   ensureBulkInv();
   SAND_BULK_KEYS.forEach(key => {
     const count = s.output[key] || 0;
@@ -3653,6 +3734,7 @@ function buildSorterCard(uid) {
     <span class="sorter-icon">⚙️</span>
     <div class="sorter-info">
       <span class="sorter-lvl"></span>
+      <span class="sorter-set"></span>
       <span class="sorter-buffer"></span>
     </div>
     <button class="sorter-load" data-load="${uid}"></button>
@@ -3701,6 +3783,10 @@ function renderSorters() {
     const lvlEl = card.querySelector(".sorter-lvl");
     const lvlText = `SORTER ${i + 1} · LV ${s.level}`;
     if (lvlEl.textContent !== lvlText) lvlEl.textContent = lvlText;
+
+    const setEl = card.querySelector(".sorter-set");
+    const setText = `S${s.setId != null ? s.setId : CURRENT_SET_ID}`;
+    if (setEl.textContent !== setText) setEl.textContent = setText;
 
     const bufEl = card.querySelector(".sorter-buffer");
     bufEl.classList.toggle("full", totalN >= cap);
