@@ -432,12 +432,6 @@
     100% { transform: scale(1)   rotate(0);     box-shadow: 0 0 0 rgba(255,255,255,0); filter: brightness(1); }
   }
 
-  #set-progress {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
-    padding: 8px 10px;
-    background: rgba(0,0,0,0.18);
-    border-radius: 6px;
-  }
   .year-select {
     display: block; width: 100%;
     margin-bottom: 8px; padding: 10px 14px;
@@ -524,40 +518,6 @@
   .vintage-pack.t-case:not(.vintage):not(.midcentury) { border-color: var(--gold); }
   .vintage-pack.t-box  .vp-pack { font-size: 1.25rem; }
   .vintage-pack.t-case .vp-pack { font-size: 1.35rem; }
-
-  .set-col-label {
-    font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
-    text-align: center; margin-bottom: 2px;
-  }
-  .set-bar { display: flex; flex-direction: column; gap: 2px; }
-  .set-bar-label {
-    display: flex; justify-content: space-between; align-items: baseline;
-    font-size: 0.65rem; font-weight: bold; letter-spacing: 1px;
-  }
-  .set-bar-count { color: var(--muted); font-weight: normal; }
-  .set-bar-track {
-    height: 5px; background: rgba(255,255,255,0.06);
-    border-radius: 3px; overflow: hidden;
-  }
-  .set-bar-fill {
-    height: 100%; border-radius: 3px;
-    transition: width 0.35s ease;
-  }
-  .set-bar.foil .set-bar-fill {
-    background-image: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.55) 50%, rgba(255,255,255,0) 100%);
-    background-repeat: no-repeat;
-    background-size: 60% 100%;
-    background-position: -60% 0;
-    animation: bar-foil-sweep 2.4s linear infinite;
-  }
-  .set-bar.complete .set-bar-fill {
-    background: linear-gradient(90deg, #ff7eb3, #65d6ff, #b8ff5a, #ffd84d, #ff7eb3) !important;
-    background-size: 200% auto;
-    animation: shimmer-bar 2s linear infinite;
-  }
-  .set-bar.complete .set-bar-count { color: var(--gold); }
-  @keyframes shimmer-bar { to { background-position: 200% center; } }
-  @keyframes bar-foil-sweep { to { background-position: 160% 0; } }
 
   /* ---- Sorters ---------------------------------------------------------- */
   #sorters-area { display: flex; flex-direction: column; gap: 5px; }
@@ -1318,7 +1278,6 @@
       <div class="save">save 23%</div>
     </button>
   </div>
-  <div id="set-progress"></div>
   <div id="pack-area">
     <div id="pack-wrap">
       <div class="pack" id="pack">
@@ -3602,7 +3561,6 @@ function runChainCrit(startCol, startRow, onDone) {
   // go after all waves settle.
   renderHeader();
   renderVault();
-  renderSetProgress();
   renderSandPile();
 
   function step() {
@@ -3614,7 +3572,6 @@ function runChainCrit(startCol, startRow, onDone) {
     startSandAnim();
     renderHeader();
     renderVault();
-    renderSetProgress();
     renderSandPile();
     detonators = next;
     setTimeout(step, CHAIN_STEP_MS);
@@ -3685,14 +3642,14 @@ function runChainCritFromMarks(seedCells, onDone) {
   startSandAnim();
   // Mid-chain: skip renderVaultGrid (see runChainCrit comment) — would
   // restart the .flash animations on every wave.
-  renderHeader(); renderVault(); renderSetProgress(); renderSandPile();
+  renderHeader(); renderVault(); renderSandPile();
   let queue = detonators;
   function step() {
     if (queue.length === 0) { finish(refs.total); return; }
     const next = [];
     queue.forEach(d => applyBlast(d.col, d.row, explosionOffsetsForKey(d.key), next, refs));
     startSandAnim();
-    renderHeader(); renderVault(); renderSetProgress(); renderSandPile();
+    renderHeader(); renderVault(); renderSandPile();
     queue = next;
     setTimeout(step, CHAIN_STEP_MS);
   }
@@ -3902,48 +3859,6 @@ function renderSandPile() {
   // If shimmer grains are sitting in the pile, keep the animation loop alive
   // so their color cycles each frame.
   if (cur().pile.some(col => col.includes("foilStandard"))) startSandAnim();
-}
-
-function buildSetBar(rarity, foil) {
-  const ownedList = foil ? cur().ownedFoil[rarity] : cur().owned[rarity];
-  const owned = ownedList.length;
-  const setSize = SET_SIZES[rarity];
-  const pct = Math.min(100, (owned / setSize) * 100);
-  const complete = owned >= setSize;
-  const el = document.createElement("div");
-  el.className = "set-bar" + (foil ? " foil" : "") + (complete ? " complete" : "");
-  el.innerHTML = `
-    <div class="set-bar-label" style="color:${RARITY_COLOURS[rarity]}">
-      ${RARITY_LABELS[rarity]}
-      <span class="set-bar-count">${owned}/${setSize}</span>
-    </div>
-    <div class="set-bar-track">
-      <div class="set-bar-fill" style="width:${pct}%;background-color:${RARITY_COLOURS[rarity]}"></div>
-    </div>`;
-  return el;
-}
-
-function renderSetProgress() {
-  const wrap = $("set-progress");
-  wrap.innerHTML = "";
-  const colRegular = document.createElement("div");
-  const colFoil    = document.createElement("div");
-  colRegular.style.cssText = "display:flex;flex-direction:column;gap:4px;";
-  colFoil.style.cssText    = "display:flex;flex-direction:column;gap:4px;";
-  const labelR = document.createElement("div");
-  labelR.className = "set-col-label";
-  labelR.textContent = "REGULAR SET";
-  const labelF = document.createElement("div");
-  labelF.className = "set-col-label";
-  labelF.textContent = "✨ FOIL SET";
-  colRegular.appendChild(labelR);
-  colFoil.appendChild(labelF);
-  RARITIES.forEach(rarity => {
-    colRegular.appendChild(buildSetBar(rarity, false));
-    colFoil.appendChild(buildSetBar(rarity, true));
-  });
-  wrap.appendChild(colRegular);
-  wrap.appendChild(colFoil);
 }
 
 // ---- Game Design panel --------------------------------------------------
@@ -4882,7 +4797,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
 
 // Pulse the upgrade-branch triggers (⬆ PAINT / ⬆ VINTAGE / ⬆ SLOTS) when
 // the player has CLOUT to spend on at least one node in that branch. Run
