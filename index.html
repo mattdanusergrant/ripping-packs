@@ -3040,9 +3040,9 @@ const CHAIN_STEP_MS = 90; // delay between chain waves so each pop reads
 let HOVER_DWELL_MS    = def("HOVER_DWELL_MS", 40);
 // Hover cursor radius (in cells) — the area dwelled over gets marked when
 // the timer fires. Default ~1 cell. Upgradeable later via CLOUT.
-let HOVER_RADIUS_CELLS = def("HOVER_RADIUS_CELLS", 0.7);
+let HOVER_RADIUS_CELLS = def("HOVER_RADIUS_CELLS", 1.5);
 // Hard cap on the marked-grain set. Upgraded via CLOUT_BONUSES.maxHighlights.
-let MAX_HIGHLIGHTS = def("MAX_HIGHLIGHTS", 10);
+let MAX_HIGHLIGHTS = def("MAX_HIGHLIGHTS", 20);
 let markedGrains = new Set();  // "col,row" strings
 let hoverCell = null;
 let hoverTimer = null;
