@@ -1319,7 +1319,7 @@
         <span id="marked-counter" class="marked-counter">0 / 10</span>
         hover to mark · click to detonate
       </span>
-      <button class="upgrade-trigger" id="upgrade-paint" type="button" data-branch="paint">⬆ PAINT</button>
+      <button class="upgrade-trigger" id="upgrade-paint" type="button" data-branch="paint">⬆ MARKING</button>
     </div>
     <canvas id="sand-canvas"></canvas>
   </div>
@@ -1647,10 +1647,10 @@ const UPGRADE_NODES = [
   { id: "vintage5", branch: "vintage", label: "Time Traveler",   desc: "+1 vintage slot, refresh −60s",         cost: 600, effect: { vintageSlots: 1, vintageRefreshDelta: -60000 },     prereq: ["vintage4"] },
 ];
 const UPGRADE_BRANCHES = [
-  { key: "paint",    label: "PAINT",    color: "#ff7eb3", subtracks: [
+  { key: "paint",    label: "MARKING",  color: "#ff7eb3", subtracks: [
     { key: "marks",  label: "MAX MARKS" },
     { key: "radius", label: "CURSOR RADIUS" },
-    { key: "speed",  label: "PAINT SPEED" },
+    { key: "speed",  label: "MARKING SPEED" },
   ] },
   { key: "listings", label: "LISTINGS", color: "#ffd84d" },
   { key: "vintage",  label: "VINTAGE",  color: "#d4a55e" },
