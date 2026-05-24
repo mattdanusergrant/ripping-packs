@@ -2394,14 +2394,14 @@ function yearSwitchBlockReason() {
   const activeSid = state.activeSetId;
   const activeHomies = (state.homies || []).filter(h => h.setId === activeSid);
   if (activeHomies.length > 0) {
-    return `Can't switch — ${activeHomies.length} Set ${activeSid} homie${activeHomies.length > 1 ? "s" : ""} still on the clock. Wait for them to finish.`;
+    return `Can't switch — ${activeHomies.length} homie${activeHomies.length > 1 ? "s" : ""} for The ${setYearLabel(activeSid)} Set still on the clock. Wait for them to finish.`;
   }
   const activeSorters = (state.sorters || []).filter(s =>
     (s.setId == null || s.setId === activeSid) &&
     (sorterInputTotal(s) > 0 || sorterOutputTotal(s) > 0)
   );
   if (activeSorters.length > 0) {
-    return `Can't switch — ${activeSorters.length} Set ${activeSid} sorter${activeSorters.length > 1 ? "s" : ""} still loaded. Collect them first.`;
+    return `Can't switch — ${activeSorters.length} sorter${activeSorters.length > 1 ? "s" : ""} for The ${setYearLabel(activeSid)} Set still loaded. Collect them first.`;
   }
   const bulk = unsortedTotal();
   if (bulk > 0) {
@@ -2435,7 +2435,7 @@ function buyVintagePack(slotIdx) {
   const cost = vintageSlotCost(slot);
   if (state.coins < cost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that Set ${year} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()}.`;
+    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that ${setYearLabel(year)} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()}.`;
     return;
   }
   SFX.buy();
@@ -2462,8 +2462,8 @@ function buyVintagePack(slotIdx) {
   state.vintageShop.slots[slotIdx] = { year: null, type: null, cooldownEndsAt: Date.now() + vintageRefreshMsEffective() };
   renderAll();
   save();
-  const unlockTag = newlyUnlocked ? ` 🔓 Set ${year} unlocked in the year picker.` : "";
-  $("hint").textContent = `Bought a Set ${year} (${setYearLabel(year)}) vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()} — ${gainSummary} to Set ${year}.${unlockTag} Switch year to rip.`;
+  const unlockTag = newlyUnlocked ? ` 🔓 The ${setYearLabel(year)} Set unlocked in the year picker.` : "";
+  $("hint").textContent = `Bought a ${setYearLabel(year)} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()} — ${gainSummary} to The ${setYearLabel(year)} Set.${unlockTag} Switch year to rip.`;
 }
 
 function tickVintageShop() {
@@ -2508,7 +2508,7 @@ function renderVintageShop() {
       const what = type === "case" ? `case (${Math.round(CASE_SIZE / BOX_SIZE)} boxes)`
                  : type === "box"  ? "sealed box"
                                    : "booster pack";
-      const title = `Set ${yr} (${setYearLabel(yr)}) vintage ${what} · ${usd(cost)}\nLands in Set ${yr}'s supply (unopened). Switch year to rip.`;
+      const title = `${setYearLabel(yr)} vintage ${what} · ${usd(cost)}\nLands in The ${setYearLabel(yr)} Set's supply (unopened). Switch year to rip.`;
       return `<button type="button" class="${cls}" data-vintage-slot="${i}" title="${title}">`
            + `<span class="vp-pack">${glyph}</span>`
            + `<span class="vp-set">${setYearLabel(yr)} ${label}</span>`
@@ -3109,9 +3109,9 @@ function craftCompleteSet(key) {
   SFX.craft();
   if (firstUnlock) {
     SFX.unlock();
-    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}! 🔓 Vintage Packs shop + year picker unlocked!`;
+    $("hint").textContent = `Crafted The ${setYearLabel(state.activeSetId)} ${def.label}! 🔓 Vintage Packs shop + year picker unlocked!`;
   } else {
-    $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
+    $("hint").textContent = `Crafted The ${setYearLabel(state.activeSetId)} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
   }
 }
 
@@ -3123,7 +3123,7 @@ function vaultCompleteSet(key) {
   // is refused outright — list extras for cash via the marketplace.
   if (((cur().vaultedSets || {})[key] || 0) > 0) {
     SFX.error();
-    $("hint").textContent = `Set ${setId} ${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`;
+    $("hint").textContent = `The ${setYearLabel(setId)} ${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`;
     return;
   }
   const inv = cur().invById[key];
@@ -3137,7 +3137,7 @@ function vaultCompleteSet(key) {
   SFX.vault();
   renderAll(); save();
   const tag = setId === CURRENT_SET_ID ? "" : ` (×${cloutScaleFor(setId).toFixed(2)} vintage bonus)`;
-  $("hint").textContent = `Vaulted a Set ${setId} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}). 🔒 Variant claimed.`;
+  $("hint").textContent = `Vaulted The ${setYearLabel(setId)} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}). 🔒 Variant claimed.`;
 }
 
 function listCompleteSet(key) {
@@ -3298,7 +3298,7 @@ function renderListings() {
     const lSetId = l.setId != null ? l.setId : CURRENT_SET_ID;
     const patinaCls = patinaClassFor(lSetId);   // "" | " vintage" | " midcentury"
     const setChip = `<span class="lst-set">S${lSetId}</span>`;
-    const yearTag = `Set ${lSetId} (${setYearLabel(lSetId)})`;
+    const yearTag = `The ${setYearLabel(lSetId)} Set`;
     if (isCompleteSetKey(l.rarity)) {
       const def = completeSetDef(l.rarity);
       const color = def.foil ? "#ff7eb3" : "#ffd84d";
@@ -4422,7 +4422,7 @@ function hireCraftHomie(craftRarity) {
   const setId = state.activeSetId;
   if (findCraftHomie(setId, craftRarity)) {
     SFX.error();
-    $("hint").textContent = `Already have a craft homie on ${RARITY_LABELS[craftRarity]} for Set ${setId}.`;
+    $("hint").textContent = `Already have a craft homie on ${RARITY_LABELS[craftRarity]} for The ${setYearLabel(setId)} Set.`;
     return;
   }
   // Refuse if there's nothing for the homie to craft — the player must
@@ -4456,7 +4456,7 @@ function hireCraftHomie(craftRarity) {
   SFX.buy();
   renderAll(); save();
   const mins = Math.round(CRAFT_HOMIE_DURATION_MS / 60000);
-  $("hint").textContent = `Hired a ${RARITY_LABELS[craftRarity]} craft homie on Set ${setId} — auto-crafts foil + non-foil for ${mins} min.`;
+  $("hint").textContent = `Hired a ${RARITY_LABELS[craftRarity]} craft homie for The ${setYearLabel(setId)} Set — auto-crafts foil + non-foil for ${mins} min.`;
 }
 
 function homieRipPack(homie) {
@@ -4564,7 +4564,7 @@ function buySorter() {
     lastSortAt: 0,
   });
   renderAll(); save();
-  $("hint").textContent = `Sorter installed for Set ${installSetId} (${setYearLabel(installSetId)}). Click LOAD to scoop the pile's bottom row.`;
+  $("hint").textContent = `Sorter installed for The ${setYearLabel(installSetId)} Set. Click LOAD to scoop the pile's bottom row.`;
 }
 
 function upgradeSorterSpeed(uid) {
@@ -5251,7 +5251,7 @@ function switchToSet(sid) {
   if (sid === state.activeSetId) { syncYearPickerSelection(); return; }
   if (!isSetUnlocked(sid)) {
     SFX.error();
-    $("hint").textContent = `Set ${sid} (${setYearLabel(sid)}) is locked — buy a Set ${sid} vintage pack first.`;
+    $("hint").textContent = `The ${setYearLabel(sid)} Set is locked — buy a ${setYearLabel(sid)} vintage pack first.`;
     syncYearPickerSelection();
     return;
   }
@@ -5265,7 +5265,7 @@ function switchToSet(sid) {
   state.activeSetId = sid;
   SFX.switch();
   renderAll(); save();
-  $("hint").textContent = `Now viewing Set ${sid} (${setYearLabel(sid)}). Packs ${usd(packCost())} each.`;
+  $("hint").textContent = `Now viewing The ${setYearLabel(sid)} Set. Packs ${usd(packCost())} each.`;
 }
 // Snap the dropdown back to the active set — used after a refused switch so
 // the visible selection mirrors the actual state.
