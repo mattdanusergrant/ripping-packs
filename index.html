@@ -2918,7 +2918,7 @@ function renderVaultGrid() {
   const title = document.createElement("div");
   title.className = "vault-grid-title";
   const sid = state.activeSetId;
-  title.textContent = `COLLECTION · SET ${sid} · ${setYearLabel(sid)}`;
+  title.textContent = `COLLECTION · THE ${setYearLabel(sid)} SET`;
   wrap.appendChild(title);
 
   // Mythic / Legendary / Epic / Rare share one horizontal strip — the small
@@ -4385,7 +4385,7 @@ function hireHomie(preferredSlot) {
     lastRipAt: 0,
   });
   renderAll(); save();
-  $("hint").textContent = `Hired a homie for Set ${hiredSetId} (${setYearLabel(hiredSetId)})! They'll rip ${BOX_SIZE} packs from your box.`;
+  $("hint").textContent = `Hired a homie for The ${setYearLabel(hiredSetId)} Set! They'll rip ${BOX_SIZE} packs from your box.`;
 }
 
 function findCraftHomie(setId, craftRarity) {
