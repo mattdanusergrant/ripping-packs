@@ -374,6 +374,15 @@
   .year-chip.locked { opacity: 0.35; cursor: not-allowed; background: #131313; }
   .year-chip .yr { opacity: 0.7; font-size: 0.55rem; }
   .year-chip.active .yr { opacity: 0.9; }
+  /* Vintage chips (Set 01–09) read patina-yellow even when inactive so the
+     player can spot the oldest years at a glance in the picker. */
+  .year-chip.vintage:not(.locked):not(.active) { color: #d4a55e; border-color: #5a4a2a; }
+  .year-chip.midcentury:not(.locked):not(.active) { color: #c8b88a; border-color: #4a4030; }
+
+  /* Patina filters layered onto the active workspace when viewing older
+     years. Sepia is graded — heavier for pre-2010 sets, lighter mid-tier. */
+  .patina-vintage    { filter: sepia(0.55) hue-rotate(-12deg) saturate(0.85) brightness(0.95); }
+  .patina-midcentury { filter: sepia(0.25) hue-rotate(-6deg)  saturate(0.92); }
 
   #vault-summary {
     display: flex; flex-wrap: wrap; gap: 4px;
@@ -392,6 +401,10 @@
   .vault-stamp.active {
     background: rgba(255,216,77,0.18); border-color: var(--gold); color: var(--gold);
   }
+  .vault-stamp.vintage    { background: #1a140a; border-color: #5a4a2a; color: #d4a55e; }
+  .vault-stamp.vintage.active { background: rgba(212,165,94,0.22); border-color: #d4a55e; color: #f4d4a0; }
+  .vault-stamp.midcentury { background: #1a1810; border-color: #4a4030; color: #c8b88a; }
+  .vault-stamp.midcentury.active { background: rgba(200,184,138,0.18); border-color: #c8b88a; color: #e8dfb8; }
   .vault-stamp .vs-set { font-weight: bold; letter-spacing: 0.5px; }
   .vault-stamp .vs-yr { opacity: 0.6; font-size: 0.6rem; }
   .vault-stamp .vs-cnt { color: var(--gold); font-weight: bold; }
@@ -635,6 +648,17 @@
     opacity: 0.75;
     text-align: center;
   }
+  .listing-card .lst-set {
+    position: absolute; top: -4px; left: -4px;
+    background: rgba(0,0,0,0.85); color: #ffd84d;
+    border: 1px solid rgba(255,216,77,0.55);
+    border-radius: 6px; font-size: 0.42rem; font-weight: bold;
+    padding: 0 3px; line-height: 1.2;
+    box-shadow: 0 0 3px rgba(0,0,0,0.45);
+    font-family: monospace;
+  }
+  .listing-card.vintage    { box-shadow: 0 0 0 1px rgba(212,165,94,0.55) inset; }
+  .listing-card.midcentury { box-shadow: 0 0 0 1px rgba(200,184,138,0.4) inset; }
   .listing-card .lst-cd {
     position: absolute; top: -4px; right: -4px;
     background: var(--gold); color: #111;
@@ -1822,6 +1846,18 @@ function isSetUnlocked(setId) {
   return ((state.completeSetCrafts || {})[setId + 1] || 0) > 0;
 }
 function setYearLabel(setId) { return 2000 + setId; }
+// Visual age tier — drives sepia tint on listings, vault grid, year chips
+// and the pack itself. "" = current era, "midcentury" = sets 10–19,
+// "vintage" = sets 01–09.
+function patinaTierFor(setId) {
+  if (setId <= 9)  return "vintage";
+  if (setId <= 19) return "midcentury";
+  return "";
+}
+function patinaClassFor(setId) {
+  const tier = patinaTierFor(setId);
+  return tier ? ` ${tier}` : "";
+}
 
 // ---- Render --------------------------------------------------------------
 const $ = id => document.getElementById(id);
@@ -1846,7 +1882,7 @@ function renderVaultSummary() {
     const visible = (s === CURRENT_SET_ID) || nonFoil > 0 || foil > 0 || ownedCards > 0 || isSetUnlocked(s);
     if (!visible) continue;
     const active = s === state.activeSetId;
-    const cls = "vault-stamp" + (active ? " active" : "");
+    const cls = "vault-stamp" + (active ? " active" : "") + patinaClassFor(s);
     const counts = [];
     if (nonFoil > 0) counts.push(`<span class="vs-cnt">★${nonFoil}</span>`);
     if (foil > 0)    counts.push(`<span class="vs-foil">✨${foil}</span>`);
@@ -1875,6 +1911,8 @@ function renderYearPicker() {
     const cls = ["year-chip"];
     if (active) cls.push("active");
     if (!unlocked) cls.push("locked");
+    const tier = patinaTierFor(s);
+    if (tier) cls.push(tier);
     const title = unlocked
       ? `Set ${s} (${year}) · pack ${usd(packCost(s))}`
       : `Locked — craft a Set ${s + 1} (${setYearLabel(s + 1)}) Complete Set to unlock`;
@@ -1895,6 +1933,17 @@ function renderHeader() {
   const setLabel = `SET ${activeSet} · ${setYearLabel(activeSet)}`;
   $("shop-title").textContent = `SHOP · ${setLabel}`;
   $("pack-set-label").textContent = setLabel;
+  // Patina tier applied to the pack + vault grid so older years carry a
+  // visible sepia treatment. We only mutate the active set's surfaces —
+  // listings carry their own per-listing patina from their own setId.
+  const tier = patinaTierFor(activeSet);
+  ["pack", "vault-grid", "stock-rows"].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.classList.remove("patina-vintage", "patina-midcentury");
+    if (tier === "vintage")    el.classList.add("patina-vintage");
+    if (tier === "midcentury") el.classList.add("patina-midcentury");
+  });
   renderYearPicker();
   const boxes = cur().boxesOwned || 0;
   $("supply-label").textContent = boxes > 0
@@ -2406,7 +2455,7 @@ function cancelListing(uid) {
   }
   state.listings.splice(idx, 1);
   renderAll(); save();
-  $("hint").textContent = `Cancelled listing — returned to inventory.`;
+  $("hint").textContent = `Cancelled Set ${l.setId} listing — returned to inventory.`;
 }
 
 
@@ -2423,13 +2472,14 @@ function resolveListings() {
       // next sale of this exact (key, id). Works for both set items and
       // per-id priced cards (l.rarity is the market key in either case).
       if (BASELINE[l.rarity] != null) npcAbsorbSale(l.setId, l.rarity, l.cardId || 1);
+      const setTag = `Set ${l.setId}`;
       if (isCompleteSetKey(l.rarity)) {
-        lastMessage = `Sold ${completeSetDef(l.rarity).label} @ ${usd(l.askPrice)}.`;
+        lastMessage = `Sold ${setTag} ${completeSetDef(l.rarity).label} @ ${usd(l.askPrice)}.`;
       } else if (isSetListing(l)) {
         const meta = setItemMeta(l.rarity);
-        lastMessage = `Sold ${meta.foil ? "FOIL " : ""}${RARITY_LABELS[meta.baseRarity]} SET @ ${usd(l.askPrice)}.`;
+        lastMessage = `Sold ${setTag} ${meta.foil ? "FOIL " : ""}${RARITY_LABELS[meta.baseRarity]} SET @ ${usd(l.askPrice)}.`;
       } else {
-        lastMessage = `Sold ${l.foil ? "foil " : ""}${RARITY_LABELS[l.rarity].toLowerCase()}${l.cardId != null ? " " + cardFullId(l.rarity, l.cardId) : ""} @ ${usd(l.askPrice)}.`;
+        lastMessage = `Sold ${setTag} ${l.foil ? "foil " : ""}${RARITY_LABELS[l.rarity].toLowerCase()}${l.cardId != null ? " " + cardFullId(l.rarity, l.cardId) : ""} @ ${usd(l.askPrice)}.`;
       }
     } else {
       if (isSetListing(l)) {
@@ -2449,7 +2499,7 @@ function resolveListings() {
           else        bundle.stock[l.rarity]     += 1;
         }
       }
-      lastMessage = `Listing expired — returned to inventory.`;
+      lastMessage = `Set ${l.setId} listing expired — returned to inventory.`;
     }
     changed = true;
     return false;
@@ -2487,13 +2537,18 @@ function renderListings() {
     </div>
     <div class="listings-grid">`;
   listings.forEach(l => {
+    const lSetId = l.setId != null ? l.setId : CURRENT_SET_ID;
+    const patinaCls = patinaClassFor(lSetId);   // "" | " vintage" | " midcentury"
+    const setChip = `<span class="lst-set">S${lSetId}</span>`;
+    const yearTag = `Set ${lSetId} (${setYearLabel(lSetId)})`;
     if (isCompleteSetKey(l.rarity)) {
       const def = completeSetDef(l.rarity);
       const color = def.foil ? "#ff7eb3" : "#ffd84d";
-      const cls = "listing-card set complete" + (def.foil ? " foil" : "");
+      const cls = "listing-card set complete" + (def.foil ? " foil" : "") + patinaCls;
       const glyph = def.foil ? "✨" : "★";
       const idLabel = def.foil ? "FOIL COMP" : "COMPLETE";
-      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${def.label} · ${usd(l.askPrice)}\nClick to cancel">`
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${def.label} · ${usd(l.askPrice)}\nClick to cancel">`
+            + setChip
             + `<span class="lst-glyph">${glyph}</span>`
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
@@ -2502,9 +2557,10 @@ function renderListings() {
     } else if (isSetListing(l)) {
       const meta = setItemMeta(l.rarity);
       const color = RARITY_COLOURS[meta.baseRarity];
-      const cls = "listing-card set" + (meta.foil ? " foil" : "");
+      const cls = "listing-card set" + (meta.foil ? " foil" : "") + patinaCls;
       const glyph = meta.foil ? "✨" : RARITY_GLYPHS[meta.baseRarity];
-      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${(meta.foil ? "FOIL " : "") + RARITY_LABELS[meta.baseRarity]} SET · ${usd(l.askPrice)}\nClick to cancel">`
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${(meta.foil ? "FOIL " : "") + RARITY_LABELS[meta.baseRarity]} SET · ${usd(l.askPrice)}\nClick to cancel">`
+            + setChip
             + `<span class="lst-glyph">${glyph}</span>`
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
@@ -2513,8 +2569,9 @@ function renderListings() {
     } else {
       const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId) : RARITY_LABELS[l.rarity].slice(0,1);
       const color = RARITY_COLOURS[l.rarity];
-      const cls = "listing-card" + (l.foil ? " foil" : "");
-      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${(l.foil ? "Foil " : "") + RARITY_LABELS[l.rarity]} ${idLabel} · ${usd(l.askPrice)}\nClick to cancel">`
+      const cls = "listing-card" + (l.foil ? " foil" : "") + patinaCls;
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${(l.foil ? "Foil " : "") + RARITY_LABELS[l.rarity]} ${idLabel} · ${usd(l.askPrice)}\nClick to cancel">`
+            + setChip
             + `<span class="lst-glyph">${RARITY_GLYPHS[l.rarity]}</span>`
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
