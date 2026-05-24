@@ -1,4 +1,4 @@
-# Ripping Packs — Game Design Document
+# Keep Ripping Packs — Game Design Document
 
 A single-file browser idler about cracking trading-card booster packs, sorting the sand pile, and selling completed sets on a live market. Built as one HTML file with vanilla JS + CSS. All gameplay state persists in `localStorage`.
 

@@ -1,4 +1,4 @@
-# Ripping Packs
+# Keep Ripping Packs
 
 An incremental clicker about cracking trading-card booster packs, sorting the
 spill into a sand pile, and selling completed sets on a live market — across
