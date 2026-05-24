@@ -639,10 +639,12 @@
   .sorter-buy-modal-btn .cost { color: var(--gold); margin-left: 4px; }
 
   #sand-canvas {
-    /* Fixed 500×200 = 50×20 grid of 10×10 square cells. Centered in the
-       column; doesn't widen with the viewport. */
+    /* Fixed 500×210: 50 cols × (20 grain rows + 1 click-buffer row) of 10×10
+       cells. The bottom row never holds a settled grain — clicks there fall
+       within the click-radius of the lowest grains, making bottom-row picks
+       easier. Centered in the column; doesn't widen with the viewport. */
     display: block;
-    width: 500px; height: 200px;
+    width: 500px; height: 210px;
     max-width: 100%;
     margin: 0 auto;
     background: rgba(0,0,0,0.18); border-radius: 6px;
@@ -1181,7 +1183,7 @@
     /* Tighter homie offset for the narrower mobile pack. */
     .homie-sprite[data-slot="0"], .homie-sprite[data-slot="1"], .homie-sprite[data-slot="2"] { left: calc(50% - 100px); }
     .homie-sprite[data-slot="3"], .homie-sprite[data-slot="4"], .homie-sprite[data-slot="5"] { left: calc(50% + 100px); }
-    #sand-canvas { width: 100%; height: auto; aspect-ratio: 5 / 2; }
+    #sand-canvas { width: 100%; height: auto; aspect-ratio: 50 / 21; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
     .buy-btn .qty { font-size: 0.6rem; }
@@ -3211,6 +3213,12 @@ function renderListings() {
 // always fills the visible area regardless of viewport width or height.
 const SAND_COLS = 50;
 const SAND_ROWS = 20;
+// A 1-row "click buffer" at the bottom of the canvas — grains never settle
+// there, but clicks in that strip still hit the bottom-row grains via the
+// SORT_CLICK_RADIUS_CELLS Manhattan-radius search. Makes the last few grains
+// in a column easier to click since the player no longer has to land on the
+// exact pixel row at the canvas edge.
+const SAND_BUFFER_ROWS = 1;
 let SAND_CELL_W = 12;
 let SAND_CELL_H = 12;
 let SAND_GRAIN  = 10;
@@ -3220,7 +3228,7 @@ function updateSandSizing() {
   const w = c.clientWidth  || 600;
   const h = c.clientHeight || 320;
   SAND_CELL_W = w / SAND_COLS;
-  SAND_CELL_H = h / SAND_ROWS;
+  SAND_CELL_H = h / (SAND_ROWS + SAND_BUFFER_ROWS);
   SAND_GRAIN  = Math.max(2, Math.min(SAND_CELL_W, SAND_CELL_H) - 1);
 }
 // Grain colors by bulk-key. Foil standard rotates through a rainbow each frame.
@@ -3274,7 +3282,9 @@ function cellsWithinRadius(px, py) {
   const radius = hoverRadiusEffective();
   const pxR  = radius * unit;
   const cx = Math.floor(px / SAND_CELL_W);
-  const cy = Math.floor((h - py) / SAND_CELL_H);
+  // Canvas row 0 is the click buffer (no grain settles there); shift to
+  // the pile-index row by subtracting SAND_BUFFER_ROWS.
+  const cy = Math.floor((h - py) / SAND_CELL_H) - SAND_BUFFER_ROWS;
   const dc = Math.ceil(radius);
   const out = [];
   for (let c = cx - dc; c <= cx + dc; c++) {
@@ -3285,7 +3295,7 @@ function cellsWithinRadius(px, py) {
       const k = col[r];
       if (!k || k === "__") continue;
       const ccx = c * SAND_CELL_W + SAND_CELL_W / 2;
-      const ccy = h - (r + 1) * SAND_CELL_H + SAND_CELL_H / 2;
+      const ccy = h - (r + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H + SAND_CELL_H / 2;
       const d = Math.hypot(px - ccx, py - ccy);
       if (d <= pxR) out.push({ col: c, row: r });
     }
@@ -3377,7 +3387,10 @@ function findClickedGrain(clickX, clickY) {
   if (!canvas) return null;
   const h = canvas.clientHeight || 90;
   const cx = Math.floor(clickX / SAND_CELL_W);
-  const cy = Math.floor((h - clickY) / SAND_CELL_H);
+  // Subtract the click-buffer offset so a click in the bottom buffer row
+  // maps to a negative pile-row; the radius search still finds the bottom
+  // grain in the column from there.
+  const cy = Math.floor((h - clickY) / SAND_CELL_H) - SAND_BUFFER_ROWS;
   const radius = SORT_CLICK_RADIUS_CELLS;
   let bestCol = -1, bestRow = -1, bestDist = Infinity;
   for (let dc = -radius; dc <= radius; dc++) {
@@ -3408,7 +3421,7 @@ function spawnCritPop(col, row, key) {
   if (!canvas) return;
   const h = canvas.clientHeight || 90;
   const x = col * SAND_CELL_W + SAND_CELL_W / 2;
-  const y = h - (row + 1) * SAND_CELL_H + SAND_CELL_H / 2;
+  const y = h - (row + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H + SAND_CELL_H / 2;
   critPops.push({ x, y, age: 0, maxAge: 14, color: grainColorFor(key) });
 }
 
@@ -3537,7 +3550,7 @@ function settlePileAfterChain() {
       fallingGrains.push({
         setId: sid,
         col: c,
-        y: h - (s.row + 1) * SAND_CELL_H,
+        y: h - (s.row + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H,
         vy: 0,
         key: s.key,
       });
@@ -3733,7 +3746,7 @@ function stepSandAnim() {
       return false;
     }
     const stackH = (cur().pile[g.col] || []).length;
-    const landY = h - (stackH + 1) * SAND_CELL_H;
+    const landY = h - (stackH + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H;
     if (g.y >= landY) {
       g.y = landY;
       cur().pile[g.col].push(g.key);
@@ -5042,7 +5055,7 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
   if (chainBusy) { drawSand(); return; }
   const h = canvas.clientHeight || 90;
   const c = Math.floor(x / SAND_CELL_W);
-  const r = Math.floor((h - y) / SAND_CELL_H);
+  const r = Math.floor((h - y) / SAND_CELL_H) - SAND_BUFFER_ROWS;
   // Cursor must be over a live grain (not off-pile, not a tombstone) to
   // start dwell. The actual *marked* set is computed from the radius when
   // the timer fires, so the cursor center grain is the anchor.
