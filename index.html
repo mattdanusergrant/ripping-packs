@@ -1315,51 +1315,33 @@ function bulkBaseRarity(key) { return key === "foilStandard" ? "standard" : key;
 function bulkIsFoil(key) { return key === "foilStandard"; }
 function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
 const MARKET_VERSION = 13; // bump to force regeneration when baselines change
+// All Set baselines are explicit since singles can't be listed — a Set is
+// the only exit point for a whole rarity, so the Set price has to capture
+// the rarity's full economic weight. Numbers reflect the expected number
+// of packs to complete that rarity (rough): standard/rare ~50, epic ~250,
+// legendary ~600, mythic ~2,500. Foils 5–10× harder. At $3/pack the long
+// horizon target is ~$4/pack revenue.
 let BASELINE = def("BASELINE", {
-  epic:             5,
-  legendary:        25,
-  mythic:           100,
-  foilRare:         30,
-  foilEpic:         250,
-  foilLegendary:    1000,
-  foilMythic:       4000,
-  // Bulk-set baselines stay explicit — standards/rares/foil-standards have
-  // no per-card market price for the multiplier to act on.
-  standardSet:        30,
-  rareSet:            200,
-  foilStandardSet:    120,
-  // Apex sets. Non-foil sums to ~$800; foil sums to ~$24k. Premium ~1.5×.
-  completeSet:        1500,
-  foilCompleteSet:    35000,
+  standardSet:        50,
+  rareSet:            150,
+  epicSet:            300,
+  legendarySet:       700,
+  mythicSet:          2000,
+  foilStandardSet:    500,
+  foilRareSet:        2000,
+  foilEpicSet:        7000,
+  foilLegendarySet:   20000,
+  foilMythicSet:      60000,
+  // Apex sets — modest premium over the sum of components so crafting a
+  // Complete beats spot-selling the parts, without dwarfing them.
+  completeSet:        4000,    // non-foil components sum to $3,200 (~1.25×)
+  foilCompleteSet:    120000,  // foil components sum to $89,500 (~1.34×)
 });
-// Priced-set baselines (epicSet, legendarySet, mythicSet, foilRare/Epic/Leg/Mythic
-// Sets) are derived from the per-card baseline × SET_CRAFT_MULTIPLIER × set
-// size — a small premium over selling singles to incentivise crafting.
-let SET_CRAFT_MULTIPLIER = def("SET_CRAFT_MULTIPLIER", 1.15);
-const PRICED_SET_TRACKS = [
-  ["epicSet",          "epic",          "epic"],
-  ["legendarySet",     "legendary",     "legendary"],
-  ["mythicSet",        "mythic",        "mythic"],
-  ["foilRareSet",      "foilRare",      "rare"],
-  ["foilEpicSet",      "foilEpic",      "epic"],
-  ["foilLegendarySet", "foilLegendary", "legendary"],
-  ["foilMythicSet",    "foilMythic",    "mythic"],
-];
-function recomputePricedSetBaselines() {
-  // Use the effective multiplier when state is initialized (so upgrade nodes
-  // shift the set baselines live); fall back to the raw constant at boot
-  // before state exists.
-  let mult = SET_CRAFT_MULTIPLIER;
-  try {
-    if (typeof state !== "undefined" && state && Array.isArray(state.unlockedNodes)) {
-      mult = setCraftMultiplierEffective();
-    }
-  } catch (_) {}
-  PRICED_SET_TRACKS.forEach(([setKey, cardKey, baseRarity]) => {
-    BASELINE[setKey] = SET_SIZES[baseRarity] * BASELINE[cardKey] * mult;
-  });
-}
-recomputePricedSetBaselines();
+// Repurposed as a global Set-price multiplier applied in marketPriceFor
+// (was: derivation coefficient when per-card baselines fed into Set
+// baselines). Default 1.0 — the "Premium Sets" upgrade node bumps it by
+// +0.10 → +10% to every Set listing sell price.
+let SET_CRAFT_MULTIPLIER = def("SET_CRAFT_MULTIPLIER", 1.0);
 // Market inventory model: each market key + id has a virtual NPC inventory.
 // Price is computed lazily from that inventory (no periodic ticker). Selling
 // a listing pumps inventory up (price drops); NPCs slowly absorb inventory
@@ -1367,9 +1349,16 @@ recomputePricedSetBaselines();
 // when held, price = baseline. Half of target = 2× baseline. 5× target =
 // 1/5 baseline. Clamped to floor/ceil ratios.
 let MARKET_TARGET_STOCK = def("MARKET_TARGET_STOCK", 5);
+// Scarcity multiplier swing — listings drift gently around baseline rather
+// than spiking 5–7× when the NPC is dry. With these defaults:
+//   1 in NPC stock  → price clamped at ceil = 1.5× baseline
+//   5 in NPC stock  → exactly baseline (equilibrium)
+//   ≥7 in stock     → clamped at floor = 0.67× baseline
+// Max-to-min swing is 2.25×, predictable enough that the player can plan a
+// flip without market noise drowning the signal.
 let MARKET_DECAY_RATE   = def("MARKET_DECAY_RATE", 0.05); // cards/sec consumed by NPCs
-let PRICE_FLOOR_RATIO   = def("PRICE_FLOOR_RATIO", 0.2);
-let PRICE_CEIL_RATIO    = def("PRICE_CEIL_RATIO", 7);
+let PRICE_FLOOR_RATIO   = def("PRICE_FLOOR_RATIO", 0.67);
+let PRICE_CEIL_RATIO    = def("PRICE_CEIL_RATIO", 1.5);
 
 function marketKey(rarity, foil) {
   if (!foil) {
@@ -1507,9 +1496,6 @@ function purchaseNode(id) {
   state.cloutSpent = (state.cloutSpent || 0) + node.cost;
   if (!Array.isArray(state.unlockedNodes)) state.unlockedNodes = [];
   state.unlockedNodes.push(node.id);
-  // mkt3 (and any future node touching set craft multiplier) shifts the set
-  // baselines — recompute so the live price reflects the new bonus.
-  recomputePricedSetBaselines();
   renderAll();
   renderUpgrades();
   save();
@@ -1640,11 +1626,13 @@ function decayMarketInv(setId, key, id, now) {
 }
 
 // Current market price for a (setId, key, id). Lazy — only computes when
-// asked. Per-set scaling: vintage-set cards/sets sell for more.
+// asked. Per-set scaling: vintage-set cards/sets sell for more. The Premium
+// Sets upgrade node bumps SET_CRAFT_MULTIPLIER (default 1.0) → +10% sell
+// price across every Set listing globally.
 function marketPriceFor(setId, key, id) {
   const baseRaw = BASELINE[key];
   if (!baseRaw) return 0;
-  const baseline = baseRaw * cloutScaleFor(setId);
+  const baseline = baseRaw * cloutScaleFor(setId) * setCraftMultiplierEffective();
   const inv = decayMarketInv(setId, key, id, Date.now());
   const raw = baseline * (MARKET_TARGET_STOCK / Math.max(1, inv));
   const floor = baseline * PRICE_FLOOR_RATIO;
@@ -3217,22 +3205,23 @@ const DESIGN_FIELDS = [
   { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.legendary",     path: "RARE_PLUS_WEIGHTS.legendary",   label: "Rare+ slot: legendary",   step: 0.005, min: 0 },
   { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.mythic",        path: "RARE_PLUS_WEIGHTS.mythic",      label: "Rare+ slot: mythic",      step: 0.005, min: 0 },
 
-  // Market baselines
-  { group: "Market baselines", key: "BASELINE.epic",                   path: "BASELINE.epic",                 label: "Epic baseline ($)",       step: 0.1, min: 0 },
-  { group: "Market baselines", key: "BASELINE.legendary",              path: "BASELINE.legendary",            label: "Legendary baseline ($)",  step: 0.5, min: 0 },
-  { group: "Market baselines", key: "BASELINE.mythic",                 path: "BASELINE.mythic",               label: "Mythic baseline ($)",     step: 1,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilRare",               path: "BASELINE.foilRare",             label: "Foil rare baseline ($)",       step: 0.1,  min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilEpic",               path: "BASELINE.foilEpic",             label: "Foil epic baseline ($)",       step: 0.5,  min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilLegendary",          path: "BASELINE.foilLegendary",        label: "Foil legendary baseline ($)",  step: 1,    min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilMythic",             path: "BASELINE.foilMythic",           label: "Foil mythic baseline ($)",     step: 5,    min: 0 },
-  // Bulk-set baselines stay explicit; priced-set baselines are derived from
-  // card baselines × SET_CRAFT_MULTIPLIER × set size at boot.
-  { group: "Market baselines", key: "BASELINE.standardSet",            path: "BASELINE.standardSet",          label: "Standard Set baseline ($)",      step: 1,    min: 0 },
-  { group: "Market baselines", key: "BASELINE.rareSet",                path: "BASELINE.rareSet",              label: "Rare Set baseline ($)",          step: 5,    min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilStandardSet",        path: "BASELINE.foilStandardSet",      label: "Foil Standard Set baseline ($)", step: 1,    min: 0 },
-  { group: "Market baselines", key: "BASELINE.completeSet",            path: "BASELINE.completeSet",          label: "Complete Set baseline ($)",          step: 50,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilCompleteSet",        path: "BASELINE.foilCompleteSet",      label: "Foil Complete Set baseline ($)",     step: 100,  min: 0 },
-  { group: "Market baselines", key: "SET_CRAFT_MULTIPLIER",            path: "SET_CRAFT_MULTIPLIER",          label: "Priced-set craft multiplier",    step: 0.05, min: 1 },
+  // Market baselines — every Set is explicit since singles don't list.
+  // Numbers reflect the long-horizon cash value of completing that rarity.
+  { group: "Market baselines", key: "BASELINE.standardSet",            path: "BASELINE.standardSet",          label: "Standard Set ($)",       step: 5,    min: 0 },
+  { group: "Market baselines", key: "BASELINE.rareSet",                path: "BASELINE.rareSet",              label: "Rare Set ($)",           step: 10,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.epicSet",                path: "BASELINE.epicSet",              label: "Epic Set ($)",           step: 10,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.legendarySet",           path: "BASELINE.legendarySet",         label: "Legendary Set ($)",      step: 25,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.mythicSet",              path: "BASELINE.mythicSet",            label: "Mythic Set ($)",         step: 50,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilStandardSet",        path: "BASELINE.foilStandardSet",      label: "Foil Standard Set ($)",  step: 25,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilRareSet",            path: "BASELINE.foilRareSet",          label: "Foil Rare Set ($)",      step: 50,   min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilEpicSet",            path: "BASELINE.foilEpicSet",          label: "Foil Epic Set ($)",      step: 100,  min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilLegendarySet",       path: "BASELINE.foilLegendarySet",     label: "Foil Legendary Set ($)", step: 500,  min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilMythicSet",          path: "BASELINE.foilMythicSet",        label: "Foil Mythic Set ($)",    step: 1000, min: 0 },
+  { group: "Market baselines", key: "BASELINE.completeSet",            path: "BASELINE.completeSet",          label: "Complete Set ($)",       step: 100,  min: 0 },
+  { group: "Market baselines", key: "BASELINE.foilCompleteSet",        path: "BASELINE.foilCompleteSet",      label: "Foil Complete Set ($)",  step: 1000, min: 0 },
+  { group: "Market baselines", key: "SET_CRAFT_MULTIPLIER",            path: "SET_CRAFT_MULTIPLIER",          label: "Global Set sell multiplier",     step: 0.05, min: 0.1 },
+  { group: "Market baselines", key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",             label: "Scarcity floor (× baseline)",    step: 0.05, min: 0.1 },
+  { group: "Market baselines", key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",              label: "Scarcity ceiling (× baseline)",  step: 0.05, min: 1   },
   { group: "Market baselines", key: "COMPLETE_SET_CLOUT",              path: "COMPLETE_SET_CLOUT",            label: "Complete Set vault → CLOUT",         step: 5,    min: 1, int: true },
   { group: "Market baselines", key: "FOIL_COMPLETE_SET_CLOUT",         path: "FOIL_COMPLETE_SET_CLOUT",       label: "Foil Complete Set vault → CLOUT",    step: 25,   min: 1, int: true },
 

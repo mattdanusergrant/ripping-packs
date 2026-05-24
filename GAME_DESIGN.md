@@ -99,30 +99,26 @@ When `bulkInvById[key]` holds at least 1 of every card ID in a rarity, a glowing
 
 ### Set baselines (market items)
 
-Every rarity (bulk and priced, foil and non-foil) has its own craftable Set item — 10 tracks total. Bulk Sets consume cards from `bulkInvById`; priced Sets consume from the per-id `invById`. Each Set item is market-priced and listed via the marketplace just like any other priced item.
+Every rarity (bulk and priced, foil and non-foil) has its own craftable Set item — 12 tracks total (10 per-rarity + 2 Complete Sets). All Set baselines are **explicit** — there are no per-card market prices, so Set value isn't derived from singles. Each Set baseline reflects the long-horizon cash value of completing that whole rarity. Expected packs-to-complete drives the scale:
 
-Bulk-set baselines (Standard / Rare / Foil Standard) are explicit — those rarities have no per-card market price for a multiplier to act on.
+| Set                  | Set size | ~Packs to complete | Baseline $ |
+|----------------------|---------:|-------------------:|-----------:|
+| Standard Set         | 36       | ~50                | $50        |
+| Rare Set             | 18       | ~50                | $150       |
+| Epic Set             | 9        | ~250               | $300       |
+| Legendary Set        | 6        | ~600               | $700       |
+| Mythic Set           | 3        | ~2,500             | $2,000     |
+| Foil Standard Set    | 36       | ~250               | $500       |
+| Foil Rare Set        | 18       | ~2,500             | $2,000     |
+| Foil Epic Set        | 9        | ~12,500            | $7,000     |
+| Foil Legendary Set   | 6        | ~30,000            | $20,000    |
+| Foil Mythic Set      | 3        | ~125,000           | $60,000    |
+| **Complete Set**     | (sum of 5 non-foil) | sum after all 5 rarities done | $4,000  (~1.25× sum) |
+| **Foil Complete Set**| (sum of 5 foil)     | sum after all 5 foil rarities done | $120,000 (~1.34× sum) |
 
-Priced-set baselines are **derived** at boot via `SET_CRAFT_MULTIPLIER` (default `1.15`):
+`SET_CRAFT_MULTIPLIER` (default `1.0`) is a **global Set-price multiplier** applied at price time across every Set listing. The "Premium Sets" upgrade node bumps it by +0.10 → +10% sell price for every Set you list, current-year or vintage. Floor of 0.1 in the design panel (can't go below 10× discount).
 
-```
-BASELINE[setKey] = SET_SIZES[baseRarity] × BASELINE[cardKey] × SET_CRAFT_MULTIPLIER
-```
-
-| Set                  | Set size | Formula            | Baseline $ |
-|----------------------|---------:|--------------------|-----------:|
-| Standard Set         | 36       | explicit           | $30        |
-| Rare Set             | 18       | explicit           | $200       |
-| Foil Standard Set    | 36       | explicit           | $120       |
-| Epic Set             | 9        | 9 × $5 × 1.15      | $51.75     |
-| Legendary Set        | 6        | 6 × $25 × 1.15     | $172.50    |
-| Mythic Set           | 3        | 3 × $100 × 1.15    | $345       |
-| Foil Rare Set        | 18       | 18 × $30 × 1.15    | $621       |
-| Foil Epic Set        | 9        | 9 × $250 × 1.15    | $2,587.50  |
-| Foil Legendary Set   | 6        | 6 × $1,000 × 1.15  | $6,900     |
-| Foil Mythic Set      | 3        | 3 × $4,000 × 1.15  | $13,800    |
-
-So crafting a priced set sells for **+15% over the sum of singles**. Small premium → encourages set completion without making crafting strictly better than spot-selling. Bump `SET_CRAFT_MULTIPLIER` in the design panel to change the slope. Bumping a per-card baseline automatically bumps the set baseline that depends on it.
+> **Why the new shape?** Earlier iterations let you list individual cards (mythics, foil rares, etc.) for cash, and the per-rarity Set baseline was a +15% premium over selling singles. When single listings were retired, the per-card values became economically dead — the player's only cash exit is a Set listing. The new baselines re-ground the economy on "what does this rarity earn you over its grind?" with a long-horizon target of ~$4/pack revenue (vs $3/pack cost). See **§19.5** for how the vintage shop scales these on top.
 
 ---
 
@@ -273,10 +269,13 @@ Pack/box/case costs:
 - **Box:** $100 (36 packs worth, ~7% discount)
 - **Case:** $500 (6 boxes worth, ~23% discount)
 
-Market baselines (drift around these, configurable). Foils are priced one tier above the non-foil tier above them — a foil epic ($250) outvalues a non-foil mythic ($100), reflecting its ~4× rarity:
-- Epic: $5, Legendary: $25, Mythic: $100
-- Foil Rare: $30, Foil Epic: $250, Foil Legendary: $1,000, Foil Mythic: $4,000
-- Standard Set: $30, Rare Set: $200, Foil Standard Set: $120
+Market baselines — see §5 for the full per-Set table. Quick reference:
+
+- Standard $50, Rare $150, Epic $300, Legendary $700, Mythic $2,000
+- Foil Standard $500, Foil Rare $2,000, Foil Epic $7,000, Foil Legendary $20,000, Foil Mythic $60,000
+- Complete Set $4,000, Foil Complete Set $120,000
+
+At ~$3/pack cost and the long-horizon revenue curve above, a player who completes every non-foil Set across 2,500 packs (the mythic-completion median) walks away with roughly $16k in Set listings — a $4k–$6k positive ROI for the grind, plus 50 CLOUT and the option to vault for the Complete Set. Foils are pure prestige; they're ROI-negative even as listings (~125k packs of $375k cost for a $60k Foil Mythic Set) and are worth grinding only for the CLOUT in §8b.
 
 ---
 
@@ -284,17 +283,21 @@ Market baselines (drift around these, configurable). Foils are priced one tier a
 
 Prices are driven by simulated NPC supply, not a periodic ticker.
 
-Each priced (key, id) — every per-id mythic/foil card and every set item — has a virtual NPC inventory level `state.marketInv[key][id]`. The price is computed lazily whenever it's read:
+Each priced (setId, key, id) — every set item across every year — has its own per-year virtual NPC inventory level at `state.sets[setId].marketInv[key][id]`. The price is computed lazily whenever it's read:
 
 ```
-price = baseline × (MARKET_TARGET_STOCK / max(1, currentInv))
-       clamped to [baseline × PRICE_FLOOR_RATIO, baseline × PRICE_CEIL_RATIO]
+baseline_eff = BASELINE[key] × cloutScaleFor(setId) × setCraftMultiplierEffective()
+price        = baseline_eff × (MARKET_TARGET_STOCK / max(1, currentInv))
+              clamped to [baseline_eff × PRICE_FLOOR_RATIO, baseline_eff × PRICE_CEIL_RATIO]
 ```
 
-Defaults: `MARKET_TARGET_STOCK = 5`, `PRICE_FLOOR_RATIO = 0.2`, `PRICE_CEIL_RATIO = 7`. So:
-- **5 in NPC stock** → price = baseline
-- **1 in NPC stock** → price = 5× baseline (rare, expensive)
-- **25 in NPC stock** → price = 0.2× baseline (flooded, cheap)
+Defaults: `MARKET_TARGET_STOCK = 5`, `PRICE_FLOOR_RATIO = 0.67`, `PRICE_CEIL_RATIO = 1.5`. Scarcity swings gently — max-to-min ratio is 2.25× (vs the old 35× spread):
+
+- **5 in NPC stock** → price = exactly baseline (equilibrium)
+- **1 in NPC stock** → price clamped at **1.5× baseline** (high, but not a spike)
+- **≥ 7 in NPC stock** → price clamped at **0.67× baseline** (discounted, but not crushed)
+
+The tighter clamp is intentional. Older iterations had 5–7× spikes from a single empty NPC, which made the displayed price feel more like a slot-machine roll than a market — listings sold for radically different cash depending on whether you happened to be the third or thirteenth seller of that item recently. The new band keeps prices readable: the player can plan a craft + list cycle and trust the displayed price won't surprise them.
 
 Events that move inventory:
 
