@@ -1349,7 +1349,7 @@
     <div id="pack-wrap">
       <div class="pack" id="pack">
         <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
-        <div class="pack-cta">CLICK TO RIP</div>
+        <div class="pack-cta" id="pack-cta">CLICK TO RIP</div>
       </div>
     </div>
     <div id="typing-zone">
@@ -4947,6 +4947,18 @@ function maybeCrackBox() {
 function canRip() {
   return (cur().packSupply > 0 || (cur().boxesOwned || 0) > 0) && unsortedTotal() < UNSORTED_CAPACITY;
 }
+
+// ---- Pack CTA rotator ----------------------------------------------------
+// The little "CLICK TO RIP" tag on the pack face cycles through the three
+// ways to rip — surface the hover/hold mechanics passively without a
+// tutorial popup. Advances every 30s on a module-level interval.
+const PACK_CTA_MESSAGES = ["CLICK TO RIP", "HOVER TO RIP", "HOLD TO RIP"];
+let _packCtaIndex = 0;
+setInterval(() => {
+  _packCtaIndex = (_packCtaIndex + 1) % PACK_CTA_MESSAGES.length;
+  const el = $("pack-cta");
+  if (el) el.textContent = PACK_CTA_MESSAGES[_packCtaIndex];
+}, 30000);
 
 // ---- Pack hover-autorip --------------------------------------------------
 // While the cursor is over the pack, automatically rip on an interval.
