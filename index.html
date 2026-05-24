@@ -544,7 +544,7 @@
      columns flex with content. */
   .sorter-row {
     display: grid;
-    grid-template-columns: 64px 56px 78px 12px 100px 78px 12px 1fr 1fr;
+    grid-template-columns: 64px 56px 78px 12px 100px 78px 12px 88px 88px;
     align-items: stretch;
     gap: 4px;
   }
@@ -1574,9 +1574,9 @@ let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 500);
 let SORTER_LEVEL_MAX     = def("SORTER_LEVEL_MAX", 10);
 // Upgrade pricing (shared by both speed and buffer tracks): first upgrade
 // (L1 → L2) costs SORTER_UPGRADE_BASE_COST, and each subsequent upgrade
-// adds SORTER_UPGRADE_STEP. So L=1..9 pay $500/$600/$700/.../$1300.
-let SORTER_UPGRADE_BASE_COST = def("SORTER_UPGRADE_BASE_COST", 500);
-let SORTER_UPGRADE_STEP      = def("SORTER_UPGRADE_STEP", 100);
+// adds SORTER_UPGRADE_STEP. So L=1..9 pay $1k/$2k/$3k/.../$9k.
+let SORTER_UPGRADE_BASE_COST = def("SORTER_UPGRADE_BASE_COST", 1000);
+let SORTER_UPGRADE_STEP      = def("SORTER_UPGRADE_STEP", 1000);
 const SORTER_TICK_MS     = 250;
 // 50ms floor lets L10 hit the intended 10 cards/s (1000/10 = 100ms) and
 // keeps a safety net if SORTER_BASE_MS is tuned absurdly low.
