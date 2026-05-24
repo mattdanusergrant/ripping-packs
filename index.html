@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Rip booster packs, sort the spill, craft Sets, sell on a live market. 30 yearly vintage sets to chase.">
 <title>Ripping Packs</title>
 <style>
   :root {
@@ -258,7 +260,13 @@
     50%      { opacity: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.6), 0 0 8px rgba(255,255,255,0.35); }
   }
 
-  #hint { text-align: center; font-size: 0.9rem; color: var(--gold); min-height: 1.2em; }
+  #hint { text-align: center; font-size: 0.9rem; color: var(--gold); min-height: 1.2em; transition: color 0.18s; }
+  #hint.flash-error { animation: hint-flash-error 0.7s ease-out; }
+  @keyframes hint-flash-error {
+    0%   { color: #ff7a3d; text-shadow: 0 0 8px rgba(255,122,61,0.6); }
+    20%  { color: #ff7a3d; text-shadow: 0 0 12px rgba(255,122,61,0.9); }
+    100% { color: var(--gold); text-shadow: none; }
+  }
 
   .particle {
     position: fixed; pointer-events: none; z-index: 999;
@@ -1767,7 +1775,18 @@ const SFX = {
     { freq: 784, dur: 0.10, type: "triangle", vol: 0.15 },
     { freq: 1046,dur: 0.18, type: "triangle", vol: 0.15 },
   ], 80),
-  error:  () => playTone({ freq: 180, dur: 0.12, type: "sawtooth", vol: 0.08, freqEnd: 90 }),
+  error:  () => {
+    playTone({ freq: 180, dur: 0.12, type: "sawtooth", vol: 0.08, freqEnd: 90 });
+    // Brief red flash on the hint line so the refused action also reads
+    // visually — every refused-action call site already pairs SFX.error()
+    // with a hint message, so adding the visual here covers all 16 sites.
+    const h = document.getElementById("hint");
+    if (h) {
+      h.classList.remove("flash-error");
+      void h.offsetWidth;
+      h.classList.add("flash-error");
+    }
+  },
 };
 function setSfxMuted(m) {
   _sfxMuted = !!m;

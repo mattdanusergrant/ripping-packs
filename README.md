@@ -1,21 +1,78 @@
 # Ripping Packs
 
-A small incremental clicker about buying and ripping booster packs from a fictional cryptid TCG.
+An incremental clicker about cracking trading-card booster packs, sorting the
+spill into a sand pile, and selling completed sets on a live market — across
+**30 years** of a fictional cryptid TCG.
 
 **Play:** https://mattdanusergrant.github.io/ripping-packs/
+
+## How to play
+
+You start with **one sealed case** (6 boxes = 216 packs) on the house.
+
+1. **Click the pack** (or type the word above it) to rip a booster. Each pack
+   spits 10 cards into the sand pile — green grains are Standards, blue are
+   Rares, rainbow-shimmer are Foil Standards. Premium pulls (Epic, Legendary,
+   Mythic, foils) skip the pile and go straight into your priced inventory.
+2. **Sort the pile** by clicking grains. The clicked grain detonates with a
+   `+` blast that consumes its orthogonal neighbors. Rares chain-detonate
+   4 cells in every cardinal direction; foils chain 8. A click on a dense
+   cluster can sweep the whole pile in one go.
+3. **Craft Sets** when you've collected one of every card in a rarity. Each
+   rarity has its own foil and non-foil track (10 craft tracks total).
+4. **List crafted Sets** on the marketplace. Listings resolve on a 10–20s
+   cooldown for cash. The cap is 10 active listings; upgradeable.
+5. **Vault Complete Sets** — combine 5 per-rarity Sets into a non-foil
+   Complete Set ($4,000 baseline / 50 CLOUT) or 5 foil Sets into a Complete
+   Foil Set ($120,000 / 500 CLOUT). Vault is **one redemption per (year ×
+   foil-variant), ever** — the long-game collection arc is 60 total claims
+   across all 30 years.
+6. **Reinvest** in:
+   - More packs / boxes / cases ($3 / $100 / $500 for current-year stock)
+   - **Sorters** ($1,000 each, max 3) that auto-process the pile
+   - **Rip homies** ($20 + 1 box) that crack packs for 108 seconds
+   - **Craft homies** ($20) that auto-craft a rarity's Sets for 8 minutes
+   - CLOUT upgrades — paint mode, listing slots, vintage shop slots
+
+## Vintage shop
+
+A 5-slot row of randomly-rolled past-year offerings — packs, boxes, and (rare)
+cases — refreshing on a 5-minute cooldown after purchase. Year roll skews
+toward recent years (Set 29 ≈ 18%, Set 1 ≈ 1%); type roll skews toward packs
+(80% / 16% / 4%). Buying any vintage pack **unlocks** that year in the picker.
+
+Once a year is unlocked, switch to it via the dropdown to rip what you bought.
+The regular buy buttons only sell current-year stock — vintage years are
+exclusively serviced by the vintage shop, so every old-year session starts
+there for resupply.
+
+Vintage prices are steep — a Set 01 case is $15,000 — but vintage Complete
+Sets give scaled-up CLOUT (Set 01 Foil Complete vaults for **1,515 CLOUT**,
+the apex of the collection arc).
+
+## Sound
+
+11 synthesized SFX (Web Audio API, no asset files) hook into every gameplay
+event — sale chime, pack rip, sort tick, foil sparkle, mythic fanfare, craft
+arpeggio, vault tone, buy/switch/unlock confirmation, error thud. The 🔊
+toggle in the header mutes everything; preference persists in localStorage.
 
 ## Run locally
 
 Open `index.html` in any modern browser. No build step, no dependencies.
+Saves live in localStorage per-browser.
 
-## Mechanics
+## Tuning sandbox
 
-- Buy packs (1), boxes (36, save 7%), or cases (216, save 23%) — bulk locks in today's price
-- Each pack: 3 commons + 1 uncommon + 1 rare slot (80% uncommon / 18% rare / 2% mythic)
-- Foils — 5% per card, 3× sell value, rainbow shimmer
-- Sell by rarity (foils protected by default) or dump the whole collection
-- Save: localStorage per browser
+Press **Game Design** in the header to open a modal that exposes every
+constant (drop rates, baselines, costs, intervals, capacities) as a numeric
+input. Edit, Apply & Reload to restart with the new values — overrides
+persist per-browser. **Reset** wipes the save entirely.
+
+See [`GAME_DESIGN.md`](./GAME_DESIGN.md) for the full design doc.
 
 ## Status
 
-MVP v0.6 — works end to end. Next candidates: per-rarity meta effects, prestige loop, a second set, sound design.
+Playtest build. Single HTML file, ~5,500 lines of inline JS + CSS, no
+dependencies. Recently shipped: multi-set system (30 years), vintage shop,
+craft homies, audio module, no-singles economy retune, sorter rework.
