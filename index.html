@@ -2454,6 +2454,40 @@ function craftHomieSlotHtml(rarity) {
        + `</div>`;
 }
 
+// In-place DOM patch for the craft-homie countdowns. Called once a second
+// from the listings-countdown interval — rebuilding the full vault every
+// tick caused the CRAFT/LIST buttons in the same rows to flicker / lose
+// hover state. This skips the rebuild and just touches the countdown text
+// and the bar's width on each active slot. If an expiry happens between
+// craft ticks the slot's structure is still stale (active vs empty), but
+// the next craft tick (HOMIE_TICK_MS = 250ms) catches up via tickHomies'
+// renderAll on reap.
+function paintCraftHomieCountdowns() {
+  const homies = (state.homies || []).filter(h => h.kind === "craft");
+  if (homies.length === 0) return;
+  const now = Date.now();
+  const slots = document.querySelectorAll(".craft-homie-slot.active");
+  slots.forEach(el => {
+    const row = el.closest(".stock-row");
+    if (!row) return;
+    // Row carries the rarity as a class — pick the first RARITY token.
+    let rarity = null;
+    for (const r of RARITIES) {
+      if (row.classList.contains(r)) { rarity = r; break; }
+    }
+    if (!rarity) return;
+    const h = homies.find(x => x.setId === state.activeSetId && x.craftRarity === rarity);
+    if (!h) return;
+    const leftMs = Math.max(0, h.expiresAt - now);
+    const pct = Math.max(0, Math.min(100, (leftMs / CRAFT_HOMIE_DURATION_MS) * 100));
+    const label = leftMs > 60000 ? `${Math.ceil(leftMs/60000)}m` : `${Math.ceil(leftMs/1000)}s`;
+    const countEl = el.querySelector(".homie-count");
+    if (countEl && countEl.textContent !== label) countEl.textContent = label;
+    const barEl = el.querySelector(".homie-bar > span");
+    if (barEl) barEl.style.width = pct + "%";
+  });
+}
+
 function setActionsBlock(key) {
   const track = craftTrack(key);
   if (!track) return "";
@@ -4939,10 +4973,12 @@ setInterval(tickHomies, HOMIE_TICK_MS);
 setInterval(tickSorters, SORTER_TICK_MS);
 setInterval(resolveListings, LISTING_TICK_MS);
 // Tick the listing + craft-homie countdown displays each second so the
-// "WORKING · 4m" text and the marketplace timers visibly decrement.
+// "WORKING · 4m" text and the marketplace timers visibly decrement. Craft
+// homies use an in-place DOM patch — a full renderVault on every tick
+// flickered the CRAFT/LIST buttons and broke their hover state.
 setInterval(() => {
   if (Array.isArray(state.listings) && state.listings.length > 0) renderListings();
-  if ((state.homies || []).some(h => h.kind === "craft")) renderVault();
+  paintCraftHomieCountdowns();
 }, 1000);
 // Vintage shop tick — refills expired slots + repaints cooldown countdowns.
 setInterval(tickVintageShop, 1000);
