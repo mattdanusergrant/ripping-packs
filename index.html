@@ -417,6 +417,13 @@
   .vintage-pack.vintage:hover:not(.cooling):not(.unaffordable) { background: #261c10; border-color: #8a6a3a; }
   .vintage-pack.midcentury { color: #c8b88a; border-color: #4a4030; background: #1a1810; }
   .vintage-pack.midcentury:hover:not(.cooling):not(.unaffordable) { background: #251f15; border-color: #6a5e40; }
+  /* Higher-value offerings (box / case) get a bolder border and slight glow
+     so they read as the "ooh, jackpot" slots without overwhelming the row. */
+  .vintage-pack.t-box  { border-width: 2px; }
+  .vintage-pack.t-case { border-width: 2px; box-shadow: 0 0 6px rgba(255,216,77,0.25) inset; }
+  .vintage-pack.t-case:not(.vintage):not(.midcentury) { border-color: var(--gold); }
+  .vintage-pack.t-box  .vp-pack { font-size: 1.25rem; }
+  .vintage-pack.t-case .vp-pack { font-size: 1.35rem; }
 
   #vault-summary {
     display: flex; flex-wrap: wrap; gap: 4px;
@@ -1596,15 +1603,13 @@ const defaultState = () => ({
 });
 
 function blankVintageSlots() {
-  // Fresh-state seeding: hardcode 3 starter slots. Upgrade nodes grow the
+  // Fresh-state seeding: hardcode 5 starter slots. Upgrade nodes grow the
   // pool live via syncVintageSlotCount() once state is initialized; the
   // design-panel-tunable VINTAGE_SLOTS_BASE is read from there. Boot order
   // means we can't read VINTAGE_SLOTS_BASE here — defaultState runs before
   // its `let` declaration is reached.
   const out = [];
-  for (let i = 0; i < 3; i++) {
-    out.push({ year: rollVintageYear(), cooldownEndsAt: 0 });
-  }
+  for (let i = 0; i < 5; i++) out.push(rollVintageSlot());
   return out;
 }
 
@@ -1616,7 +1621,7 @@ function syncVintageSlotCount() {
   if (!Array.isArray(state.vintageShop.slots)) state.vintageShop.slots = [];
   const want = vintageSlotCountEffective();
   while (state.vintageShop.slots.length < want) {
-    state.vintageShop.slots.push({ year: rollVintageYear(), cooldownEndsAt: 0 });
+    state.vintageShop.slots.push(rollVintageSlot());
   }
 }
 
@@ -1922,12 +1927,16 @@ function cloutScaleFor(setId) {
 }
 
 // ---- Vintage Shop -------------------------------------------------------
-// A small additive widget that surfaces 3 random past-year booster packs at
-// any time, refreshing on a per-slot cooldown. Lets the player chase vintage
-// cards without committing to a full workspace switch. Cards land in their
-// year's bundle exactly as if ripped via the year picker.
-let VINTAGE_SLOTS_BASE = def("VINTAGE_SLOTS_BASE", 3);
+// A small additive widget that surfaces 5 random past-year offerings (packs,
+// boxes, or cases — boxes/cases much rarer) at any time, refreshing on a
+// per-slot cooldown. Lets the player chase vintage cards without committing
+// to a full workspace switch. Purchased items land in their year's supply,
+// unopened — switch to that year via the picker to crack them.
+let VINTAGE_SLOTS_BASE = def("VINTAGE_SLOTS_BASE", 5);
 let VINTAGE_REFRESH_MS = def("VINTAGE_REFRESH_MS", 5 * 60 * 1000); // 5 min
+// Pack/box/case weights — overwhelmingly packs, occasional box, rare case.
+// Re-tunable in the design panel.
+let VINTAGE_TYPE_WEIGHTS = def("VINTAGE_TYPE_WEIGHTS", { pack: 80, box: 16, case: 4 });
 function vintageSlotCountEffective() {
   return VINTAGE_SLOTS_BASE + (eff().vintageSlots || 0);
 }
@@ -1953,6 +1962,33 @@ function rollVintageYear() {
   }
   return choices[choices.length - 1].s;
 }
+// Roll which kind of vintage offering this slot holds: pack / box / case.
+function rollVintageType() {
+  // Boot order: defaultState may call this before VINTAGE_TYPE_WEIGHTS' let
+  // declaration is reached, so fall back to the same defaults if the read
+  // throws on TDZ.
+  let w;
+  try { w = VINTAGE_TYPE_WEIGHTS; } catch (_) { w = { pack: 80, box: 16, case: 4 }; }
+  const total = (w.pack || 0) + (w.box || 0) + (w.case || 0);
+  if (total <= 0) return "pack";
+  let r = Math.random() * total;
+  if ((r -= w.pack || 0) < 0) return "pack";
+  if ((r -= w.box  || 0) < 0) return "box";
+  return "case";
+}
+// One slot fill — picks both type and year.
+function rollVintageSlot() {
+  return { year: rollVintageYear(), type: rollVintageType(), cooldownEndsAt: 0 };
+}
+// How much a vintage offering costs based on its type + year.
+function vintageSlotCost(slot) {
+  if (!slot || !slot.year) return 0;
+  if (slot.type === "box")  return boxCost(slot.year);
+  if (slot.type === "case") return caseCost(slot.year);
+  return packCost(slot.year);
+}
+const VINTAGE_TYPE_GLYPH = { pack: "🎴", box: "📦", case: "🗃️" };
+const VINTAGE_TYPE_LABEL = { pack: "PACK", box: "BOX",  case: "CASE" };
 
 // A year is available in the picker once you've ever bought a booster pack
 // of that year (via the vintage shop). Set 30 is always unlocked — it's
@@ -2043,24 +2079,36 @@ function buyVintagePack(slotIdx) {
   const slot = state.vintageShop?.slots?.[slotIdx];
   if (!slot || !slot.year) return;
   const year = slot.year;
-  const cost = packCost(year);
+  const type = slot.type || "pack";
+  const cost = vintageSlotCost(slot);
   if (state.coins < cost) {
-    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that Set ${year} vintage pack.`;
+    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that Set ${year} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()}.`;
     return;
   }
   state.coins -= cost;
-  // Pack lands in that year's supply, unopened. The year unlocks the
-  // moment of purchase — but the player still has to switch to it to rip.
+  // Pack/box/case lands in that year's supply, unopened. The year unlocks
+  // the moment of purchase — player still has to switch to it to rip.
   const bundle = setStateFor(year);
-  bundle.packSupply = (bundle.packSupply || 0) + 1;
+  let gainSummary;
+  if (type === "pack") {
+    bundle.packSupply = (bundle.packSupply || 0) + 1;
+    gainSummary = "+1 pack";
+  } else if (type === "box") {
+    bundle.boxesOwned = (bundle.boxesOwned || 0) + 1;
+    gainSummary = "+1 sealed box";
+  } else { // case
+    const boxesPerCase = Math.max(1, Math.round(CASE_SIZE / BOX_SIZE));
+    bundle.boxesOwned = (bundle.boxesOwned || 0) + boxesPerCase;
+    gainSummary = `+${boxesPerCase} sealed boxes`;
+  }
   if (!state.yearUnlocked) state.yearUnlocked = {};
   const newlyUnlocked = !state.yearUnlocked[year];
   state.yearUnlocked[year] = true;
-  state.vintageShop.slots[slotIdx] = { year: null, cooldownEndsAt: Date.now() + vintageRefreshMsEffective() };
+  state.vintageShop.slots[slotIdx] = { year: null, type: null, cooldownEndsAt: Date.now() + vintageRefreshMsEffective() };
   renderAll();
   save();
   const unlockTag = newlyUnlocked ? ` 🔓 Set ${year} unlocked in the year picker.` : "";
-  $("hint").textContent = `Bought a Set ${year} (${setYearLabel(year)}) booster — +1 to Set ${year} supply.${unlockTag} Switch year to rip.`;
+  $("hint").textContent = `Bought a Set ${year} (${setYearLabel(year)}) vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()} — ${gainSummary} to Set ${year}.${unlockTag} Switch year to rip.`;
 }
 
 function tickVintageShop() {
@@ -2070,7 +2118,7 @@ function tickVintageShop() {
   state.vintageShop.slots.forEach((slot, i) => {
     if (!slot || slot.year != null) return;
     if (now >= (slot.cooldownEndsAt || 0)) {
-      state.vintageShop.slots[i] = { year: rollVintageYear(), cooldownEndsAt: 0 };
+      state.vintageShop.slots[i] = rollVintageSlot();
       changed = true;
     }
   });
@@ -2088,16 +2136,22 @@ function renderVintageShop() {
   const tiles = slots.map((slot, i) => {
     if (slot && slot.year != null) {
       const yr = slot.year;
-      const cost = packCost(yr);
+      const type = slot.type || "pack";
+      const cost = vintageSlotCost(slot);
       const tier = patinaTierFor(yr);
       const tierCls = tier ? ` ${tier}` : "";
       const unaffordable = state.coins < cost;
-      const cls = "vintage-pack" + tierCls + (unaffordable ? " unaffordable" : "");
-      const title = `Set ${yr} (${setYearLabel(yr)}) booster · ${usd(cost)}\nCards land in Set ${yr}'s vault. Click to crack.`;
+      const cls = "vintage-pack" + tierCls + (unaffordable ? " unaffordable" : "") + ` t-${type}`;
+      const glyph = VINTAGE_TYPE_GLYPH[type] || "🎴";
+      const label = VINTAGE_TYPE_LABEL[type] || "PACK";
+      const what = type === "case" ? `case (${Math.round(CASE_SIZE / BOX_SIZE)} boxes)`
+                 : type === "box"  ? "sealed box"
+                                   : "booster pack";
+      const title = `Set ${yr} (${setYearLabel(yr)}) vintage ${what} · ${usd(cost)}\nLands in Set ${yr}'s supply (unopened). Switch year to rip.`;
       return `<button type="button" class="${cls}" data-vintage-slot="${i}" title="${title}">`
-           + `<span class="vp-pack">🎴</span>`
+           + `<span class="vp-pack">${glyph}</span>`
            + `<span class="vp-set">S${yr}</span>`
-           + `<span class="vp-year">'${String(setYearLabel(yr)).slice(2)}</span>`
+           + `<span class="vp-year">'${String(setYearLabel(yr)).slice(2)} ${label}</span>`
            + `<span class="vp-cost">${usd(cost)}</span>`
            + `</button>`;
     } else {
@@ -2179,9 +2233,18 @@ function renderHeader() {
   $("cost-pack").textContent = usd(packCost());
   $("cost-box").textContent  = usd(boxCost());
   $("cost-case").textContent = usd(caseCost());
-  $("buy-pack").disabled = state.coins < packCost();
-  $("buy-box").disabled  = state.coins < boxCost();
-  $("buy-case").disabled = state.coins < caseCost();
+  // The regular buy buttons only sell current-year stock. Vintage years are
+  // exclusively serviced by the Vintage Packs shop (above the Marketplace).
+  const isVintageYear = activeSet !== CURRENT_SET_ID;
+  const vintageTip = isVintageYear
+    ? `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} to buy current-year stock.`
+    : "";
+  $("buy-pack").disabled = isVintageYear || state.coins < packCost();
+  $("buy-box").disabled  = isVintageYear || state.coins < boxCost();
+  $("buy-case").disabled = isVintageYear || state.coins < caseCost();
+  $("buy-pack").title = vintageTip;
+  $("buy-box").title  = vintageTip;
+  $("buy-case").title = vintageTip;
   const pack = $("pack");
   if (!canRip()) pack.classList.add("disabled");
   else pack.classList.remove("disabled");
@@ -4171,6 +4234,10 @@ function renderAll() { renderHeader(); renderVault(); renderListings(); renderVa
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
+  if (state.activeSetId !== CURRENT_SET_ID) {
+    $("hint").textContent = `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`;
+    return;
+  }
   if (state.coins < totalCost) {
     $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
     return;
@@ -4181,6 +4248,10 @@ function buyPacks(qty, totalCost, label) {
   $("hint").textContent = `Bought ${label}. Supply: ${cur().packSupply}.`;
 }
 function buyBoxes(qty, totalCost, label) {
+  if (state.activeSetId !== CURRENT_SET_ID) {
+    $("hint").textContent = `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`;
+    return;
+  }
   if (state.coins < totalCost) {
     $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
     return;
