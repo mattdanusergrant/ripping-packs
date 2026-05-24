@@ -1561,7 +1561,7 @@ const HOMIE_MAX     = 6; // 3 slots each side of the pack
 // cap since hiring duplicates is refused.
 let CRAFT_HOMIE_COST        = def("CRAFT_HOMIE_COST", 20);
 let CRAFT_HOMIE_TICK_MS     = def("CRAFT_HOMIE_TICK_MS", 5000);
-let CRAFT_HOMIE_DURATION_MS = def("CRAFT_HOMIE_DURATION_MS", 8 * 60 * 1000);
+let CRAFT_HOMIE_DURATION_MS = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
 const HOMIE_TICK_MS = 250;
 
 let SORTER_COST          = def("SORTER_COST", 1000);
@@ -2579,11 +2579,22 @@ function craftHomieSlotHtml(rarity) {
          + `<span class="homie-bar"><span style="width:${pct}%"></span></span>`
          + `</div>`;
   }
-  const unaffordable = state.coins < CRAFT_HOMIE_COST;
-  const cls = "craft-homie-slot empty" + (unaffordable ? " disabled" : "");
-  const title = unaffordable
-    ? `Need ${usd(CRAFT_HOMIE_COST - state.coins)} more to hire a ${RARITY_LABELS[rarity]} craft homie`
-    : `Hire a ${RARITY_LABELS[rarity]} craft homie for ${usd(CRAFT_HOMIE_COST)} — auto-crafts FOIL ${RARITY_LABELS[rarity]} SET then ${RARITY_LABELS[rarity]} SET every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s for ${Math.round(CRAFT_HOMIE_DURATION_MS/60000)} min`;
+  const foilKey = "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1);
+  // Nothing to craft if neither track can be completed right now AND the
+  // player has never completed a full set of either variant in this year.
+  // setsCelebrated is permanent once flipped, so once you've ever finished
+  // a Standard collection the standard homie stays hireable even after
+  // crafting consumes the cards.
+  const everCompletable = !!(cur().setsCelebrated[rarity] || cur().setsCelebratedFoil[rarity]);
+  const craftableNow    = canCraftSet(rarity) || canCraftSet(foilKey);
+  const nothingToCraft  = !everCompletable && !craftableNow;
+  const unaffordable    = state.coins < CRAFT_HOMIE_COST;
+  const cls = "craft-homie-slot empty" + (unaffordable || nothingToCraft ? " disabled" : "");
+  const title = nothingToCraft
+    ? `Collect a full ${RARITY_LABELS[rarity]} set before hiring a craft homie — nothing for them to do yet.`
+    : unaffordable
+      ? `Need ${usd(CRAFT_HOMIE_COST - state.coins)} more to hire a ${RARITY_LABELS[rarity]} craft homie`
+      : `Hire a ${RARITY_LABELS[rarity]} craft homie for ${usd(CRAFT_HOMIE_COST)} — auto-crafts FOIL ${RARITY_LABELS[rarity]} SET then ${RARITY_LABELS[rarity]} SET every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s for ${Math.round(CRAFT_HOMIE_DURATION_MS/60000)} min`;
   return `<div class="${cls}" data-hire-rarity="${rarity}" title="${title}">`
        + `<span class="homie-plus">+</span>`
        + `<span class="homie-meta">HIRE ${usd(CRAFT_HOMIE_COST)}</span>`
@@ -4369,6 +4380,16 @@ function hireCraftHomie(craftRarity) {
   if (findCraftHomie(setId, craftRarity)) {
     SFX.error();
     $("hint").textContent = `Already have a craft homie on ${RARITY_LABELS[craftRarity]} for Set ${setId}.`;
+    return;
+  }
+  // Refuse if there's nothing for the homie to craft — the player must
+  // have ever completed the foil or non-foil collection of this rarity in
+  // the active year, OR currently have a craftable set queued up.
+  const foilKey = "foil" + craftRarity.charAt(0).toUpperCase() + craftRarity.slice(1);
+  const everCompletable = !!(cur().setsCelebrated[craftRarity] || cur().setsCelebratedFoil[craftRarity]);
+  if (!everCompletable && !canCraftSet(craftRarity) && !canCraftSet(foilKey)) {
+    SFX.error();
+    $("hint").textContent = `No ${RARITY_LABELS[craftRarity]} sets to craft yet — collect a full ${RARITY_LABELS[craftRarity]} set first.`;
     return;
   }
   if (state.coins < CRAFT_HOMIE_COST) {
