@@ -1212,7 +1212,7 @@
       <div class="typing-hint">type to rip</div>
       <div id="typing-word"></div>
     </div>
-<div id="hint">A box on the house — start ripping!</div>
+<div id="hint">A case on the house — start ripping!</div>
   </div>
   <div>
     <button id="sorter-shop" type="button" class="sorter-shop-btn">BUY A SORTER<span class="sorter-shop-cost" id="sorter-shop-cost">$500</span></button>
@@ -1760,11 +1760,14 @@ function syncVintageSlotCount() {
 }
 
 function blankSetState({ starterBox = false } = {}) {
+  // Starter gift: a full case (6 sealed boxes = 216 packs) so the first
+  // session has enough volume to actually complete a Standard + Rare Set
+  // and start the loop. First rip auto-cracks one box via maybeCrackBox()
+  // and seeds packSupply with BOX_SIZE; the remaining 5 sit in storage.
+  const starterBoxes = starterBox ? Math.max(1, Math.round(CASE_SIZE / BOX_SIZE)) : 0;
   return {
-    // Starter gift: 1 sealed box, no loose packs. First rip auto-cracks
-    // the box via maybeCrackBox() and seeds packSupply with BOX_SIZE.
     packSupply: 0,
-    boxesOwned: starterBox ? 1 : 0,
+    boxesOwned: starterBoxes,
     unsorted:   { standard: 0, rare: 0, foilStandard: 0 },
     stock:      { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
     stockFoil:  { standard: 0, rare: 0, epic: 0, legendary: 0, mythic: 0 },
@@ -4560,7 +4563,7 @@ function resetGame() {
   state = defaultState();
   save();
   renderAll();
-  $("hint").textContent = "Fresh start. A box on the house — start ripping!";
+  $("hint").textContent = "Fresh start. A case on the house — start ripping!";
 }
 
 // ---- Boot ----------------------------------------------------------------
