@@ -2067,6 +2067,12 @@ function load() {
       ) || Object.values(parsed.completeSetCrafts || {}).some(n => n > 0);
       parsed.firstSetCrafted = everCrafted;
     }
+    // Backfill the typing-unlock counter. Older saves that pre-date the
+    // gate get capped at the threshold so the typing UI doesn't re-lock
+    // mid-session — the player has clearly already opened plenty of packs.
+    if (typeof parsed.manualRips !== "number") {
+      parsed.manualRips = (parsed.packsOpened || 0) >= TYPING_UNLOCK_RIPS ? TYPING_UNLOCK_RIPS : 0;
+    }
     if (!parsed.yearUnlocked || typeof parsed.yearUnlocked !== "object") {
       parsed.yearUnlocked = {};
       // Migration: derive unlock state from any prior progress so existing
@@ -3014,21 +3020,23 @@ function craftSet(key, opts = {}) {
   if (!cur().invById[track.itemKey]) cur().invById[track.itemKey] = {};
   cur().invById[track.itemKey][1] = (cur().invById[track.itemKey][1] || 0) + 1;
   // First-ever Set craft unlocks the Vintage system (year picker + vintage
-  // shop). Players have to play the basic loop once before the multi-year
-  // surface area shows up, so the first session isn't visually overwhelming.
+  // shop). Always fire the celebration — even in opts.silent (craft-homie
+  // tick) — because the unlock is a one-shot life event the player would
+  // otherwise miss if a homie produced the first Set.
   const firstUnlock = !state.firstSetCrafted;
   state.firstSetCrafted = true;
-  // Silent mode is used by the craft-homie tick: it batches the render +
-  // save once at the end of the tick and suppresses the hint line so a
-  // homie quietly working another year doesn't overwrite the player's
-  // active hint message.
-  if (opts.silent) return true;
-  renderAll(); save();
-  SFX.craft();
   if (firstUnlock) {
     SFX.unlock();
     $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. 🔓 Vintage Packs shop + year picker unlocked!`;
-  } else {
+  }
+  // Silent mode is used by the craft-homie tick: it batches the render +
+  // save once at the end of the tick and suppresses the routine "Ready to
+  // list" hint so a homie quietly working another year doesn't overwrite
+  // the player's active hint message.
+  if (opts.silent) return true;
+  renderAll(); save();
+  SFX.craft();
+  if (!firstUnlock) {
     $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
   }
   return true;
@@ -3719,7 +3727,7 @@ function sortCards(opts) {
   // Single-click fallback: nearest-grain seed + click AoE (current behavior).
   const seed = findClickedGrain(opts.click.x, opts.click.y);
   if (!seed) {
-    $("hint").textContent = "Click on the pile to sort, or hover to paint.";
+    $("hint").textContent = "Click on the pile to sort, or hover to mark.";
     return;
   }
   runChainCrit(seed.col, seed.row, (total) => {
@@ -3769,7 +3777,7 @@ function drawSand() {
     for (let r = 0; r < stack.length; r++) {
       if (stack[r] === "__") continue; // chain-explosion tombstone, not yet settled
       const cx = c * SAND_CELL_W + SAND_CELL_W / 2;
-      const cy = h - (r + 1) * SAND_CELL_H + SAND_CELL_H / 2;
+      const cy = h - (r + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H + SAND_CELL_H / 2;
       ctx.fillStyle = grainColorFor(stack[r]);
       ctx.beginPath();
       ctx.arc(cx, cy, SAND_GRAIN / 2, 0, Math.PI * 2);
@@ -3805,7 +3813,7 @@ function drawSand() {
     markedGrains.forEach(key => {
       const [mc, mr] = key.split(",").map(Number);
       const cx = mc * SAND_CELL_W + SAND_CELL_W / 2;
-      const cy = h - (mr + 1) * SAND_CELL_H + SAND_CELL_H / 2;
+      const cy = h - (mr + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H + SAND_CELL_H / 2;
       ctx.beginPath();
       ctx.arc(cx, cy, SAND_GRAIN / 2 + 1.5, 0, Math.PI * 2);
       ctx.stroke();
@@ -4987,6 +4995,10 @@ function renderRipUnlock() {
     bar.hidden = true;
     hint.style.display = "";
     word.style.display = "";
+    // First time we reveal the typing UI the word DOM is empty, since
+    // renderTypingZone has been bailing out pre-unlock. Build it now so the
+    // player can actually see what to type on the unlock tick.
+    if (!word.firstChild) renderTypingZone();
     return;
   }
   // Pre-unlock view: progress bar instead of typing.
