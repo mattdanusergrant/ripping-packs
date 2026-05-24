@@ -694,12 +694,12 @@
   .sorter-buy-modal-btn .cost { color: var(--gold); margin-left: 4px; }
 
   #sand-canvas {
-    /* Fixed 500×260: 50 cols × (25 grain rows + 1 click-buffer row) of 10×10
+    /* Fixed 500×210: 50 cols × (20 grain rows + 1 click-buffer row) of 10×10
        cells. The bottom row never holds a settled grain — clicks there fall
        within the click-radius of the lowest grains, making bottom-row picks
        easier. Centered in the column; doesn't widen with the viewport. */
     display: block;
-    width: 500px; height: 260px;
+    width: 500px; height: 210px;
     max-width: 100%;
     margin: 0 auto;
     background: rgba(0,0,0,0.18); border-radius: 6px;
@@ -1238,7 +1238,7 @@
     /* Tighter homie offset for the narrower mobile pack. */
     .homie-sprite[data-slot="0"], .homie-sprite[data-slot="1"], .homie-sprite[data-slot="2"] { left: calc(50% - 100px); }
     .homie-sprite[data-slot="3"], .homie-sprite[data-slot="4"], .homie-sprite[data-slot="5"] { left: calc(50% + 100px); }
-    #sand-canvas { width: 100%; height: auto; aspect-ratio: 50 / 26; }
+    #sand-canvas { width: 100%; height: auto; aspect-ratio: 50 / 21; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
     .buy-btn .qty { font-size: 0.6rem; }
@@ -1423,7 +1423,7 @@ function def(key, fallback) {
 // caught in the blast chain-explode (rare = RARE_BLAST_REACH-cell "+" arm in
 // each cardinal direction, foil = FOIL_BLAST_REACH-cell "+" arm).
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
-let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1250);
+let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
 // step 1's rare+ upgrade resolves.
 let PACK_FOIL_CHANCE      = def("PACK_FOIL_CHANCE", 0.02);
@@ -3335,11 +3335,11 @@ function renderListings() {
 
 
 // ---- Sand simulation -----------------------------------------------------
-// Grid is locked to SAND_COLS × SAND_ROWS = 50 × 25 = 1250 cells, matching
+// Grid is locked to SAND_COLS × SAND_ROWS = 50 × 20 = 1000 cells, matching
 // UNSORTED_CAPACITY. Cell dimensions scale with the canvas so the grid
 // always fills the visible area regardless of viewport width or height.
 const SAND_COLS = 50;
-const SAND_ROWS = 25;
+const SAND_ROWS = 20;
 // A 1-row "click buffer" at the bottom of the canvas — grains never settle
 // there, but clicks in that strip still hit the bottom-row grains via the
 // SORT_CLICK_RADIUS_CELLS Manhattan-radius search. Makes the last few grains
@@ -3385,7 +3385,7 @@ const CHAIN_STEP_MS = 90; // delay between chain waves so each pop reads
 // faster than HOVER_DWELL_MS so no grain gets marked — slow down to mark.
 let HOVER_DWELL_MS    = def("HOVER_DWELL_MS", 40);
 // Hover cursor radius (in cells) — the area dwelled over gets marked when
-// the timer fires. Default ~1 cell. Upgradeable later via CLOUT.
+// the timer fires. Default 1.5 cells. Upgradeable later via CLOUT.
 let HOVER_RADIUS_CELLS = def("HOVER_RADIUS_CELLS", 1.5);
 // Hard cap on the marked-grain set. Upgraded via CLOUT_BONUSES.maxHighlights.
 let MAX_HIGHLIGHTS = def("MAX_HIGHLIGHTS", 20);
@@ -3452,8 +3452,8 @@ function pickFillColumn(cols) {
   fallingGrains.forEach(g => {
     if (g.col >= 0 && g.col < cols) heights[g.col] += 1;
   });
-  // Skip columns already at the SAND_ROWS cap (25). With UNSORTED_CAPACITY
-  // = SAND_COLS × SAND_ROWS = 1250, the rip check stops new pulls before
+  // Skip columns already at the SAND_ROWS cap (20). With UNSORTED_CAPACITY
+  // = SAND_COLS × SAND_ROWS = 1000, the rip check stops new pulls before
   // every column fills, so we usually have plenty of headroom.
   let minH = Infinity;
   for (let c = 0; c < cols; c++) {
