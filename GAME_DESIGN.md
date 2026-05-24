@@ -19,12 +19,18 @@ BUY → RIP → SORT → CRAFT → LIST → SELL → BUY ...
 ```
 
 1. **Buy** packs, sealed boxes, or cases from the shop.
-2. **Rip** a pack — either by clicking the booster or by typing the on-screen prompt word.
-3. **Sort** the unsorted pile by clicking the sand canvas — every click detonates the nearest grain plus a 4-orthogonal AoE, and any non-standard caught in the blast chain-explodes (rares trigger another 4-ortho blast, foils trigger an 8-cell "+" reaching 2 cells along each axis).
+2. **Rip** a pack — three input modes, all routing to the same `ripOne()`:
+   - **Click** the booster (manual single rip)
+   - **Hover** the booster (passive autorip every `HOVER_AUTORIP_MS`, default 1s)
+   - **Hold** mouse button on the booster (autorip rate **doubles** to every 500ms while held)
+   - **Type** the on-screen prompt word (post-unlock — see §8)
+3. **Sort** the unsorted pile by clicking the sand canvas — every click detonates the nearest grain plus a 4-orthogonal AoE, and any non-standard caught in the blast chain-explodes (rares trigger a `RARE_BLAST_REACH`-cell "+" arm, foils trigger a `FOIL_BLAST_REACH`-cell "+" arm; see §4).
 4. **Craft** Standard / Rare / Foil Standard sets when you've collected one of every card in that rarity.
-5. **List** crafted sets (and unique mythic / non-standard foil pulls) on the marketplace, max 10 active listings.
+5. **List** crafted sets on the marketplace, max 10 active listings.
 6. **Sell** — each listing resolves on its own cooldown for the current market price.
 7. **Reinvest** profits into more packs, Sorters ($500 each, permanent), or Homies ($20 + 1 box, temporary).
+
+The pack's CTA tag rotates through `["CLICK TO RIP", "HOVER TO RIP", "HOLD TO RIP"]` every 30s on a module-level `setInterval` — passive discovery of the three rip modes without a tutorial popup. The autorip system uses `canRip()` to gate the tick, so empty supply / full pile silently no-ops instead of spamming the error SFX. A window-level `mouseup` catches the "press → drag off pack → release" case so the doubled rate can't get stuck on.
 
 > **Multi-set context.** The game ships with 30 yearly sets (2001 – 2030). The
 > sections below describe the loop *within an active year*. Set 30 is the
@@ -68,9 +74,9 @@ Sorting is purely positional — there's no "pull random cards from the top." Ev
 
 1. Click → search a 4-cell (`SORT_CLICK_RADIUS_CELLS`) Manhattan diamond around the click for the nearest grain of any type. If none, the click does nothing.
 2. **Wave 0 (click AoE):** the seed grain plus its 4 orthogonal neighbors are destroyed. Every non-standard cell destroyed here is queued as a wave-1 detonator.
-3. **Wave N+1 (chain):** every queued detonator triggers its own type's blast:
-   - **Rare** → 4-orthogonal blast (same radius as the click AoE).
-   - **Foil Standard** → 8-cell "+" pattern: 1- and 2-cell reach along each cardinal axis (N/S/E/W). Foils explode bigger.
+3. **Wave N+1 (chain):** every queued detonator triggers its own type's blast — both follow a clean "+" ray shape (no diagonals):
+   - **Rare** → `RARE_BLAST_REACH` (default 3) cells along each cardinal axis.
+   - **Foil Standard** → `FOIL_BLAST_REACH` (default 6) cells along each cardinal axis. Foils explode bigger.
 4. Standards in any blast are consumed but don't propagate the chain.
 5. Each destruction spawns an **expanding pop** in the rarity's color on the canvas. Waves are spaced by `CHAIN_STEP_MS` (90ms) so each pop reads.
 6. **Every destroyed grain is fully sorted** — set progress, collection flash, market-key tracking, same as the old hand-sort.
@@ -78,14 +84,14 @@ Sorting is purely positional — there's no "pull random cards from the top." Ev
 
 Outcomes:
 - Click on a pure-standard area: just **5 cards** sorted (seed + 4 orthos).
-- Click on a lone rare: **5 cards**, no further chain.
-- Click on a lone foil: **9 cards** — the 5-cell click AoE plus 4 more cells the foil reaches at distance 2 along the axes.
-- Click into a chain of orthogonally-connected rares: ripples outward 5 cells per rare, no diagonals.
-- Click on a mixed cluster: the foil's "+" reach can pull in another non-standard several cells away that wouldn't be reachable from a rare alone.
+- Click on a lone rare: 5 cards from the click AoE + 4 × `RARE_BLAST_REACH` (12 at default) from the rare's "+" arm — minus the overlap with the click AoE.
+- Click on a lone foil: 5 cards from the click AoE + 4 × `FOIL_BLAST_REACH` (24 at default) from the foil's "+" arm — minus overlap.
+- Click into a chain of orthogonally-connected rares: ripples outward along the connecting rares, each adding another rare blast.
+- Click on a mixed cluster: the foil's longer "+" reach can pull in another non-standard several cells away that wouldn't be reachable from a rare alone.
 
 ### Unsorted cap
 
-Max 2000 cards unsorted. The "Supply" / pack-opening flow refuses to rip when the cap is hit; the typing mini-game silently drops keys.
+`UNSORTED_CAPACITY = 1000` cards. The grid is `50 × 25 = 1250` cells deliberately oversized so a full pile (capped at 1000) leaves a few rows of visual headroom above the highest peak. The pack opener refuses to rip when the active year's pile is at cap; the typing mini-game silently drops keys.
 
 ---
 
@@ -187,10 +193,12 @@ Three player-facing surfaces are hidden on a fresh save and unlock progressively
 | Gate | What it hides | Unlock condition | State field |
 |------|---------------|------------------|-------------|
 | **Type-to-rip** | the typing mini-game (replaced by a pink→gold "KEEP RIPPING · X%" progress bar that fills 1% per manual `ripOne()`) | 100 manual rips (`TYPING_UNLOCK_RIPS`) — homie rips don't count | `state.manualRips` |
-| **Year picker** | the `<select>` dropdown (replaced by a static label `The 2030 Set` with identical chrome) | First successful per-rarity `craftSet()` | `state.firstSetCrafted` |
+| **Year picker** | the `<select>` dropdown (replaced by a static label `The 2030 Set` with identical chrome) | First successful `craftCompleteSet()` (foil OR non-foil) | `state.firstSetCrafted` |
 | **Vintage Packs shop** | the entire `#vintage-shop` widget incl. its `⬆ VINTAGE` upgrade trigger | Same flag — `state.firstSetCrafted` | (shared with year picker) |
 
-Each unlock fires `SFX.unlock()` + a hint message. `handleTypingKey` silently drops keys pre-unlock so the player can't accidentally rip-by-leaning on the keyboard. `renderTypingZone` bails before building the per-letter word DOM until unlocked. Both state fields persist in the save and backfill from prior progress in `load()` — existing playtest saves don't lose the post-unlock UI.
+Each unlock fires `SFX.unlock()` + a hint message. `handleTypingKey` silently drops keys pre-unlock so the player can't accidentally rip-by-leaning on the keyboard. `renderTypingZone` bails before building the per-letter word DOM until unlocked. Both state fields persist in the save and backfill from prior progress in `load()` — but `firstSetCrafted` is **recomputed unconditionally** every load from complete-set evidence (invById complete-set keys, vaultedSets, and the `completeSetCrafts` / `foilCompleteSetCrafts` lifetime counters), so saves that were unlocked under an older "any per-rarity Set" rule re-lock cleanly until a real Complete Set lands.
+
+**Typing-unlock celebration.** The 100th manual rip doesn't snap straight from bar → typing UI. The bar instead pins at 100% with an "UNLOCKED!" label, shakes, flashes white-hot, and explodes outward (1.2s, `TYPING_CELEBRATE_MS`) while a confetti burst spawns from the bar's centroid. The `#typing-zone` container is locked to `min-height: 64px` so the swap from bar → typing UI doesn't shift anything below it. After the timer fires, `bar.hidden = true` is the actual hide — a `.rip-progress[hidden] { display: none; }` rule had to be added so the `[hidden]` attribute outranks the element's own `display: flex`.
 
 ---
 
@@ -229,7 +237,7 @@ Sorter speed + buffer upgrades are paid in cash from each sorter card's `⬆ $X`
 
 The VINTAGE branch was previously called MARKET — it's been fully retargeted at the Vintage Packs shop. Earlier MARKET-branch effects (listing cooldown delta, NPC absorb delta, Set craft multiplier delta) are no-op delta hooks that still exist in code but no node carries them anymore.
 
-**CLOUT is a spendable balance**, not a running total. The header pink chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. Click any **available** node to spend CLOUT and apply the bonus live — effective caps recompute on the spot.
+**CLOUT is a spendable balance**, not a running total. The header gold chip shows `N CLOUT · UPGRADES` and opens the upgrade grid modal. (The hero-chip colors swapped recently: CASH moved onto a dollar-bill green `--cash: #85bb65`, CLOUT inherited the gold that CASH used to wear.) Click any **available** node to spend CLOUT and apply the bonus live — effective caps recompute on the spot.
 
 Modal UI: three columns (one per branch), each node card shows its name, effect, cost, and status — **owned** (gold border), **available** (pink pulse, clickable), **unaffordable** (dim pink), **locked** (dashed, prereqs unmet).
 
@@ -324,13 +332,13 @@ Hint at boot: *"A case on the house — start ripping!"*
 
 ### Unsorted pile cap
 
-`UNSORTED_CAPACITY = 1000` cards (down from 2000). The grid is `SAND_COLS × SAND_ROWS = 50 × 20 = 1000` cells. The pack opener refuses to rip when the active year's pile is at cap; the typing mini-game silently drops keys.
+`UNSORTED_CAPACITY = 1000` cards. The grid is `SAND_COLS × SAND_ROWS = 50 × 25 = 1250` cells — deliberately oversized vs the 1000 cap so a "full" pile (avg height 20) sits ~5 rows below the visible ceiling. The pack opener refuses to rip when the active year's pile is at cap; the typing mini-game silently drops keys.
 
 ### Click buffer
 
 `SAND_BUFFER_ROWS = 1` reserved at the **bottom** of the canvas — grains never settle there, but clicks in that strip still hit the lowest grain in the column via the existing `SORT_CLICK_RADIUS_CELLS` Manhattan-radius search. Bottom-row picks used to require pixel-perfect aim at the canvas edge; the buffer adds a 10px tall "safety net" hit-zone beneath every column's lowest grain.
 
-Canvas is `500 × 210` desktop, aspect-ratio `50/21` mobile. The buffer is purely visual — `SAND_ROWS` (grain capacity per column) stays 20. The three canvas-row → pile-row hit-tests (`findClickedGrain`, `cellsWithinRadius`, hover dwell) subtract `SAND_BUFFER_ROWS` to convert click coords back to pile indices.
+Canvas is `500 × 260` desktop, aspect-ratio `50/26` mobile (50 cols × 25 grain rows + 1 click-buffer row, 10px per cell). The buffer is purely visual — `SAND_ROWS` (grain capacity per column) is 25, but `UNSORTED_CAPACITY = 1000` caps the total fill before any column can actually reach 25. The three canvas-row → pile-row hit-tests (`findClickedGrain`, `cellsWithinRadius`, hover dwell) subtract `SAND_BUFFER_ROWS` to convert click coords back to pile indices.
 
 ---
 
