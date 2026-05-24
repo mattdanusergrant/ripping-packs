@@ -1561,24 +1561,29 @@ let SORTER_COST          = def("SORTER_COST", 1000);
 let SORTER_MAX           = def("SORTER_MAX", 3);
 // Speed track — interval = SORTER_BASE_MS / level. L1 = 1 card/s; each
 // upgrade adds +1 card/s (L10 = 10 cards/s).
-let SORTER_UPGRADE_BASE  = def("SORTER_UPGRADE_BASE", 150);
 let SORTER_BASE_MS       = def("SORTER_BASE_MS", 1000); // L1: 1 card / 1s
-// Buffer track — paid separately. +100 slots per level: L1 = 500, L10 = 1400.
-let SORTER_BUFFER_UPGRADE_BASE = def("SORTER_BUFFER_UPGRADE_BASE", 50);
+// Buffer track — +100 slots per level: L1 = 500, L10 = 1400.
 let SORTER_BUFFER_PER_LEVEL    = def("SORTER_BUFFER_PER_LEVEL", 100);
 let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 500);
 let SORTER_LEVEL_MAX     = def("SORTER_LEVEL_MAX", 10);
+// Upgrade pricing (shared by both speed and buffer tracks): first upgrade
+// (L1 → L2) costs SORTER_UPGRADE_BASE_COST, and each subsequent upgrade
+// adds SORTER_UPGRADE_STEP. So L=1..9 pay $500/$600/$700/.../$1300.
+let SORTER_UPGRADE_BASE_COST = def("SORTER_UPGRADE_BASE_COST", 500);
+let SORTER_UPGRADE_STEP      = def("SORTER_UPGRADE_STEP", 100);
 const SORTER_TICK_MS     = 250;
 // 50ms floor lets L10 hit the intended 10 cards/s (1000/10 = 100ms) and
 // keeps a safety net if SORTER_BASE_MS is tuned absurdly low.
 function sorterInterval(level)  { return Math.max(50, sorterBaseMsEffective() / Math.max(1, level)); }
 function sortsPerSecond(level)  { return 1000 / sorterInterval(level); }
 function sorterCapacity(bufferLevel) { return SORTER_BASE_CAPACITY + (Math.max(1, bufferLevel) - 1) * SORTER_BUFFER_PER_LEVEL; }
-// Linear cost scaling (was quadratic) so late-tier upgrades stay
-// affordable across the longer 10-level ladder. Cost is base × current
-// level — i.e. you pay BASE × L to leave level L for L+1.
-function sorterSpeedUpgradeCost(level)        { return SORTER_UPGRADE_BASE * level; }
-function sorterBufferUpgradeCost(bufferLevel) { return SORTER_BUFFER_UPGRADE_BASE * bufferLevel; }
+// Linear cost ladder, shared by both tracks. Pay BASE + STEP × (L-1) to
+// leave level L for L+1.
+function sorterUpgradeCostAtLevel(level) {
+  return SORTER_UPGRADE_BASE_COST + SORTER_UPGRADE_STEP * (Math.max(1, level) - 1);
+}
+function sorterSpeedUpgradeCost(level)        { return sorterUpgradeCostAtLevel(level); }
+function sorterBufferUpgradeCost(bufferLevel) { return sorterUpgradeCostAtLevel(bufferLevel); }
 function sumBuckets(b) {
   if (!b) return 0;
   return Object.values(b).reduce((a, n) => a + (n || 0), 0);
@@ -3860,10 +3865,10 @@ const DESIGN_FIELDS = [
   { group: "Staff",            key: "HOMIE_PACK_MS",                   path: "HOMIE_PACK_MS",             label: "Homie pack interval (sec)",    step: 0.5, min: 0.5, scale: 1000 },
   { group: "Staff",            key: "SORTER_COST",                     path: "SORTER_COST",               label: "Sorter base cost ($)",         step: 50,  min: 0 },
   { group: "Staff",            key: "SORTER_MAX",                      path: "SORTER_MAX",                label: "Max sorters",                  step: 1,   min: 1, int: true },
-  { group: "Staff",            key: "SORTER_UPGRADE_BASE",             path: "SORTER_UPGRADE_BASE",       label: "Sorter speed upgrade base ($)",step: 50,  min: 0 },
+  { group: "Staff",            key: "SORTER_UPGRADE_BASE_COST",        path: "SORTER_UPGRADE_BASE_COST",  label: "Sorter L1→L2 upgrade cost ($)",step: 25,  min: 0 },
+  { group: "Staff",            key: "SORTER_UPGRADE_STEP",             path: "SORTER_UPGRADE_STEP",       label: "Sorter upgrade step per level ($)",step: 25, min: 0 },
   { group: "Staff",            key: "SORTER_BASE_MS",                  path: "SORTER_BASE_MS",            label: "Sorter base interval (sec)",   step: 0.25, min: 0.25, scale: 1000 },
   { group: "Staff",            key: "SORTER_BASE_CAPACITY",            path: "SORTER_BASE_CAPACITY",      label: "Sorter base buffer capacity",  step: 25,  min: 1, int: true },
-  { group: "Staff",            key: "SORTER_BUFFER_UPGRADE_BASE",      path: "SORTER_BUFFER_UPGRADE_BASE",label: "Sorter buffer upgrade base ($)",step: 25, min: 0 },
   { group: "Staff",            key: "SORTER_BUFFER_PER_LEVEL",         path: "SORTER_BUFFER_PER_LEVEL",   label: "Sorter buffer slots per level",step: 25,  min: 1, int: true },
   { group: "Staff",            key: "SORTER_LEVEL_MAX",                path: "SORTER_LEVEL_MAX",          label: "Sorter max level",             step: 1,   min: 1, int: true },
 
@@ -3898,9 +3903,9 @@ function _liveDesignSnapshot() {
     SET_SIZES,
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     HOMIE_COST, HOMIE_PACK_MS,
-    SORTER_COST, SORTER_MAX, SORTER_UPGRADE_BASE,
+    SORTER_COST, SORTER_MAX,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
-    SORTER_BUFFER_UPGRADE_BASE, SORTER_BUFFER_PER_LEVEL,
+    SORTER_UPGRADE_BASE_COST, SORTER_UPGRADE_STEP, SORTER_BUFFER_PER_LEVEL,
     MARKET_TARGET_STOCK, MARKET_DECAY_RATE, SET_CRAFT_MULTIPLIER,
     COMPLETE_SET_CLOUT, FOIL_COMPLETE_SET_CLOUT,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO,
