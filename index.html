@@ -42,6 +42,34 @@
   .hero-chip .hero-value { font-size: 1.25rem; font-weight: bold; letter-spacing: 0.5px; }
   .hero-chip.cash  { border-color: var(--gold);   background: rgba(245,197,66,0.10); color: var(--gold); }
   .hero-chip.clout { border-color: #ff7eb3;       background: rgba(255,126,179,0.12); color: #ff7eb3; }
+
+  /* Cash gain celebration: a quick bump on the value + a floating +$N
+     popup spawned in JS at the bottom edge of the cash chip. */
+  @keyframes cash-bump {
+    0%   { transform: scale(1);    text-shadow: none; }
+    35%  { transform: scale(1.35); text-shadow: 0 0 14px rgba(255,216,77,0.95), 0 0 4px rgba(255,255,255,0.6); }
+    100% { transform: scale(1);    text-shadow: none; }
+  }
+  #coins.cash-bump { animation: cash-bump 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2); display: inline-block; }
+  @keyframes cash-pop {
+    0%   { opacity: 0; transform: translate(-50%, 0) scale(0.85); }
+    15%  { opacity: 1; transform: translate(-50%, 0) scale(1.05); }
+    100% { opacity: 0; transform: translate(-50%, -64px) scale(1.12); }
+  }
+  .cash-pop {
+    position: fixed; z-index: 9999; pointer-events: none;
+    font-family: monospace; font-weight: bold; font-size: 1.05rem;
+    color: var(--gold);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 0 10px rgba(255,216,77,0.55);
+    animation: cash-pop 1.4s cubic-bezier(0.35, 0, 0.2, 1) forwards;
+  }
+
+  .sfx-toggle {
+    background: none; border: 1px solid rgba(255,255,255,0.15); color: var(--ink);
+    border-radius: 6px; padding: 3px 8px; cursor: pointer;
+    font-size: 0.95rem; line-height: 1;
+  }
+  .sfx-toggle:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.3); }
   .hero-chip.bump {
     animation: clout-pop 0.9s ease-out;
   }
@@ -1096,6 +1124,7 @@
   <div class="stats">
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
+    <button class="sfx-toggle" id="sfx-toggle" title="Sound on — click to mute">🔊</button>
     <button class="reset" id="design-btn">Game Design</button>
     <button class="reset" id="reset-btn">Reset</button>
   </div>
@@ -1562,6 +1591,113 @@ function marketDecayEffective()       { return MARKET_DECAY_RATE   + (eff().mark
 function setCraftMultiplierEffective(){ return SET_CRAFT_MULTIPLIER+ (eff().setCraftMultDelta    || 0); }
 
 
+// ---- Audio --------------------------------------------------------------
+// Synthesized SFX via Web Audio API — no asset files, no preloading. Each
+// "sound" is a tiny oscillator + envelope; the player can mute via the
+// header chip and the preference persists in localStorage.
+const SFX_MUTE_KEY = "cryptid_sfx_muted_v1";
+let _audioCtx = null;
+let _sfxMuted = (() => { try { return localStorage.getItem(SFX_MUTE_KEY) === "1"; } catch (_) { return false; } })();
+function audioCtx() {
+  if (_sfxMuted) return null;
+  if (!_audioCtx) {
+    try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (_) { return null; }
+  }
+  // Browsers suspend audio until a user gesture — resume on every play
+  // attempt so the first interaction wakes the context.
+  if (_audioCtx.state === "suspended") _audioCtx.resume().catch(() => {});
+  return _audioCtx;
+}
+function playTone({ freq = 440, dur = 0.1, type = "sine", vol = 0.15, attack = 0.005, release = 0.05, freqEnd = null }) {
+  const ctx = audioCtx();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, now);
+  if (freqEnd != null) {
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), now + dur);
+  }
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(vol, now + attack);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + dur + release);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + dur + release + 0.02);
+}
+function playSeq(notes, gapMs = 60) {
+  notes.forEach((n, i) => setTimeout(() => playTone(n), i * gapMs));
+}
+// Named SFX — call sites read like SFX.sale(), SFX.pullMythic(), etc.
+const SFX = {
+  sale: () => playSeq([
+    { freq: 880,  dur: 0.08, type: "triangle", vol: 0.20 },
+    { freq: 1320, dur: 0.10, type: "triangle", vol: 0.18, freqEnd: 1760 },
+  ], 70),
+  rip: () => playTone({ freq: 280, dur: 0.05, type: "sawtooth", vol: 0.10, freqEnd: 90 }),
+  sort: () => playTone({ freq: 360, dur: 0.04, type: "square", vol: 0.06, freqEnd: 220 }),
+  pullFoil: () => playSeq([
+    { freq: 1400, dur: 0.06, type: "sine", vol: 0.12 },
+    { freq: 2100, dur: 0.10, type: "sine", vol: 0.10 },
+  ], 50),
+  pullMythic: () => playSeq([
+    { freq: 660,  dur: 0.08, type: "triangle", vol: 0.16 },
+    { freq: 880,  dur: 0.08, type: "triangle", vol: 0.16 },
+    { freq: 1320, dur: 0.18, type: "triangle", vol: 0.18 },
+  ], 80),
+  craft: () => playSeq([
+    { freq: 523, dur: 0.08, type: "triangle", vol: 0.14 },
+    { freq: 659, dur: 0.08, type: "triangle", vol: 0.14 },
+    { freq: 784, dur: 0.16, type: "triangle", vol: 0.16 },
+  ], 70),
+  vault: () => playSeq([
+    { freq: 220, dur: 0.10, type: "sine", vol: 0.16 },
+    { freq: 330, dur: 0.14, type: "sine", vol: 0.14 },
+    { freq: 440, dur: 0.20, type: "sine", vol: 0.16 },
+  ], 90),
+  buy:    () => playTone({ freq: 600, dur: 0.06, type: "sine", vol: 0.10, freqEnd: 800 }),
+  switch: () => playTone({ freq: 440, dur: 0.08, type: "triangle", vol: 0.10, freqEnd: 660 }),
+  unlock: () => playSeq([
+    { freq: 523, dur: 0.10, type: "triangle", vol: 0.15 },
+    { freq: 784, dur: 0.10, type: "triangle", vol: 0.15 },
+    { freq: 1046,dur: 0.18, type: "triangle", vol: 0.15 },
+  ], 80),
+  error:  () => playTone({ freq: 180, dur: 0.12, type: "sawtooth", vol: 0.08, freqEnd: 90 }),
+};
+function setSfxMuted(m) {
+  _sfxMuted = !!m;
+  try { localStorage.setItem(SFX_MUTE_KEY, _sfxMuted ? "1" : "0"); } catch (_) {}
+  const btn = document.getElementById("sfx-toggle");
+  if (btn) {
+    btn.textContent = _sfxMuted ? "🔇" : "🔊";
+    btn.title = _sfxMuted ? "Sound off — click to enable" : "Sound on — click to mute";
+  }
+}
+
+// Floating "+$N" cash popup over the header coins + a gold pulse on the
+// value itself. The companion SFX.sale() is fired here too — every cash
+// gain path (sold listing, future tips, etc.) routes through this helper.
+function celebrateCashGain(amount) {
+  if (!amount || amount <= 0) return;
+  SFX.sale();
+  const coinsEl = document.getElementById("coins");
+  if (!coinsEl) return;
+  coinsEl.classList.remove("cash-bump");
+  void coinsEl.offsetWidth;
+  coinsEl.classList.add("cash-bump");
+  const rect = coinsEl.getBoundingClientRect();
+  const pop = document.createElement("div");
+  pop.className = "cash-pop";
+  pop.textContent = `+${typeof usd === "function" ? usd(amount) : "$" + amount}`;
+  pop.style.left = (rect.left + rect.width / 2) + "px";
+  pop.style.top  = rect.bottom + "px";
+  document.body.appendChild(pop);
+  pop.addEventListener("animationend", () => pop.remove(), { once: true });
+}
+
+
 // ---- State ---------------------------------------------------------------
 // Save schema is now multi-set. Per-set state (inventory, stock, vault, pile,
 // market) lives under state.sets[setId]; top-level state holds cross-set
@@ -1863,7 +1999,15 @@ function rollPack() {
   });
   return cards;
 }
+// Set to true around off-screen rips (e.g. a homie working a different
+// year than the one the player is viewing) so addPull doesn't fire foil
+// or mythic chimes for events the player can't see.
+let _silentPulls = false;
 function addPull(card) {
+  if (!_silentPulls) {
+    if (card.rarity === "mythic" || card.rarity === "legendary") SFX.pullMythic();
+    else if (card.foil && card.rarity !== "standard")            SFX.pullFoil();
+  }
   const foilStandardBulk = card.foil && card.rarity === "standard";
   if (card.foil) {
     if (foilStandardBulk) {
@@ -2045,9 +2189,11 @@ function buyVintagePack(slotIdx) {
   const type = slot.type || "pack";
   const cost = vintageSlotCost(slot);
   if (state.coins < cost) {
+    SFX.error();
     $("hint").textContent = `Need ${usd(cost - state.coins)} more for that Set ${year} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()}.`;
     return;
   }
+  SFX.buy();
   state.coins -= cost;
   // Pack/box/case lands in that year's supply, unopened. The year unlocks
   // the moment of purchase — player still has to switch to it to rip.
@@ -2067,6 +2213,7 @@ function buyVintagePack(slotIdx) {
   if (!state.yearUnlocked) state.yearUnlocked = {};
   const newlyUnlocked = !state.yearUnlocked[year];
   state.yearUnlocked[year] = true;
+  if (newlyUnlocked) SFX.unlock();
   state.vintageShop.slots[slotIdx] = { year: null, type: null, cooldownEndsAt: Date.now() + vintageRefreshMsEffective() };
   renderAll();
   save();
@@ -2566,6 +2713,7 @@ function craftSet(key) {
   if (!cur().invById[track.itemKey]) cur().invById[track.itemKey] = {};
   cur().invById[track.itemKey][1] = (cur().invById[track.itemKey][1] || 0) + 1;
   renderAll(); save();
+  SFX.craft();
   $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
 }
 
@@ -2604,6 +2752,7 @@ function craftCompleteSet(key) {
   }
   renderAll(); save();
   const vaultVal = Math.round(def.clout * cloutScaleFor(state.activeSetId));
+  SFX.craft();
   $("hint").textContent = `Crafted a Set ${state.activeSetId} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
 }
 
@@ -2614,6 +2763,7 @@ function vaultCompleteSet(key) {
   // One-time CLOUT redemption per (year × foil-variant). Vaulting again
   // is refused outright — list extras for cash via the marketplace.
   if (((cur().vaultedSets || {})[key] || 0) > 0) {
+    SFX.error();
     $("hint").textContent = `Set ${setId} ${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`;
     return;
   }
@@ -2625,6 +2775,7 @@ function vaultCompleteSet(key) {
   cur().vaultedSets[key] = 1; // permanent flag — only ever 1, never increments
   const award = Math.round(def.clout * cloutScaleFor(setId));
   state.clout = (state.clout || 0) + award;
+  SFX.vault();
   renderAll(); save();
   const tag = setId === CURRENT_SET_ID ? "" : ` (×${cloutScaleFor(setId).toFixed(2)} vintage bonus)`;
   $("hint").textContent = `Vaulted a Set ${setId} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}). 🔒 Variant claimed.`;
@@ -2723,6 +2874,7 @@ function resolveListings() {
     if (now < l.resolveAt) return true;
     if (l.willResolve) {
       state.coins += l.askPrice;
+      celebrateCashGain(l.askPrice);
       // NPC absorbs one unit into market inventory — drops the price of the
       // next sale of this exact (key, id). Works for both set items and
       // per-id priced cards (l.rarity is the market key in either case).
@@ -3210,6 +3362,7 @@ function sortCards(opts) {
   if (chainBusy) return; // a chain is mid-animation; drop the click
   if (SAND_BULK_KEYS.reduce((s, k) => s + (cur().unsorted[k] || 0), 0) === 0) return;
   if (!opts || !opts.click) return;
+  SFX.sort();
 
   // Paint mode: if grains are marked, detonate them all together (no click
   // AoE) and skip the single-seed find. The click position is irrelevant.
@@ -3907,11 +4060,18 @@ function homieRipPack(homie) {
     state.packsOpened += 1;
     const pulls = rollPack();
     const completions = [];
-    pulls.forEach(card => {
-      const r = addPull(card);
-      if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
-    });
+    const prevSilent = _silentPulls;
+    _silentPulls = !watching;
+    try {
+      pulls.forEach(card => {
+        const r = addPull(card);
+        if (r.completed) completions.push({ rarity: card.rarity, foil: card.foil });
+      });
+    } finally {
+      _silentPulls = prevSilent;
+    }
     if (watching) {
+      SFX.rip();
       spawnSandFromPulls(pulls);
       spawnParticles(pulls);
       showHits(pulls, { newCount: 0, completions });
@@ -4218,13 +4378,16 @@ function renderAll() { renderHeader(); renderVault(); renderListings(); renderVi
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
   if (state.activeSetId !== CURRENT_SET_ID) {
+    SFX.error();
     $("hint").textContent = `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`;
     return;
   }
   if (state.coins < totalCost) {
+    SFX.error();
     $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
     return;
   }
+  SFX.buy();
   state.coins -= totalCost;
   cur().packSupply += qty;
   renderAll(); save();
@@ -4232,13 +4395,16 @@ function buyPacks(qty, totalCost, label) {
 }
 function buyBoxes(qty, totalCost, label) {
   if (state.activeSetId !== CURRENT_SET_ID) {
+    SFX.error();
     $("hint").textContent = `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`;
     return;
   }
   if (state.coins < totalCost) {
+    SFX.error();
     $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
     return;
   }
+  SFX.buy();
   state.coins -= totalCost;
   cur().boxesOwned = (cur().boxesOwned || 0) + qty;
   renderAll(); save();
@@ -4359,13 +4525,16 @@ function handleTypingKey(rawKey) {
 function ripOne() {
   if (cur().packSupply < 1) maybeCrackBox();
   if (cur().packSupply < 1) {
+    SFX.error();
     $("hint").textContent = "No packs in supply. Buy one above.";
     return;
   }
   if (unsortedTotal() >= UNSORTED_CAPACITY) {
+    SFX.error();
     $("hint").textContent = `Unsorted pile full (${UNSORTED_CAPACITY}). Sort some cards first.`;
     return;
   }
+  SFX.rip();
   cur().packSupply -= 1;
   state.packsOpened += 1;
   const pulls = rollPack();
@@ -4403,17 +4572,20 @@ function switchToSet(sid) {
   if (!Number.isFinite(sid)) return;
   if (sid === state.activeSetId) { syncYearPickerSelection(); return; }
   if (!isSetUnlocked(sid)) {
+    SFX.error();
     $("hint").textContent = `Set ${sid} (${setYearLabel(sid)}) is locked — buy a Set ${sid} vintage pack first.`;
     syncYearPickerSelection();
     return;
   }
   const block = yearSwitchBlockReason();
   if (block) {
+    SFX.error();
     $("hint").textContent = block;
     syncYearPickerSelection();
     return;
   }
   state.activeSetId = sid;
+  SFX.switch();
   renderAll(); save();
   $("hint").textContent = `Now viewing Set ${sid} (${setYearLabel(sid)}). Packs ${usd(packCost())} each.`;
 }
@@ -4544,6 +4716,9 @@ $("sorters-area").addEventListener("click", (e) => {
   }
 });
 $("design-btn").addEventListener("click", openDesignPanel);
+$("sfx-toggle").addEventListener("click", () => { setSfxMuted(!_sfxMuted); if (!_sfxMuted) SFX.buy(); });
+// Init the toggle label from the persisted mute state on boot.
+setSfxMuted(_sfxMuted);
 $("design-close").addEventListener("click", closeDesignPanel);
 $("design-cancel").addEventListener("click", closeDesignPanel);
 $("design-apply").addEventListener("click", applyDesignAndReload);
