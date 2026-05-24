@@ -1637,12 +1637,14 @@ const UPGRADE_NODES = [
   { id: "list4",  branch: "listings", label: "Online Empire",    desc: "+3 listing slots",    cost: 200, effect: { listingSlots: 3 },      prereq: ["list3"] },
   // SORTERS — all sorter upgrades now cost CASH (per-sorter level-ups via
   // the sorter card's ⬆ button). No CLOUT-bought sorter nodes.
-  // MARKET — economy modifiers.
-  { id: "mkt1",   branch: "market",   label: "Quick Sales",      desc: "Listing cooldown -3s",cost: 20,  effect: { listingCooldownDelta: -3 } },
-  { id: "mkt2",   branch: "market",   label: "Hot Demand",       desc: "NPC absorb +0.03/s",  cost: 80,  effect: { marketDecayDelta: 0.03 }, prereq: ["mkt1"] },
-  { id: "mkt3",   branch: "market",   label: "Premium Sets",     desc: "Set craft mult +0.10",cost: 250, effect: { setCraftMultDelta: 0.1 }, prereq: ["mkt2"] },
-  { id: "mkt4",   branch: "market",   label: "Vintage Picker",   desc: "+1 vintage shop slot",cost: 150, effect: { vintageSlots: 1 }, prereq: ["mkt3"] },
-  { id: "mkt5",   branch: "market",   label: "Estate Sale",      desc: "+1 vintage slot, refresh -1min",cost: 400, effect: { vintageSlots: 1, vintageRefreshDelta: -60000 }, prereq: ["mkt4"] },
+  // VINTAGE — everything in the branch upgrades the Vintage Packs shop on
+  // the right-hand column: more slots, faster restock, better odds of a
+  // box or case turning up.
+  { id: "vintage1", branch: "vintage", label: "Curator's Pick",  desc: "+1 vintage shop slot",                  cost: 50,  effect: { vintageSlots: 1 } },
+  { id: "vintage2", branch: "vintage", label: "Faster Restock",  desc: "Slot refresh −60s",                     cost: 100, effect: { vintageRefreshDelta: -60000 },                       prereq: ["vintage1"] },
+  { id: "vintage3", branch: "vintage", label: "Estate Sale",     desc: "+1 vintage shop slot",                  cost: 200, effect: { vintageSlots: 1 },                                  prereq: ["vintage2"] },
+  { id: "vintage4", branch: "vintage", label: "Box Hunter",      desc: "Box weight +12, case weight +6",        cost: 350, effect: { vintageBoxWeightDelta: 12, vintageCaseWeightDelta: 6 }, prereq: ["vintage3"] },
+  { id: "vintage5", branch: "vintage", label: "Time Traveler",   desc: "+1 vintage slot, refresh −60s",         cost: 600, effect: { vintageSlots: 1, vintageRefreshDelta: -60000 },     prereq: ["vintage4"] },
 ];
 const UPGRADE_BRANCHES = [
   { key: "paint",    label: "PAINT",    color: "#ff7eb3", subtracks: [
@@ -1651,7 +1653,7 @@ const UPGRADE_BRANCHES = [
     { key: "speed",  label: "PAINT SPEED" },
   ] },
   { key: "listings", label: "LISTINGS", color: "#ffd84d" },
-  { key: "market",   label: "MARKET",   color: "#b8ff5a" },
+  { key: "vintage",  label: "VINTAGE",  color: "#d4a55e" },
 ];
 
 function unlockedNodeSet() {
@@ -2237,17 +2239,28 @@ function rollVintageYear() {
   return choices[choices.length - 1].s;
 }
 // Roll which kind of vintage offering this slot holds: pack / box / case.
+// Effective vintage type weights — base from VINTAGE_TYPE_WEIGHTS plus any
+// active upgrade deltas (Box Hunter etc.). Wrapped in try/catch since this
+// can be called during defaultState before state / the let declaration are
+// initialized.
+function vintageTypeWeightsEffective() {
+  let base;
+  try { base = VINTAGE_TYPE_WEIGHTS; } catch (_) { base = { pack: 80, box: 16, case: 4 }; }
+  let e = {};
+  try { e = eff(); } catch (_) {}
+  return {
+    pack: Math.max(0, (base.pack || 0) + (e.vintagePackWeightDelta || 0)),
+    box:  Math.max(0, (base.box  || 0) + (e.vintageBoxWeightDelta  || 0)),
+    case: Math.max(0, (base.case || 0) + (e.vintageCaseWeightDelta || 0)),
+  };
+}
 function rollVintageType() {
-  // Boot order: defaultState may call this before VINTAGE_TYPE_WEIGHTS' let
-  // declaration is reached, so fall back to the same defaults if the read
-  // throws on TDZ.
-  let w;
-  try { w = VINTAGE_TYPE_WEIGHTS; } catch (_) { w = { pack: 80, box: 16, case: 4 }; }
-  const total = (w.pack || 0) + (w.box || 0) + (w.case || 0);
+  const w = vintageTypeWeightsEffective();
+  const total = w.pack + w.box + w.case;
   if (total <= 0) return "pack";
   let r = Math.random() * total;
-  if ((r -= w.pack || 0) < 0) return "pack";
-  if ((r -= w.box  || 0) < 0) return "box";
+  if ((r -= w.pack) < 0) return "pack";
+  if ((r -= w.box)  < 0) return "box";
   return "case";
 }
 // One slot fill — picks both type and year.
