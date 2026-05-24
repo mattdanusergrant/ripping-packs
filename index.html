@@ -440,6 +440,17 @@
   .year-select.midcentury { color: #c8b88a; border-color: #4a4030; background-color: #1a1810; }
   .year-select option { background: #1c1c1c; color: #ddd; font-size: 0.95rem; font-weight: bold; }
   .year-select option:disabled { color: #555; }
+  /* Pre-unlock view: same typography + chrome as the dropdown, but a static
+     label (no caret, no click target). Swapped in by renderYearPicker. */
+  .active-set-label {
+    display: block; width: 100%;
+    margin-bottom: 8px; padding: 10px 14px;
+    background: #1c1c1c; color: #ddd;
+    border: 1px solid #444; border-radius: 6px;
+    font-family: monospace; font-size: 1.1rem; font-weight: bold;
+    letter-spacing: 1px; text-align: center;
+    box-sizing: border-box;
+  }
   /* Switch-blocked: visible "locked" treatment without disabling. */
   .year-select.locked { opacity: 0.55; cursor: not-allowed; border-style: dashed; }
 
@@ -1265,6 +1276,7 @@
 
 <section id="shop">
   <h2 id="shop-title">OPENING</h2>
+  <div id="active-set-label" class="active-set-label"></div>
   <select id="year-picker" class="year-select" aria-label="Active set"></select>
   <div class="buy-buttons">
     <button class="buy-btn" id="buy-pack">
@@ -2447,12 +2459,23 @@ function renderVintageShop() {
 
 function renderYearPicker() {
   const sel = $("year-picker");
-  if (!sel) return;
-  // Hide the entire year picker until the player crafts their first Set —
-  // first-session players only see the core current-year loop. Pinned to
-  // the same gate as the vintage shop section.
-  sel.hidden = !state.firstSetCrafted;
-  if (!state.firstSetCrafted) { sel.innerHTML = ""; return; }
+  const label = $("active-set-label");
+  if (!sel || !label) return;
+  const activeLabel = `The ${setYearLabel(state.activeSetId)} Set`;
+  // Pre-unlock: a static label shows the current year. Post-unlock: the
+  // dropdown takes over with the same text as the selected option. The
+  // explicit display toggle is intentional — relying on the `hidden`
+  // attribute didn't work because .year-select/.active-set-label both
+  // set display: block in CSS, which wins over [hidden].
+  if (!state.firstSetCrafted) {
+    label.style.display = "block";
+    label.textContent = activeLabel;
+    sel.style.display = "none";
+    sel.innerHTML = "";
+    return;
+  }
+  label.style.display = "none";
+  sel.style.display = "block";
   const opts = [];
   for (let s = CURRENT_SET_ID; s >= 1; s -= 1) {
     const year = setYearLabel(s);
