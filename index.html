@@ -204,6 +204,27 @@
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
     font-weight: bold; line-height: 1;
   }
+  /* Pre-unlock state: a slim progress bar in place of the typing UI. Fills
+     1% per manual rip; revealed when state.manualRips ≥ TYPING_UNLOCK_RIPS. */
+  .rip-progress {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    width: 220px;
+  }
+  .rip-progress-label {
+    font-size: 0.6rem; color: var(--muted);
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .rip-progress-track {
+    width: 100%; height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px; overflow: hidden;
+  }
+  .rip-progress-fill {
+    height: 100%; width: 0;
+    background: linear-gradient(90deg, #ff7eb3, var(--gold));
+    border-radius: 3px;
+    transition: width 0.25s ease-out;
+  }
   .typ-line {
     display: flex; gap: 5px;
   }
@@ -1306,6 +1327,10 @@
       </div>
     </div>
     <div id="typing-zone">
+      <div id="rip-progress" class="rip-progress" hidden>
+        <div class="rip-progress-label"></div>
+        <div class="rip-progress-track"><div class="rip-progress-fill"></div></div>
+      </div>
       <div class="typing-hint">type to rip</div>
       <div id="typing-word"></div>
     </div>
@@ -1562,6 +1587,10 @@ const HOMIE_MAX     = 6; // 3 slots each side of the pack
 let CRAFT_HOMIE_COST        = def("CRAFT_HOMIE_COST", 20);
 let CRAFT_HOMIE_TICK_MS     = def("CRAFT_HOMIE_TICK_MS", 5000);
 let CRAFT_HOMIE_DURATION_MS = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
+// Manual rips required to unlock the type-to-rip mini-game. First session
+// shows just a horizontal progress bar; once filled, the typing UI takes
+// over the same slot in #typing-zone.
+let TYPING_UNLOCK_RIPS = def("TYPING_UNLOCK_RIPS", 100);
 const HOMIE_TICK_MS = 250;
 
 let SORTER_COST          = def("SORTER_COST", 1000);
@@ -1867,6 +1896,11 @@ const defaultState = () => ({
   // Gates the Vintage Packs shop + year picker visibility in renderAll
   // so the first session is just the core rip → sort → craft → list loop.
   firstSetCrafted: false,
+  // Manual rips (not homie-driven) — drives the type-to-rip unlock bar.
+  // The typing UI is hidden behind a progress bar until manualRips
+  // reaches TYPING_UNLOCK_RIPS (= 100). Counted only in ripOne(), so
+  // homie auto-rips don't shortcut the unlock.
+  manualRips: 0,
   // Which years have been unlocked in the year picker. A year unlocks the
   // moment you buy a booster pack of it (via the vintage shop).
   yearUnlocked: {},
@@ -4840,7 +4874,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); paintUpgradeTriggers(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSetProgress(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
 
 // Pulse the upgrade-branch triggers (⬆ PAINT / ⬆ VINTAGE / ⬆ SLOTS) when
 // the player has CLOUT to spend on at least one node in that branch. Run
@@ -4939,9 +4973,39 @@ function ensureTypingWord() {
     typingState.nextWord = pickTypingWord(typingState.word);
   }
 }
+// Until manualRips reaches TYPING_UNLOCK_RIPS, the type-to-rip mini-game is
+// hidden and a horizontal progress bar fills 1% per manual click in its
+// place. Toggling display: none / "" lets both DOM trees coexist; the
+// existing renderTypingZone bails out via .hidden on its container.
+function renderRipUnlock() {
+  const bar  = $("rip-progress");
+  const hint = document.querySelector("#typing-zone .typing-hint");
+  const word = $("typing-word");
+  if (!bar || !hint || !word) return;
+  const unlocked = (state.manualRips || 0) >= TYPING_UNLOCK_RIPS;
+  if (unlocked) {
+    bar.hidden = true;
+    hint.style.display = "";
+    word.style.display = "";
+    return;
+  }
+  // Pre-unlock view: progress bar instead of typing.
+  bar.hidden = false;
+  hint.style.display = "none";
+  word.style.display = "none";
+  const pct = Math.min(100, Math.round((state.manualRips || 0) * 100 / TYPING_UNLOCK_RIPS));
+  const labelEl = bar.querySelector(".rip-progress-label");
+  const fillEl  = bar.querySelector(".rip-progress-fill");
+  if (labelEl) labelEl.textContent = `KEEP RIPPING · ${pct}%`;
+  if (fillEl)  fillEl.style.width  = pct + "%";
+}
+
 function renderTypingZone() {
   const wrap = $("typing-word");
   if (!wrap) return;
+  // Don't run the typing-word build until the player has unlocked it —
+  // saves a chunk of DOM churn per render in the first session.
+  if ((state.manualRips || 0) < TYPING_UNLOCK_RIPS) return;
   ensureTypingWord();
   wrap.innerHTML = "";
   // Current word — bigger / brighter, with per-letter state classes.
@@ -4970,6 +5034,10 @@ function renderTypingZone() {
 }
 function handleTypingKey(rawKey) {
   if (!rawKey || rawKey.length !== 1) return;
+  // Typing mini-game is locked behind a manual-rip threshold; quietly
+  // drop keystrokes until then so the player doesn't accidentally start
+  // ripping by leaning on the keyboard.
+  if ((state.manualRips || 0) < TYPING_UNLOCK_RIPS) return;
   ensureTypingWord();
   const key = rawKey.toLowerCase();
   const want = typingState.word[typingState.index];
@@ -5015,6 +5083,10 @@ function ripOne() {
   SFX.rip();
   cur().packSupply -= 1;
   state.packsOpened += 1;
+  const justUnlockedTyping = (state.manualRips || 0) < TYPING_UNLOCK_RIPS
+                          && (state.manualRips || 0) + 1 >= TYPING_UNLOCK_RIPS;
+  state.manualRips = (state.manualRips || 0) + 1;
+  if (justUnlockedTyping) SFX.unlock();
   const pulls = rollPack();
   let newCount = 0;
   const completions = []; // {rarity, foil}
