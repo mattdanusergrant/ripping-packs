@@ -26,6 +26,13 @@ BUY → RIP → SORT → CRAFT → LIST → SELL → BUY ...
 6. **Sell** — each listing resolves on its own cooldown for the current market price.
 7. **Reinvest** profits into more packs, Sorters ($500 each, permanent), or Homies ($20 + 1 box, temporary).
 
+> **Multi-set context.** The game ships with 30 yearly sets (2001 – 2030). The
+> sections below describe the loop *within an active year*. Set 30 is the
+> current year and the only one unlocked at fresh-boot — older years (the
+> "vintage shop") open up as you craft Complete Sets. The cross-year
+> structure, pricing curve, CLOUT scaling, and per-year state buckets are
+> covered in detail in **§19 Multi-Set / Vintage System**.
+
 ---
 
 ## 3. Cards & Rarities
@@ -315,29 +322,70 @@ Mobile collapses to single column. Cells shrink to 28px and the standard grid st
 
 ## 14. State Schema (high level)
 
+Save schema is **v5**. Top-level state holds cross-set fields (cash, CLOUT,
+upgrade nodes, listings, staff); per-year inventory lives under
+`state.sets[setId]` and is lazy-materialized — touched years exist, others
+don't.
+
 ```
 state = {
-  coins, packsOpened, packSupply, boxesOwned,
-  opened: { [rarity]: lifetime pull count, non-foil },
-  openedFoil: { [rarity]: lifetime foil pull count },
-  stock:     { [rarity]: current non-foil inventory total },
-  stockFoil: { [rarity]: current foil inventory total },
-  owned:     { [rarity]: array of unique IDs collected },
-  ownedFoil: { [rarity]: array of unique foil IDs collected },
-  unsorted:  { standard, rare, foilStandard },
-  bulkInvById: { standard: {id:count}, rare: {id:count}, foilStandard: {id:count} },
-  invById: { [marketKey]: {id:count} },   // priced inventory only
-  market:  { [marketKey]: {id:price} },   // live prices
-  marketFund: { [marketKey]: {id:fund} }, // fundamentals
-  listings: [{ uid, rarity, cardId, foil, askPrice, resolveAt, willResolve }],
-  pile: [[grainKey,...], ...],            // 2D column-stack of sand grains
-  homies: [{ uid, packsRemaining, lastRipAt }],
-  sorters: [{ uid, level, buffer:{standard,rare,foilStandard}, lastSortAt }],
-  // plus: counters, set-completion flags, version stamps for migration
+  // ---- cross-set --------------------------------------------------------
+  coins, packsOpened,
+  activeSetId,                   // 1..30; which year you're viewing/ripping
+  clout, cloutSpent,             // spendable balance + lifetime spend
+  unlockedNodes: [],             // upgrade tree (CLOUT-bought, global)
+  completeSetCrafts: { [setId]: count },
+                                 // lifetime non-foil Complete Set crafts
+                                 // per year — drives the vintage unlock gate
+  homies:   [{ uid, slot, setId, packsRemaining, lastRipAt, startAt }],
+  sorters:  [{ uid, level, setId, input{}, output{}, lastSortAt }],
+  listings: [{ uid, setId, rarity, cardId, foil, askPrice, resolveAt,
+               willResolve }],
+  listingsUidCounter, homieUidCounter, sorterUidCounter,
+  marketVersion, setVersion,     // schema stamps
+
+  // ---- per-year buckets — lazy-materialized via setStateFor(setId) ------
+  sets: {
+    [setId]: {
+      packSupply, boxesOwned,
+      unsorted:   { standard, rare, foilStandard },
+      stock:      { [rarity]: count, non-foil },
+      stockFoil:  { [rarity]: count, foil },
+      opened, openedFoil,        // lifetime pull counters (per year)
+      pile: [[grainKey,...], ...],
+      owned:     { [rarity]: [unique IDs collected] },
+      ownedFoil: { [rarity]: [unique foil IDs collected] },
+      setsCelebrated, setsCelebratedFoil,   // first-completion flags
+      invById:     { [marketKey]: {id:count} },   // priced + set items
+      bulkInvById: { standard, rare, foilStandard: {id:count} },
+      vaultedSets: { [completeSetKey]: count },   // lifetime vault deposits
+      marketInv,                                  // NPC market level per
+      marketInvUpdated,                           // (key,id), per year
+    },
+  },
 }
 ```
 
-A versioned migration runs on load (`MARKET_VERSION`, `SET_VERSION`) to backfill new fields and reshape removed ones — e.g. legacy per-id foil-standard inventory gets folded into `bulkInvById.foilStandard`; retired `state.friends` is dropped.
+Two accessors do almost all the work:
+
+- **`setStateFor(setId)`** — returns the per-year bundle, creating an empty
+  one on first touch.
+- **`cur()`** — shortcut for `setStateFor(state.activeSetId)`. Almost every
+  inventory-touching code path uses `cur()` so it reads/writes the active
+  year's bundle.
+
+A third helper, **`withActiveSet(setId, fn)`**, temporarily swaps
+`state.activeSetId` for the duration of `fn` and restores it in a `finally`
+block. Used for staff operations that must mutate a year other than the one
+currently being viewed (a Set 25 homie ripping while the player is on Set 30).
+
+Save migration: bumping `SAVE_KEY` v4 → v5 means old saves are silently
+ignored — the player starts fresh on the new schema. (Legacy migration
+tail in `load()` was removed during the refactor; future schema bumps will
+similarly assume reset.) `load()` does minimal sanity backfills against the
+v5 shape: top-level cross-set fields default to safe values, each per-year
+bundle is re-skeletoned against `blankSetState()` for any missing fields,
+and pile tombstones from interrupted chain animations are cleaned.
 
 ---
 
@@ -352,8 +400,9 @@ This makes the whole game a live design sandbox — every drop-rate, every basel
 ## 16. Out-of-Scope (current build) / Roadmap Hooks
 
 - **Multiplayer / trades:** none.
-- **Cross-series:** only one card series; expansion would require a series picker + per-series state namespacing.
-- **Cosmetics:** no custom card art or alternate sleeve themes yet.
+- **Cosmetics:** no custom card art or alternate sleeve themes yet. (Cards
+  across years are visually distinguished only by the patina tint and corner
+  setId chip — no per-set art exists.)
 - **Achievements / quests:** none.
 - **Mobile-first polish:** layout adapts but interaction is desktop-pointed (the canvas crit is generous enough for touch, but the typing mini-game is desktop-only).
 - **Sorter upgrades beyond Lv 5:** capped for now; future levels could specialize (e.g. foil-only sorter, rare-priority sorter).
@@ -385,6 +434,274 @@ Dark plum / indigo panel palette, gold accents for cash and CTAs. Pixel-bold dis
 - Foils: rainbow shimmer gradient
 
 CSS animations carry the game's tactility: card-pop flash for new pulls, sand-pile bobbing for foil grains, gold pulse for available craft/collect buttons, scale-up for typed letters that hit, stacked-card shadow on Set listings.
+
+---
+
+## 19. Multi-Set / Vintage System
+
+The game ships with **30 yearly sets, Set 01 (2001) through Set 30 (2030)**.
+Set 30 is the current year and the only set unlocked at fresh-boot; older
+years open up through the "vintage shop" as you make progress in the
+current year. All 30 years share the same card layout, rarities, and core
+loop — they differ only by their `setId` tag, visual patina tint, pricing,
+and CLOUT reward scaling.
+
+### 19.1 The active-set pointer
+
+`state.activeSetId` is the single source of truth for "which year is the
+player currently working on." It's mutated by:
+
+- Clicking a year chip in the year picker (above the shop's buy buttons)
+- Clicking a vault summary stamp (above the listings panel)
+- Internally, the `withActiveSet(setId, fn)` helper that wraps staff ops
+  (homie rips, sorter load/collect) so they mutate their pinned year's
+  bundle, not whatever the player happens to be viewing
+
+The active set drives:
+- Which year's pack supply / box stash you rip from
+- Which year's vault grid + craft tracks render
+- Which year's sand pile + sorters animate
+- Pack/box/case price labels in the shop
+- Patina filter on the active workspace
+
+### 19.2 The year picker
+
+A horizontal scroll of 30 chips sits above the buy buttons:
+
+```
+[S30 '30 ★] [S29 '29] [S28 '28 🔒] [S27 '27 🔒] ... [S01 '01 🔒]
+```
+
+- Active year highlighted in gold
+- Unlocked years readable in their patina tier color
+- Locked years are dimmed with a 🔒 prefix and a tooltip explaining how to
+  unlock
+- Click an unlocked chip → switch active set (full re-render, save fires)
+- Click a locked chip → hint line explains the unlock requirement
+
+### 19.3 Unlock gate — "graduate to vintage"
+
+A year **Set N** unlocks when you've crafted at least one **non-foil Complete
+Set in Set N+1**. Set 30 is always unlocked.
+
+```
+isSetUnlocked(setId):
+  if (setId == 30) return true
+  return state.completeSetCrafts[setId + 1] > 0
+```
+
+Lifetime non-foil crafts are tracked at `state.completeSetCrafts[setId]`;
+the counter increments inside `craftCompleteSet` for non-foil only. Foil
+Complete Sets are not a shortcut — they're the apex prize, not the
+progression gate.
+
+The full vintage ladder takes **29 sequential non-foil Complete Set crafts**
+to walk back from Set 30 to Set 01.
+
+### 19.4 Pricing curve — buying
+
+Pack / box / case cost scales **linearly** with set age:
+
+```
+setAgeMult(setId)  = max(1, 31 − setId)
+packCost(setId)    = PACK_COST * setAgeMult(setId)
+boxCost(setId)     = BOX_COST  * setAgeMult(setId)
+caseCost(setId)    = CASE_COST * setAgeMult(setId)
+```
+
+| Set | Mult | Pack | Box   | Case  |
+|----:|----:|------|-------|-------|
+| 30  | 1×  | $3   | $100  | $500  |
+| 25  | 6×  | $18  | $600  | $3,000|
+| 15  | 16× | $48  | $1,600| $8,000|
+| 01  | 30× | $90  | $3,000| $15,000|
+
+Vintage packs cost a lot; the rewards scale separately (next section).
+
+### 19.5 Reward curve — selling + CLOUT
+
+Sell-price baselines **and** Complete Set vault CLOUT both scale by a
+**gentler** curve:
+
+```
+cloutScaleFor(setId) = 1 + max(0, 30 − setId) * 0.07
+```
+
+| Set | Scale | Complete Set CLOUT | Foil Complete CLOUT | Mythic sell mult |
+|----:|------:|-------------------:|--------------------:|------------------:|
+| 30  | 1.00× | 50                 | 500                 | 1.00× baseline   |
+| 25  | 1.35× | 68                 | 675                 | 1.35× baseline   |
+| 15  | 2.05× | 103                | 1,025               | 2.05× baseline   |
+| 01  | 3.03× | 151                | 1,515               | 3.03× baseline   |
+
+This is applied in two places:
+
+- **`marketPriceFor(setId, key, id)`** multiplies `BASELINE[key]` by
+  `cloutScaleFor(setId)` before the NPC inventory factor.
+- **`vaultCompleteSet`** awards `round(def.clout * cloutScaleFor(activeSetId))`
+  CLOUT.
+
+**Why the asymmetric curves?** Pack costs scale steeply (30×) so vintage
+hunting is a real cost commitment, but rewards scale gently (3×) so
+chasing old years is a CLOUT play, not a cash arbitrage. Set 01 foil
+Complete Set is the apex prize at **1,515 CLOUT** per vault deposit.
+
+> **Tuning note.** The 0.07/year gentle scale was tentatively set to make
+> vintage hunting expensive-but-not-impossible. A real playtest may show
+> the cost curve dominates and vintage feels unrewarding — if so, bump the
+> scale (0.10? 0.15?) or flip pack cost to also use the gentle scale.
+
+### 19.6 Per-year state buckets
+
+See §14 for the full schema. Conceptually:
+
+- **Shared at top level:** cash, lifetime packs opened, CLOUT (it's a
+  cross-year currency), upgrade nodes, listings (each tagged with its
+  setId), homies, sorters.
+- **Per year (`state.sets[setId]`):** pack supply, sealed boxes,
+  inventory (priced + bulk), unsorted pile, sand pile, owned card IDs,
+  set-completion flags, vault deposits, **NPC market levels**.
+
+Each year has its **own** NPC market — a Set 25 mythic and a Set 30 mythic
+are different items with separately-flooding inventories. Listing a glut
+of Set 25 mythics doesn't drop Set 30 mythic prices.
+
+Bundles are **lazy-materialized**. A fresh boot only writes `state.sets[30]`;
+older years are created on demand via `setStateFor(setId)` (called by
+`cur()`, by buying packs of that year, by hiring a homie there, etc.).
+Most saves will only have 2–4 entries in `state.sets` — the years the
+player has actually touched.
+
+### 19.7 Listings across years
+
+`state.listings` stays a **flat array** — set listings, crafted-set
+listings, and complete-set listings all live together. Each listing
+record carries its own `setId`. This means:
+
+- **Render** is set-agnostic — the marketplace shows all your active
+  listings regardless of which year you're viewing.
+- **Cancel** returns inventory to `setStateFor(l.setId)`, not `cur()` —
+  so a S25 listing cancelled while you're on S30 returns the set item to
+  the right bundle.
+- **Resolve** (expired path) likewise routes to the listing's own bundle.
+- **NPC absorption** on sale: `npcAbsorbSale(l.setId, l.rarity, l.cardId)` —
+  each year's market inflates only from sales within that year.
+
+The 10-slot listing cap (`LISTING_SLOTS`, upgradable) is shared — you can
+hold 10 listings total across all years, not 10 per year.
+
+### 19.8 Staff pinned to their hire year
+
+Homies and sorters both record their `setId` at hire/install time:
+
+```
+state.homies.push({ uid, slot, setId: activeSetId, ... })
+state.sorters.push({ uid, level, setId: activeSetId, ... })
+```
+
+- **Hiring** consumes a box from the **active year's** stash. If you want
+  a Set 25 homie, you need to buy a Set 25 box first.
+- **Homie rips** wrap `homieRipPack(homie)` in `withActiveSet(homie.setId,
+  fn)` so the rip mutates the homie's year's inventory. Visual side
+  effects (falling sand, hit pops, particle confetti, flash queue) are
+  gated on `homie.setId === state.activeSetId` ("watching") — off-screen
+  rips silently update inventory without spamming the active view.
+- **Sorter LOAD/COLLECT** likewise wrap their inner functions in
+  `withActiveSet(sorter.setId, fn)`. The sorter pulls from its pinned
+  year's pile and writes to its pinned year's stock.
+- **Sprites + sorter cards** show a small `S{N}` badge so the year tag is
+  visible at a glance.
+
+This means you can run staff in parallel across years — a Set 30 homie
+ripping current packs while a Set 25 sorter chews through your vintage
+pile in the background, no interference.
+
+#### The `fallingGrains` setId tag
+
+Sand grains in mid-fall are tagged with their origin setId. Three rules
+keep them tidy:
+
+- **`syncPileWithStock`** only counts in-flight grains for the active set
+  when checking if the pile needs a rebuild (prevents off-screen grains
+  from corrupting the active set's pile reconciliation).
+- **`drawSand`** skips grains whose `setId !== activeSetId` so off-screen
+  rips don't visually bleed into the wrong canvas.
+- **`stepSandAnim`** settles off-screen grains *instantly* into their own
+  year's pile (the player isn't watching them animate anyway).
+- **`rebuildPileFromStock`** drops the rebuilt year's in-flight grains to
+  avoid double-counting when they would otherwise later land.
+
+### 19.9 Visual patina — three tiers
+
+The age tier drives a sepia CSS filter applied to the player's active
+workspace:
+
+| Set range | Tier         | Filter                                              |
+|-----------|--------------|-----------------------------------------------------|
+| 20–30     | "" (current) | none — full color                                   |
+| 10–19     | midcentury   | `sepia(0.25) hue-rotate(-6deg) saturate(0.92)`      |
+| 01–09     | vintage      | `sepia(0.55) hue-rotate(-12deg) saturate(0.85) brightness(0.95)` |
+
+The tier is applied to **the pack, the vault grid, and the stock-rows
+container** in `renderHeader`. Year-picker chips, vault summary stamps,
+and individual listing cards each carry their own tier class — so when
+viewing the marketplace, you can read each listing's year tier (current,
+midcentury, vintage) at a glance.
+
+### 19.10 Vault summary
+
+A new horizontal strip of "vault stamps" lives between the marketplace
+listings and the per-year vault grid. Each stamp:
+
+```
+[S30 '30 ★1]  [S29 '29 —]  [S28 '28 —]  ... [S25 '25 ★1 ✨1]
+```
+
+- Visible for any year with vault activity OR unlock status OR any owned
+  cards (Set 30 is always visible as the anchor)
+- Shows non-foil count (`★N`) and foil count (`✨N`) of vaulted Complete
+  Sets
+- Tooltip includes the per-year unique-card-owned total
+- Active year highlighted gold
+- Patina tier class applied so old years read as antique stamps
+- Click → switch active set (same gate as the year picker)
+
+Per-year vault grid title shows `COLLECTION · SET {N} · {year}` so the
+title bar always tells you which year you're inspecting.
+
+### 19.11 Sold / expired / cancelled messages
+
+Listing-resolution hints prefix the year, e.g.
+
+- `"Sold Set 25 FOIL MYTHIC SET @ $5,432."`
+- `"Set 5 listing expired — returned to inventory."`
+- `"Cancelled Set 12 listing — returned to inventory."`
+
+When multiple listings resolve in the same tick, only the last hint shows
+— but the year tag makes it unambiguous which one paid out.
+
+### 19.12 Open design questions
+
+These were intentionally left as v1 defaults pending real playtest:
+
+- **Cost-vs-reward curve.** Linear pack costs (31−setId) with gentle
+  reward scaling (1 + 0.07×age) makes vintage hunting a CLOUT-only play.
+  If it feels like a money pit in practice, candidate fixes: bump CLOUT
+  scale to 0.10–0.15/year, OR flip pack cost to gentle, OR drop pack
+  cost scaling entirely and let only CLOUT scale.
+- **Unlock gate granularity.** One non-foil Complete Set per year is the
+  current threshold. If players grind 5+ before moving on, the gate
+  feels symbolic; if they barely make 1, it feels punishing. Watch
+  median crafts-per-year for the first 3 sets unlocked.
+- **Cross-year sorter ergonomics.** A Set 25 sorter installed beside the
+  Set 25 pile is invisible to a player who's currently on Set 30 (the
+  sorters modal lists all of them, but the active canvas only shows the
+  current year's pile). May want a "switch to S25" shortcut in the
+  modal when clicking on a non-active-year sorter card.
+- **Per-card visual differentiation.** Cards across years currently
+  differ only by their setId tag and the patina filter applied at the
+  grid level. Per-year card art, alternate frames, or holo variants
+  are pure cosmetics work and out of scope so far.
 
 ---
 
