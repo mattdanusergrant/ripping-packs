@@ -28,7 +28,7 @@ BUY → RIP → SORT → CRAFT → LIST → SELL → BUY ...
 4. **Craft** Standard / Rare / Foil Standard sets when you've collected one of every card in that rarity.
 5. **List** crafted sets on the marketplace, max 10 active listings.
 6. **Sell** — each listing resolves on its own cooldown for the current market price.
-7. **Reinvest** profits into more packs, Sorters ($500 each, permanent), or Homies ($20 + 1 box, temporary).
+7. **Reinvest** profits into more packs, Sorters ($1,000 each, permanent), or Homies ($20 + 1 box, temporary).
 
 The pack's CTA tag rotates through `["CLICK TO RIP", "HOVER TO RIP", "HOLD TO RIP"]` every 30s on a module-level `setInterval` — passive discovery of the three rip modes without a tutorial popup. The autorip system uses `canRip()` to gate the tick, so empty supply / full pile silently no-ops instead of spamming the error SFX. A window-level `mouseup` catches the "press → drag off pack → release" case so the doubled rate can't get stuck on.
 
