@@ -252,7 +252,7 @@ Three kinds of helper: **rip homies** (auto-rip packs), **craft homies** (auto-c
 
 Both rip and craft homies draw from a **shared token pool** (`state.homiePool`, capped at `homiePoolMax()`):
 
-- **Base pool size** = `HOMIE_POOL_BASE` (default **3**). Hiring any homie consumes one token; expiry refunds one token back to the pool.
+- **Base pool size** = `HOMIE_POOL_BASE` (default **1** — fresh saves start with a single homie). Hiring any homie consumes one token; expiry refunds one token back to the pool.
 - **Pool growth** is the CLOUT **CREW** branch (see §8b table): three nodes (Apprentice → Crew Member → Full-Time Staff) at 40 / 120 / 350 CLOUT, each +1 pool. Purchasing a node immediately refunds the new headroom into the current pool.
 - A header **HOMIES** chip (cyan, between CLOUT and the sound toggle) shows `available / max`. Greys out when empty.
 

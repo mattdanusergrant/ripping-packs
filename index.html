@@ -1785,7 +1785,7 @@ let CRAFT_HOMIE_DURATION_MS  = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
 // The shared homie pool is a token bank both rip and craft homies draw
 // from — base size HOMIE_POOL_BASE, grown by the CLOUT "crew" branch.
 let TABLE_COST       = def("TABLE_COST", 500);
-let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 3);
+let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 1);
 // Center-out fill order for buying tables — slot 1 is the starter, then
 // 4 (mirror), then the rest alternating sides for a balanced silhouette.
 const TABLE_UNLOCK_ORDER = [1, 4, 0, 3, 2, 5];
@@ -2318,6 +2318,14 @@ function load() {
       const max = HOMIE_POOL_BASE + crewBonus;
       const deployed = Array.isArray(parsed.homies) ? parsed.homies.length : 0;
       parsed.homiePool = Math.max(0, max - deployed);
+    } else {
+      // Clamp existing pool to the current max — protects against
+      // HOMIE_POOL_BASE being tuned down (or someone editing the save).
+      const crewBonus = (parsed.unlockedNodes || []).reduce((n, id) => {
+        const node = UPGRADE_NODES.find(x => x.id === id);
+        return n + ((node && node.effect && node.effect.homiePool) || 0);
+      }, 0);
+      parsed.homiePool = Math.max(0, Math.min(parsed.homiePool, HOMIE_POOL_BASE + crewBonus));
     }
     // Backfill the typing-unlock counter. Older saves that pre-date the
     // gate get capped at the threshold so the typing UI doesn't re-lock
