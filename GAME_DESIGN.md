@@ -234,6 +234,7 @@ Sorter speed + buffer upgrades are paid in cash from each sorter card's `⬆ $X`
 | **MARKING** | Steadier Hand (8) → Wider Sweep (25) → Pile Mastery (80) → Steady Aim (250); Bigger Brush (100) → Massive Brush (300) → Mop Brush (700); Quick Eye (40) → Snap Focus (120) → Reflexes (350) | +max highlight marks, +cursor radius, −marking-mode dwell time |
 | **LISTINGS** | Side Hustle (5) → Shop Front (20) → Storefront (60) → Online Empire (200) | +1 / +1 / +2 / +3 marketplace slots |
 | **VINTAGE** | Curator's Pick (50) → Faster Restock (100) → Estate Sale (200) → Box Hunter (350) → Time Traveler (600) | +slots / −60s refresh / +slot / box+12 case+6 weight / +slot −60s |
+| **CREW** | Apprentice (40) → Crew Member (120) → Full-Time Staff (350) | +1 / +1 / +1 homie pool (shared by rip + craft homies) |
 
 The VINTAGE branch was previously called MARKET — it's been fully retargeted at the Vintage Packs shop. Earlier MARKET-branch effects (listing cooldown delta, NPC absorb delta, Set craft multiplier delta) are no-op delta hooks that still exist in code but no node carries them anymore.
 
@@ -245,14 +246,24 @@ Modal UI: three columns (one per branch), each node card shows its name, effect,
 
 ## 9. Helpers — Homies & Sorters
 
-Three kinds of helper now: **rip homies** (auto-rip packs), **craft homies** (auto-craft a rarity's Sets), and **sorters** (auto-process sand-pile grains). All three are *year-pinned* — they record the active set at hire/install time and only ever touch that year's bundle, even if the player switches active.
+Three kinds of helper: **rip homies** (auto-rip packs), **craft homies** (auto-craft and auto-list a rarity's Sets), and **sorters** (auto-process sand-pile grains). All three are *year-pinned* — they record the active set at hire/install time and only ever touch that year's bundle, even if the player switches active.
+
+### Shared homie pool + tables
+
+Both rip and craft homies draw from a **shared token pool** (`state.homiePool`, capped at `homiePoolMax()`):
+
+- **Base pool size** = `HOMIE_POOL_BASE` (default **3**). Hiring any homie consumes one token; expiry refunds one token back to the pool.
+- **Pool growth** is the CLOUT **CREW** branch (see §8b table): three nodes (Apprentice → Crew Member → Full-Time Staff) at 40 / 120 / 350 CLOUT, each +1 pool. Purchasing a node immediately refunds the new headroom into the current pool.
+- A header **HOMIES** chip (cyan, between CLOUT and the sound toggle) shows `available / max`. Greys out when empty.
+
+The 6 rip-homie sprites flanking the booster pack are **tables** the homie sits at — there's no booster pack to open without one. Players start with **1 table bought** (the left-middle slot, index 1); the other 5 render as locked `🪑 BUY TABLE · $500` chips. Each table costs a flat `TABLE_COST` (default **$500**, tunable). Tables persist forever once bought and unlock in a center-out order (`1, 4, 0, 3, 2, 5`) for visual balance. The first table is enough to start playing; later tables let you parallelize multiple rip homies.
 
 ### Rip Homie — temporary auto-ripper
 
-- **Cost:** $20 + 1 sealed box (consumed from the active year's stash)
-- **Effect:** spawns an animated 🧢 sprite next to the pack opener with a live progress bar; auto-rips one pack every 3s from its personal 36-pack pool
-- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — six fixed slots flanking the pack)
-- **Slot selection:** clicking an empty slot hires *that specific slot*, not the lowest free one
+- **Cost:** $20 + 1 sealed box (consumed from the active year's stash) + 1 homie token from the shared pool
+- **Effect:** spawns an animated 🧢 sprite at the clicked table with a live progress bar; auto-rips one pack every 3s from its personal 36-pack pool
+- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — up to 6 tables, but capped by available pool tokens)
+- **Slot selection:** clicking an empty table hires *that specific table*, not the lowest free one
 - **Year binding:** homie remembers `setId` at hire; if you switch years mid-job, they keep ripping the original year silently in the background (no canvas spam, no SFX leakage)
 
 ### Craft Homie — temporary per-rarity auto-crafter (NEW)

@@ -48,8 +48,11 @@
   }
   .hero-chip .hero-label { font-size: 0.55rem; letter-spacing: 2px; opacity: 0.75; }
   .hero-chip .hero-value { font-size: 1.25rem; font-weight: bold; letter-spacing: 0.5px; }
-  .hero-chip.cash  { border-color: var(--cash);   background: rgba(133,187,101,0.12); color: var(--cash); }
-  .hero-chip.clout { border-color: var(--clout);  background: rgba(179,93,255,0.12); color: var(--clout); }
+  .hero-chip.cash   { border-color: var(--cash);  background: rgba(133,187,101,0.12); color: var(--cash); }
+  .hero-chip.clout  { border-color: var(--clout); background: rgba(179,93,255,0.12);  color: var(--clout); }
+  .hero-chip.homies { border-color: #65d6ff;       background: rgba(101,214,255,0.10); color: #65d6ff; }
+  .hero-chip.homies.empty { opacity: 0.55; }
+  .hero-chip.homies .hero-value .hero-pool-max { opacity: 0.65; font-weight: normal; }
 
   /* Cash gain celebration: a quick bump on the value + a floating +$N
      popup spawned in JS at the bottom edge of the cash chip. */
@@ -186,6 +189,25 @@
   }
   .homie-sprite.empty .homie-plus { line-height: 1; }
   .homie-sprite.empty .homie-meta { font-size: 0.5rem; letter-spacing: 1px; color: inherit; }
+  /* Locked slot — no table bought yet. Dimmer than empty, with a 🪑 CTA
+     instead of a +. Hover tints toward CASH green since the action is a
+     cash purchase. */
+  .homie-sprite.locked {
+    pointer-events: auto; cursor: pointer;
+    animation: none;
+    width: 48px; height: 60px;
+    border: 1.5px dashed rgba(255,255,255,0.14);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.3);
+    align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.35);
+    font-size: 1.2rem; font-weight: bold;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .homie-sprite.locked:hover { border-color: var(--cash); color: var(--cash); background: rgba(133,187,101,0.10); }
+  .homie-sprite.locked.disabled { pointer-events: none; opacity: 0.35; }
+  .homie-sprite.locked .homie-plus { line-height: 1; filter: grayscale(0.35); }
+  .homie-sprite.locked .homie-meta { font-size: 0.5rem; letter-spacing: 1px; color: inherit; }
   @keyframes homie-bob {
     /* Preserves the translate(-50%, -50%) base offset that centers the
        sprite on its (left, top) anchor — without these, the bob would
@@ -1346,6 +1368,7 @@
     <div class="hero-resources">
       <div class="hero-chip cash" title="Cash on hand"><span class="hero-label">CASH</span><span class="hero-value" id="coins">$0</span></div>
       <div class="hero-chip clout" id="clout-chip" title="CLOUT — earned by vaulting crafted sets"><span class="hero-label">CLOUT</span><span class="hero-value"><b id="clout-now">0</b></span></div>
+      <div class="hero-chip homies" id="homies-chip" title="Homie tokens — both rip and craft homies draw from this shared pool. Refunds when a homie finishes."><span class="hero-label">HOMIES</span><span class="hero-value"><b id="homies-now">3</b><span class="hero-pool-max">/<span id="homies-max">3</span></span></span></div>
     </div>
   </div>
   <div class="stats">
@@ -1700,6 +1723,22 @@ const HOMIE_MAX     = 6; // 3 slots each side of the pack
 let CRAFT_HOMIE_COST         = def("CRAFT_HOMIE_COST", 20);
 let CRAFT_HOMIE_TICK_MS      = def("CRAFT_HOMIE_TICK_MS", 5000);
 let CRAFT_HOMIE_DURATION_MS  = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
+// Tables theme: each booster-pack rip-homie slot is a "table" the homie
+// sits at. Player starts with 1 table; the other 5 are bought one at a
+// time for a flat TABLE_COST each. Tables persist forever once bought.
+// The shared homie pool is a token bank both rip and craft homies draw
+// from — base size HOMIE_POOL_BASE, grown by the CLOUT "crew" branch.
+let TABLE_COST       = def("TABLE_COST", 500);
+let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 3);
+// Center-out fill order for buying tables — slot 1 is the starter, then
+// 4 (mirror), then the rest alternating sides for a balanced silhouette.
+const TABLE_UNLOCK_ORDER = [1, 4, 0, 3, 2, 5];
+function unlockedTableSlots() {
+  const n = Math.max(1, Math.min(HOMIE_MAX, state.tablesOwned || 1));
+  return new Set(TABLE_UNLOCK_ORDER.slice(0, n));
+}
+function tableCost() { return TABLE_COST; }
+function homiePoolMax() { return HOMIE_POOL_BASE + (eff().homiePool || 0); }
 // Manual rips required to unlock the type-to-rip mini-game. First session
 // shows just a horizontal progress bar; once filled, the typing UI takes
 // over the same slot in #typing-zone.
@@ -1787,6 +1826,12 @@ const UPGRADE_NODES = [
   { id: "vintage3", branch: "vintage", label: "Estate Sale",     desc: "+1 vintage shop slot",                  cost: 200, effect: { vintageSlots: 1 },                                  prereq: ["vintage2"] },
   { id: "vintage4", branch: "vintage", label: "Box Hunter",      desc: "Box weight +12, case weight +6",        cost: 350, effect: { vintageBoxWeightDelta: 12, vintageCaseWeightDelta: 6 }, prereq: ["vintage3"] },
   { id: "vintage5", branch: "vintage", label: "Time Traveler",   desc: "+1 vintage slot, refresh −60s",         cost: 600, effect: { vintageSlots: 1, vintageRefreshDelta: -60000 },     prereq: ["vintage4"] },
+  // CREW — pool growth. Each node bumps the shared homie pool max by 1
+  // and refunds the freshly-bought capacity immediately (purchaseNode
+  // grants the bump on purchase).
+  { id: "crew1", branch: "crew", label: "Apprentice",      desc: "+1 homie pool",  cost: 40,  effect: { homiePool: 1 } },
+  { id: "crew2", branch: "crew", label: "Crew Member",     desc: "+1 homie pool",  cost: 120, effect: { homiePool: 1 }, prereq: ["crew1"] },
+  { id: "crew3", branch: "crew", label: "Full-Time Staff", desc: "+1 homie pool",  cost: 350, effect: { homiePool: 1 }, prereq: ["crew2"] },
 ];
 const UPGRADE_BRANCHES = [
   { key: "paint",    label: "MARKING",  color: "#ff7eb3", subtracks: [
@@ -1796,6 +1841,7 @@ const UPGRADE_BRANCHES = [
   ] },
   { key: "listings", label: "LISTINGS", color: "#ffd84d" },
   { key: "vintage",  label: "VINTAGE",  color: "#d4a55e" },
+  { key: "crew",     label: "CREW",     color: "#65d6ff" },
 ];
 
 function unlockedNodeSet() {
@@ -1842,6 +1888,11 @@ function purchaseNode(id) {
   state.unlockedNodes.push(node.id);
   // Upgrades may grant more vintage slots — materialize them immediately.
   syncVintageSlotCount();
+  // Crew nodes bump the pool max; refund the newly-bought headroom into the
+  // current pool right away so the player isn't waiting for an in-flight
+  // homie to expire before they can use the upgrade.
+  const poolBump = (node.effect && node.effect.homiePool) || 0;
+  if (poolBump > 0) state.homiePool = (state.homiePool || 0) + poolBump;
   renderAll();
   renderUpgrades();
   save();
@@ -1997,6 +2048,12 @@ const defaultState = () => ({
   sets: { [CURRENT_SET_ID]: blankSetState({ starterBox: true }) },
   homies: [],     // [{uid, startAt, packsRemaining, lastRipAt, setId}]
   homieUidCounter: 0,
+  // Tables: how many of the 6 booster-pack rip-homie slots the player has
+  // bought. Starts at 1 (one starter table); +1 per TABLE_COST purchase.
+  tablesOwned: 1,
+  // Shared homie token pool. Hiring any homie (rip or craft) consumes one;
+  // expiry refunds one. Max = HOMIE_POOL_BASE + crew CLOUT bonuses.
+  homiePool: HOMIE_POOL_BASE,
   sorters: [],    // [{uid, level, input:{}, output:{}, lastSortAt, setId}]
   sorterUidCounter: 0,
   clout: 0,              // CLOUT balance — spent on upgrade nodes
@@ -2185,6 +2242,27 @@ function load() {
       || Object.values(parsed.completeSetCrafts || {}).some(n => n > 0)
       || Object.values(parsed.foilCompleteSetCrafts || {}).some(n => n > 0);
     parsed.firstSetCrafted = everCompleteCrafted;
+    // Tables + homie-pool migration. Older saves don't have these fields;
+    // give them at least one table per occupied rip slot so live homies
+    // aren't suddenly evicted by the new lock, and set the pool so the
+    // counter matches their current deployment.
+    if (typeof parsed.tablesOwned !== "number") {
+      const ripSlots = new Set((parsed.homies || [])
+        .filter(h => h.kind !== "craft" && Number.isFinite(h.slot))
+        .map(h => h.slot));
+      parsed.tablesOwned = Math.max(1, Math.min(HOMIE_MAX, ripSlots.size || 1));
+    }
+    if (typeof parsed.homiePool !== "number") {
+      // Pool max at load time = base + crew nodes already owned. Subtract
+      // currently-deployed homies to get the remaining tokens.
+      const crewBonus = (parsed.unlockedNodes || []).reduce((n, id) => {
+        const node = UPGRADE_NODES.find(x => x.id === id);
+        return n + ((node && node.effect && node.effect.homiePool) || 0);
+      }, 0);
+      const max = HOMIE_POOL_BASE + crewBonus;
+      const deployed = Array.isArray(parsed.homies) ? parsed.homies.length : 0;
+      parsed.homiePool = Math.max(0, max - deployed);
+    }
     // Backfill the typing-unlock counter. Older saves that pre-date the
     // gate get capped at the threshold so the typing UI doesn't re-lock
     // mid-session — the player has clearly already opened plenty of packs.
@@ -2685,6 +2763,14 @@ function renderHeader() {
   // in the chip and understand the collection target.
   const bal = state.clout || 0;
   $("clout-now").textContent = bal.toLocaleString();
+  // HOMIES pool chip — N / max with a greyed-out look when empty so the
+  // player can tell at a glance that hiring is gated.
+  const poolNow = state.homiePool || 0;
+  const poolMax = homiePoolMax();
+  const poolNowEl = $("homies-now"), poolMaxEl = $("homies-max"), poolChip = $("homies-chip");
+  if (poolNowEl) poolNowEl.textContent = poolNow;
+  if (poolMaxEl) poolMaxEl.textContent = poolMax;
+  if (poolChip)  poolChip.classList.toggle("empty", poolNow <= 0);
   const chip = $("clout-chip");
   if (chip) {
     let claimed = 0;
@@ -4092,6 +4178,8 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "FOIL_BLAST_REACH",                path: "FOIL_BLAST_REACH",          label: "Foil grain blast reach (cells)", step: 1, min: 0, int: true },
 
   // Staff
+  { group: "Staff",            key: "TABLE_COST",                      path: "TABLE_COST",                label: "Booster-pack table cost ($)",   step: 50,  min: 0 },
+  { group: "Staff",            key: "HOMIE_POOL_BASE",                 path: "HOMIE_POOL_BASE",           label: "Base homie pool size",          step: 1,   min: 0, int: true },
   { group: "Staff",            key: "HOMIE_COST",                      path: "HOMIE_COST",                label: "Hire rip homie ($, plus 1 box)",step: 1,   min: 0 },
   { group: "Staff",            key: "HOMIE_PACK_MS",                   path: "HOMIE_PACK_MS",             label: "Rip homie pack interval (sec)", step: 0.5, min: 0.5, scale: 1000 },
   { group: "Staff",            key: "CRAFT_HOMIE_COST",                path: "CRAFT_HOMIE_COST",          label: "Hire craft homie ($)",          step: 1,   min: 0 },
@@ -4146,6 +4234,7 @@ function _liveDesignSnapshot() {
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     RARE_BLAST_REACH, FOIL_BLAST_REACH,
     HOMIE_COST, HOMIE_PACK_MS,
+    TABLE_COST, HOMIE_POOL_BASE,
     CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
     VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
     SORTER_COST, SORTER_MAX,
@@ -4398,24 +4487,33 @@ function renderHomieSprites() {
   // collapses into bySlot.get(undefined) and corrupts slot 0's sprite.
   const homies = (state.homies || []).filter(h => h.kind !== "craft");
   const bySlot = new Map(homies.map(h => [h.slot, h]));
-  const canAfford = state.coins >= HOMIE_COST && (cur().boxesOwned || 0) >= 1;
-  // Always render 6 fixed slots; active ones show the working homie, empty
-  // ones are clickable hire buttons in the same position.
+  const unlocked = unlockedTableSlots();
+  const poolOpen = (state.homiePool || 0) > 0;
+  const canAffordHire  = state.coins >= HOMIE_COST && (cur().boxesOwned || 0) >= 1 && poolOpen;
+  const canAffordTable = state.coins >= tableCost();
+  // Each slot is in one of three states: locked (no table bought), empty
+  // (table bought + no homie), or active (homie working). Rebuild whenever
+  // the state flips so we don't mix markup.
   for (let slot = 0; slot < HOMIE_MAX; slot++) {
     const h = bySlot.get(slot);
+    const isLocked = !unlocked.has(slot);
+    const isEmpty  = !isLocked && !h;
+    const wantClass = isLocked ? "locked" : (isEmpty ? "empty" : "active");
     let el = area.querySelector(`.homie-sprite[data-slot="${slot}"]`);
-    const wantEmpty = !h;
-    // If the slot's occupancy flipped (active <-> empty), tear down and rebuild
-    // so we don't mix sprite/empty markup.
-    if (el && (el.classList.contains("empty") !== wantEmpty)) {
+    if (el && el.dataset.state !== wantClass) {
       el.remove();
       el = null;
     }
     if (!el) {
       el = document.createElement("div");
-      el.className = "homie-sprite" + (wantEmpty ? " empty" : "");
+      el.className = "homie-sprite";
+      if (isLocked)     el.classList.add("locked");
+      else if (isEmpty) el.classList.add("empty");
       el.dataset.slot = slot;
-      if (wantEmpty) {
+      el.dataset.state = wantClass;
+      if (isLocked) {
+        el.innerHTML = `<span class="homie-plus">🪑</span><span class="homie-meta">BUY TABLE</span>`;
+      } else if (isEmpty) {
         el.innerHTML = `<span class="homie-plus">+</span><span class="homie-meta">HIRE</span>`;
       } else {
         el.innerHTML = `
@@ -4426,14 +4524,22 @@ function renderHomieSprites() {
       }
       area.appendChild(el);
     }
-    if (wantEmpty) {
+    if (isLocked) {
       delete el.dataset.uid;
-      el.classList.toggle("disabled", !canAfford);
-      el.title = canAfford
+      el.classList.toggle("disabled", !canAffordTable);
+      el.title = canAffordTable
+        ? `Buy a table — ${usd(tableCost())}. Homies need somewhere to sit and open packs.`
+        : `Need ${usd(tableCost() - state.coins)} more to buy another table.`;
+    } else if (isEmpty) {
+      delete el.dataset.uid;
+      el.classList.toggle("disabled", !canAffordHire);
+      el.title = canAffordHire
         ? `Hire a homie — ${usd(HOMIE_COST)} + 1 box. They'll rip ${BOX_SIZE} packs.`
-        : (state.coins < HOMIE_COST
-            ? `Need ${usd(HOMIE_COST - state.coins)} more to hire`
-            : `Need a sealed box first`);
+        : (!poolOpen
+            ? `No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`
+            : (state.coins < HOMIE_COST
+                ? `Need ${usd(HOMIE_COST - state.coins)} more to hire`
+                : `Need a sealed box first`));
     } else {
       el.dataset.uid = h.uid;
       const pct = Math.min(100, ((BOX_SIZE - h.packsRemaining) / BOX_SIZE) * 100);
@@ -4452,7 +4558,31 @@ function firstFreeHomieSlot() {
   return -1;
 }
 
+function buyTable() {
+  const owned = state.tablesOwned || 1;
+  if (owned >= HOMIE_MAX) {
+    $("hint").textContent = `All ${HOMIE_MAX} tables already bought.`;
+    return;
+  }
+  const cost = tableCost();
+  if (state.coins < cost) {
+    SFX.error();
+    $("hint").textContent = `Need ${usd(cost - state.coins)} more for another table.`;
+    return;
+  }
+  SFX.buy();
+  state.coins -= cost;
+  state.tablesOwned = owned + 1;
+  renderAll(); save();
+  $("hint").textContent = `Bought a table. ${state.tablesOwned} of ${HOMIE_MAX} tables open — sit a homie down with a box.`;
+}
+
 function hireHomie(preferredSlot) {
+  if ((state.homiePool || 0) <= 0) {
+    SFX.error();
+    $("hint").textContent = `No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`;
+    return;
+  }
   if ((state.homies || []).filter(h => h.kind !== "craft").length >= HOMIE_MAX) {
     $("hint").textContent = `Max homies (${HOMIE_MAX}) already on the clock.`;
     return;
@@ -4465,22 +4595,28 @@ function hireHomie(preferredSlot) {
     $("hint").textContent = `Need a sealed box first — buy one from the shop.`;
     return;
   }
-  // Take the clicked slot if it's free; otherwise fall back to the lowest
-  // unused index so the button-click on the side panel still works. Only
-  // rip-homies count against the 6 pack-side slots.
+  // Pack-side slot must have a bought table behind it. Player can only
+  // hire into tables they own; clicking an unlocked-but-no-table slot is
+  // handled by the locked-state click handler (buyTable), not this path.
+  const unlocked = unlockedTableSlots();
   const taken = new Set((state.homies || []).filter(h => h.kind !== "craft").map(h => h.slot));
   let slot = -1;
-  if (Number.isFinite(preferredSlot) && preferredSlot >= 0 && preferredSlot < HOMIE_MAX && !taken.has(preferredSlot)) {
+  if (Number.isFinite(preferredSlot) && unlocked.has(preferredSlot) && !taken.has(preferredSlot)) {
     slot = preferredSlot;
   } else {
-    slot = firstFreeHomieSlot();
+    // Fall back to the lowest unlocked-and-free slot in unlock order so the
+    // side-panel hire button keeps working even with no preferred slot.
+    for (const i of TABLE_UNLOCK_ORDER) {
+      if (unlocked.has(i) && !taken.has(i)) { slot = i; break; }
+    }
   }
   if (slot < 0) {
-    $("hint").textContent = `All ${HOMIE_MAX} homie slots full.`;
+    $("hint").textContent = `No empty table — buy another or wait for a homie to finish.`;
     return;
   }
   state.coins -= HOMIE_COST;
   cur().boxesOwned -= 1;
+  state.homiePool -= 1;
   state.homieUidCounter = (state.homieUidCounter || 0) + 1;
   if (!Array.isArray(state.homies)) state.homies = [];
   // setId pins the homie to the year they were hired in — they keep ripping
@@ -4531,7 +4667,13 @@ function hireCraftHomie(craftRarity) {
     $("hint").textContent = `Need ${usd(CRAFT_HOMIE_COST - state.coins)} more to hire a craft homie.`;
     return;
   }
+  if ((state.homiePool || 0) <= 0) {
+    SFX.error();
+    $("hint").textContent = `No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`;
+    return;
+  }
   state.coins -= CRAFT_HOMIE_COST;
+  state.homiePool -= 1;
   state.homieUidCounter = (state.homieUidCounter || 0) + 1;
   if (!Array.isArray(state.homies)) state.homies = [];
   const now = Date.now();
@@ -4624,12 +4766,18 @@ function tickHomies() {
     if (h.kind === "craft") return now < h.expiresAt;
     return h.packsRemaining > 0;
   });
-  const ended = before !== state.homies.length;
+  const ended = before - state.homies.length;
+  // Refund the pool by however many homies just expired so the player can
+  // re-hire immediately. Capped at the current pool max as a defensive
+  // guard against bookkeeping drift (shouldn't happen in normal flow).
+  if (ended > 0) {
+    state.homiePool = Math.min(homiePoolMax(), (state.homiePool || 0) + ended);
+  }
   // Same idea as tickSorters: only repaint when something actually happened.
   // The empty slots' affordance state is refreshed by the state-changing
   // actions that mutate coins / boxes (buyPacks, sellListing, etc), so we
   // don't need to re-render here on idle ticks.
-  if (acted || ended) { renderAll(); save(); }
+  if (acted || ended > 0) { renderAll(); save(); }
 }
 
 function buySorter() {
@@ -5468,6 +5616,13 @@ $("reset-btn").addEventListener("click", resetGame);
 // clicked slot is the one that gets occupied, not whichever slot is lowest-
 // indexed — letting the player choose which sprite the new homie inhabits.
 $("pack-area").addEventListener("click", (e) => {
+  // Locked-state slots are the "buy a table" CTA; empty-state slots are
+  // the hire CTA. Active slots are non-interactive.
+  const locked = e.target.closest(".homie-sprite.locked");
+  if (locked) {
+    if (!locked.classList.contains("disabled")) buyTable();
+    return;
+  }
   const slot = e.target.closest(".homie-sprite.empty");
   if (!slot || slot.classList.contains("disabled")) return;
   const slotIdx = parseInt(slot.dataset.slot, 10);
