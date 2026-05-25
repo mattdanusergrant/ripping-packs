@@ -261,9 +261,15 @@ One slot per rarity row (5 total) sits between the rarity name and the foil/non-
 
 - **Cost:** $20, no box required
 - **Lifetime:** 2 minutes (`CRAFT_HOMIE_DURATION_MS`)
-- **Craft cadence:** every 5s (`CRAFT_HOMIE_TICK_MS`) the homie attempts to craft. **Foil track first, then non-foil track** — both can succeed in the same tick if both have ingredients ready.
-- **Listing:** every tick of the homie loop (250ms, `HOMIE_TICK_MS`), *before* any new crafting happens, the homie drains every crafted Set of its rarity sitting in inventory into open marketplace slots — **foil first, non-foil until the foil shelf is empty**. The drain continues until either the homie has nothing left of its rarity or the marketplace is full. Listings are silent (no per-listing hint or SFX) and use the standard baseline price.
-- **Marketplace pressure:** when every listing slot is still full after the drain pass, the **craft tick halves** (`CRAFT_HOMIE_TICK_MS / 2`) so the homie's idle "can't list" time gets redirected into more crafting. Inventory keeps building behind a jammed marketplace; as soon as the player cancels or a listing resolves, the next homie tick floods the freed slot.
+- **Single cooldown:** every `CRAFT_HOMIE_TICK_MS` (default 5s) the homie takes exactly **one action**, then resets the cooldown. List and craft share this one timer — there's no parallelism.
+- **Decision tree (evaluated each cooldown cycle, top-down, first match wins):**
+  1. List a **foil set** of the homie's rarity into an open marketplace slot.
+  2. List a **non-foil set** of the homie's rarity into an open marketplace slot.
+  3. Craft a **foil set** of the homie's rarity (consumes 1 of each foil card in the rarity).
+  4. Craft a **non-foil set** of the homie's rarity (consumes 1 of each non-foil card).
+
+  Listing is always prioritized over crafting. If none of the four conditions hold (marketplace full AND inventory dry, OR nothing left to craft), the homie no-ops, the cooldown holds, and the next tick re-evaluates. Listings are silent (no per-action hint or SFX) and use the standard baseline price.
+- **Marketplace pressure:** with the unified cooldown, a jammed marketplace simply means every cycle that has nothing to list falls through to a craft (or a no-op). Inventory keeps building behind the jam; as soon as a slot frees up, the very next cycle starts draining it.
 - **Cap:** one craft homie per (rarity × year). Hiring a duplicate is refused.
 - **Disabled when nothing to craft:** the hire slot is greyed out unless the player has either (a) ever completed that rarity's foil or non-foil collection in the active year (`setsCelebrated[r] || setsCelebratedFoil[r]`) — permanent unlock — OR (b) currently has a craftable Set queued. Tooltip on disabled: *"Collect a full RARITY set before hiring a craft homie — nothing for them to do yet."* `hireCraftHomie()` re-checks the gate as defense in depth.
 - **Visual:** when active, the slot shows a bobbing 🧢, a green countdown badge (`2m` → `45s`), and a green progress bar that drains over the 2-minute lifetime.
