@@ -256,7 +256,13 @@ Both rip and craft homies draw from a **shared token pool** (`state.homiePool`, 
 - **Pool growth** is the CLOUT **CREW** branch (see §8b table): three nodes (Apprentice → Crew Member → Full-Time Staff) at 40 / 120 / 350 CLOUT, each +1 pool. Purchasing a node immediately refunds the new headroom into the current pool.
 - A header **HOMIES** chip (cyan, between CLOUT and the sound toggle) shows `available / max`. Greys out when empty.
 
-The 6 rip-homie sprites flanking the booster pack are **tables** the homie sits at — there's no booster pack to open without one. Players start with **1 table bought** (the left-middle slot, index 1); the other 5 render as locked `🪑 BUY TABLE · $500` chips. Each table costs a flat `TABLE_COST` (default **$500**, tunable). Tables persist forever once bought and unlock in a center-out order (`1, 4, 0, 3, 2, 5`) for visual balance. The first table is enough to start playing; later tables let you parallelize multiple rip homies.
+Every homie slot — both the 6 rip-homie sprites flanking the booster pack AND the 5 craft-homie slots on the rarity rows — is a **table** the homie sits at. Tables unlock **sequentially** along a single 11-step path: the 6 rip slots first (center-out order `1, 4, 0, 3, 2, 5`), then the 5 craft-homie rarities low-to-high (`standard → rare → epic → legendary → mythic`).
+
+Players start with **zero tables bought**. The very first slot — rip slot 1 (left-middle of the pack) — renders as a `🪑 BUY TABLE · $500` chip; every later slot is hidden. Buying the current next-in-line table costs a flat `TABLE_COST` (default **$500**, tunable) and **reveals the next slot** as the new purchaseable chip. The newly-revealed slot still needs its own table buy before it can be hired into — visibility and functionality are separate steps. Tables persist forever once bought.
+
+The cascade: spend $500 → first rip table opens → spend $500 → second rip table opens (slot 4) → ... → after the 6th rip table → Standard craft table appears → spend → Rare craft → ... → final Mythic craft table.
+
+For rip slots, locked-but-not-next-in-line renders nothing at all. For craft slots, locked-but-not-next renders an invisible placeholder so the 3-column rarity-row grid stays aligned with the rows above and below.
 
 ### Rip Homie — temporary auto-ripper
 
