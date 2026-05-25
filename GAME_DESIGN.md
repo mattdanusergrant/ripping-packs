@@ -255,6 +255,7 @@ Both rip and craft homies draw from a **shared token pool** (`state.homiePool`, 
 - **Base pool size** = `HOMIE_POOL_BASE` (default **1** — fresh saves start with a single homie). Hiring any homie consumes one token; expiry refunds one token back to the pool.
 - **Pool growth** is the CLOUT **CREW** branch (see §8b table): three nodes (Apprentice → Crew Member → Full-Time Staff) at 40 / 120 / 350 CLOUT, each +1 pool. Purchasing a node immediately refunds the new headroom into the current pool.
 - A header **HOMIES** chip (cyan, between CLOUT and the sound toggle) shows `available / max`. Greys out when empty.
+- An **IDLE** window in the left gutter of the booster-pack area renders one bobbing 🧢 emoji per available pool token (not just a number) so the player can see their bench at a glance. Stack staggers its bob via `:nth-child` animation delays.
 
 Every homie slot — both the 6 rip-homie sprites flanking the booster pack AND the 5 craft-homie slots on the rarity rows — is a **table** the homie sits at. Tables unlock **sequentially** along a single 11-step path: the 6 rip slots first (center-out order `1, 4, 0, 3, 2, 5`), then the 5 craft-homie rarities low-to-high (`standard → rare → epic → legendary → mythic`).
 
@@ -426,8 +427,8 @@ Header carries the cash + CLOUT chips, packs/foils stats, mute toggle (🔊 / �
 
 | Column            | Contains                                                                  |
 |-------------------|---------------------------------------------------------------------------|
-| **OPENING** (left)| H2 "OPENING" · static year label `The 2030 Set` (pre-unlock) or dropdown of all 30 years (post-`firstSetCrafted`) · Pack/Box/Case buy buttons (disabled on vintage years with explanatory tooltip) · set-progress meters · pack opener with bobbing 🧢 homie sprites flanking it · typing zone (progress bar or mini-game per `manualRips`) · hint line · sand canvas (210px = 20 grain rows + 1 click buffer) · sorter shop button |
-| **MARKETPLACE** (right) | H2 "MARKETPLACE" · Vintage Packs row with 5 tiles + `⬆ VINTAGE` upgrade trigger (hidden until `firstSetCrafted`) · LISTINGS panel (10-slot marketplace) · collection grid titled "COLLECTION · SET N · YYYY" at h2 size · per-rarity action rows: rarity name + craft-homie slot (greyed when nothing to craft) + foil action stack + non-foil action stack |
+| **OPENING** (left)| H2 "OPENING" · static year label `The 2030 Set` (pre-unlock) or dropdown of all 30 years (post-`firstSetCrafted`) · Pack/Box/Case buy buttons (disabled on vintage years with explanatory tooltip) · set-progress meters · pack opener with the IDLE-homies window in the left gutter and bobbing 🧢 homie sprites flanking the pack (only the bought tables render; the next-in-line slot shows a `🪑 BUY TABLE` chip) · typing zone (progress bar or mini-game per `manualRips`) · hint line · sand canvas (260px = 25 grain rows + 1 click buffer) · sorter shop button |
+| **MARKETPLACE** (right) | H2 "MARKETPLACE" · Vintage Packs row with 5 tiles + `⬆ VINTAGE` upgrade trigger (hidden until `firstSetCrafted`) · LISTINGS panel (10-slot marketplace) · collection grid titled `COLLECTION · THE YYYY SET` at h2 size · per-rarity action rows: rarity name + craft-homie slot (locked-purchaseable, fully-locked placeholder, empty hire, or active — per the table cascade) + foil action stack + non-foil action stack |
 | **Footer**        | One-line flavor copy                                                      |
 
 Mobile collapses to single column. Cells shrink to 16px and the standard grid stays 36-wide; pack box is 150×215.
@@ -560,7 +561,7 @@ Approximate. The economy was re-grounded around Set-only liquidation (§5), the 
 | Time-in     | Cash range  | Activity                                                                            |
 |------------:|-------------|-------------------------------------------------------------------------------------|
 | 0–10 min    | $50 → $300  | Crack starter case (6 boxes auto into supply). Hand-rip + type-rip. Sort the pile.  |
-| 10–30 min   | $300 → $2k  | First Standard + Rare Sets land. List them; buy more packs. Hire first rip homie.   |
+| 10–30 min   | $300 → $2k  | Buy first table ($100) for the left-middle rip slot. First Standard + Rare Sets land. List them; buy more packs. Hire first rip homie once a sealed box is in stock. |
 | 30–90 min   | $2k → $10k  | Buy first Sorter ($1k). Speed L2-3. Hire craft homies on Standard + Rare rows.      |
 | 1.5–4 hrs   | $10k → $50k | 2–3 sorters. Crafting Epic + Legendary Sets. First non-foil Complete Set vault (50 CLOUT). First vintage shop pack click; Set N unlocks. |
 | 4–12 hrs    | $50k → $250k| Sorters maxing (~$91k each). Foil Standard / Foil Rare Sets. CLOUT spent on MARKING + LISTINGS branches. Multiple vintage years partially populated. |

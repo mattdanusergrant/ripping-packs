@@ -4715,13 +4715,6 @@ function renderHomieSprites() {
   }
 }
 
-function firstFreeHomieSlot() {
-  // Only rip-homies occupy pack-side sprite slots.
-  const taken = new Set((state.homies || []).filter(h => h.kind !== "craft").map(h => h.slot));
-  for (let i = 0; i < HOMIE_MAX; i++) if (!taken.has(i)) return i;
-  return -1;
-}
-
 function buyTable() {
   const next = nextTableEntry();
   if (!next) {
@@ -4776,10 +4769,12 @@ function hireHomie(preferredSlot) {
   if (Number.isFinite(preferredSlot) && unlocked.has(preferredSlot) && !taken.has(preferredSlot)) {
     slot = preferredSlot;
   } else {
-    // Fall back to the lowest unlocked-and-free slot in unlock order so the
-    // side-panel hire button keeps working even with no preferred slot.
-    for (const i of TABLE_UNLOCK_ORDER) {
-      if (unlocked.has(i) && !taken.has(i)) { slot = i; break; }
+    // Fall back to the first unlocked-and-free rip slot in unlock order
+    // so any non-preferred call site (e.g. a side-panel hire button)
+    // still finds a valid seat.
+    for (const e of SLOT_UNLOCK_ORDER) {
+      if (e.kind !== "rip") continue;
+      if (unlocked.has(e.slot) && !taken.has(e.slot)) { slot = e.slot; break; }
     }
   }
   if (slot < 0) {
