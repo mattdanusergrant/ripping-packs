@@ -261,7 +261,9 @@ One slot per rarity row (5 total) sits between the rarity name and the foil/non-
 
 - **Cost:** $20, no box required
 - **Lifetime:** 2 minutes (`CRAFT_HOMIE_DURATION_MS`)
-- **Cadence:** every 5s (`CRAFT_HOMIE_TICK_MS`) the homie attempts to craft. **Foil track first, then non-foil track** — both can succeed in the same tick if both have ingredients ready.
+- **Craft cadence:** every 5s (`CRAFT_HOMIE_TICK_MS`) the homie attempts to craft. **Foil track first, then non-foil track** — both can succeed in the same tick if both have ingredients ready.
+- **List cadence:** every 5s (`CRAFT_HOMIE_LIST_TICK_MS`, independent of the craft tick) the homie attempts to list one of its crafted Sets on the marketplace. Foil-set first, non-foil if the foil shelf is empty. Listings are silent (no hint, no SFX) and use the same baseline price as a manual list.
+- **Marketplace pressure:** when every listing slot is full at list-tick time, the homie skips the list and the **craft tick halves** (`CRAFT_HOMIE_TICK_MS / 2`) so the homie's idle time gets redirected into more crafting. Inventory keeps building behind a jammed marketplace until the player cancels or a listing resolves.
 - **Cap:** one craft homie per (rarity × year). Hiring a duplicate is refused.
 - **Disabled when nothing to craft:** the hire slot is greyed out unless the player has either (a) ever completed that rarity's foil or non-foil collection in the active year (`setsCelebrated[r] || setsCelebratedFoil[r]`) — permanent unlock — OR (b) currently has a craftable Set queued. Tooltip on disabled: *"Collect a full RARITY set before hiring a craft homie — nothing for them to do yet."* `hireCraftHomie()` re-checks the gate as defense in depth.
 - **Visual:** when active, the slot shows a bobbing 🧢, a green countdown badge (`2m` → `45s`), and a green progress bar that drains over the 2-minute lifetime.
