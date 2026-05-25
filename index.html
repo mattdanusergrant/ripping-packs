@@ -1690,16 +1690,15 @@ let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
 let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
 const HOMIE_MAX     = 6; // 3 slots each side of the pack
 // Per-rarity craft homies — sit on a single craft track and auto-craft a
-// new Set every CRAFT_HOMIE_TICK_MS, then auto-list it every
-// CRAFT_HOMIE_LIST_TICK_MS (foil-set first, non-foil if no foil ready).
-// Both expire after CRAFT_HOMIE_DURATION_MS. When the marketplace is full
-// the listing tick just no-ops and the craft tick halves so the homie
+// new Set every CRAFT_HOMIE_TICK_MS, then immediately drain every crafted
+// Set into open marketplace slots on the very next tick (foil-set first,
+// non-foil if no foil ready). Both expire after CRAFT_HOMIE_DURATION_MS.
+// When the marketplace is full the craft tick halves so the homie
 // redirects their effort into more crafting until a slot frees up.
 // No max — one per track per year is the natural cap since hiring
 // duplicates is refused.
 let CRAFT_HOMIE_COST         = def("CRAFT_HOMIE_COST", 20);
 let CRAFT_HOMIE_TICK_MS      = def("CRAFT_HOMIE_TICK_MS", 5000);
-let CRAFT_HOMIE_LIST_TICK_MS = def("CRAFT_HOMIE_LIST_TICK_MS", 5000);
 let CRAFT_HOMIE_DURATION_MS  = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
 // Manual rips required to unlock the type-to-rip mini-game. First session
 // shows just a horizontal progress bar; once filled, the typing UI takes
@@ -2731,7 +2730,7 @@ function craftHomieSlotHtml(rarity) {
     const leftMs  = Math.max(0, homie.expiresAt - Date.now());
     const pct = Math.max(0, Math.min(100, (leftMs / totalMs) * 100));
     const label = leftMs > 60000 ? `${Math.ceil(leftMs/60000)}m` : `${Math.ceil(leftMs/1000)}s`;
-    const title = `${RARITY_LABELS[rarity]} craft homie · ${label} left · auto-crafts FOIL first, then non-foil every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s, and auto-lists what they crafted every ${Math.round(CRAFT_HOMIE_LIST_TICK_MS/1000)}s. Craft rate doubles while the marketplace is full.`;
+    const title = `${RARITY_LABELS[rarity]} craft homie · ${label} left · auto-crafts FOIL first, then non-foil every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s, and immediately lists every crafted set into any open marketplace slot. Craft rate doubles while the marketplace is full.`;
     return `<div class="craft-homie-slot active" data-rarity="${rarity}" title="${title}">`
          + `<span class="homie-emoji">🧢</span>`
          + `<span class="homie-count">${label}</span>`
@@ -2753,7 +2752,7 @@ function craftHomieSlotHtml(rarity) {
     ? `Collect a full ${RARITY_LABELS[rarity]} set before hiring a craft homie — nothing for them to do yet.`
     : unaffordable
       ? `Need ${usd(CRAFT_HOMIE_COST - state.coins)} more to hire a ${RARITY_LABELS[rarity]} craft homie`
-      : `Hire a ${RARITY_LABELS[rarity]} craft homie for ${usd(CRAFT_HOMIE_COST)} — crafts FOIL ${RARITY_LABELS[rarity]} SET then ${RARITY_LABELS[rarity]} SET every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s and auto-lists them every ${Math.round(CRAFT_HOMIE_LIST_TICK_MS/1000)}s for ${Math.round(CRAFT_HOMIE_DURATION_MS/60000)} min. Crafts 2× faster while the marketplace is full.`;
+      : `Hire a ${RARITY_LABELS[rarity]} craft homie for ${usd(CRAFT_HOMIE_COST)} — crafts FOIL ${RARITY_LABELS[rarity]} SET then ${RARITY_LABELS[rarity]} SET every ${Math.round(CRAFT_HOMIE_TICK_MS/1000)}s and auto-lists each crafted set into any open marketplace slot for ${Math.round(CRAFT_HOMIE_DURATION_MS/60000)} min. Crafts 2× faster while the marketplace is full.`;
   return `<div class="${cls}" data-hire-rarity="${rarity}" title="${title}">`
        + `<span class="homie-plus">+</span>`
        + `<span class="homie-meta">HIRE ${usd(CRAFT_HOMIE_COST)}</span>`
@@ -4096,8 +4095,7 @@ const DESIGN_FIELDS = [
   { group: "Staff",            key: "HOMIE_COST",                      path: "HOMIE_COST",                label: "Hire rip homie ($, plus 1 box)",step: 1,   min: 0 },
   { group: "Staff",            key: "HOMIE_PACK_MS",                   path: "HOMIE_PACK_MS",             label: "Rip homie pack interval (sec)", step: 0.5, min: 0.5, scale: 1000 },
   { group: "Staff",            key: "CRAFT_HOMIE_COST",                path: "CRAFT_HOMIE_COST",          label: "Hire craft homie ($)",          step: 1,   min: 0 },
-  { group: "Staff",            key: "CRAFT_HOMIE_TICK_MS",             path: "CRAFT_HOMIE_TICK_MS",       label: "Craft homie craft tick (sec)",  step: 0.5, min: 0.5, scale: 1000 },
-  { group: "Staff",            key: "CRAFT_HOMIE_LIST_TICK_MS",        path: "CRAFT_HOMIE_LIST_TICK_MS",  label: "Craft homie list tick (sec)",   step: 0.5, min: 0.5, scale: 1000 },
+  { group: "Staff",            key: "CRAFT_HOMIE_TICK_MS",             path: "CRAFT_HOMIE_TICK_MS",       label: "Craft homie tick (sec)",        step: 0.5, min: 0.5, scale: 1000 },
   { group: "Staff",            key: "CRAFT_HOMIE_DURATION_MS",         path: "CRAFT_HOMIE_DURATION_MS",   label: "Craft homie lifetime (min)",    step: 0.5, min: 0.5, scale: 60000 },
   { group: "Staff",            key: "SORTER_COST",                     path: "SORTER_COST",               label: "Sorter base cost ($)",         step: 50,  min: 0 },
   { group: "Staff",            key: "SORTER_MAX",                      path: "SORTER_MAX",                label: "Max sorters",                  step: 1,   min: 1, int: true },
@@ -4148,7 +4146,7 @@ function _liveDesignSnapshot() {
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     RARE_BLAST_REACH, FOIL_BLAST_REACH,
     HOMIE_COST, HOMIE_PACK_MS,
-    CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_LIST_TICK_MS, CRAFT_HOMIE_DURATION_MS,
+    CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
     VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
     SORTER_COST, SORTER_MAX,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
@@ -4545,7 +4543,6 @@ function hireCraftHomie(craftRarity) {
     startAt: now,
     expiresAt: now + CRAFT_HOMIE_DURATION_MS,
     lastCraftAt: 0,
-    lastListAt:  0,
   });
   SFX.buy();
   renderAll(); save();
@@ -4598,35 +4595,29 @@ function tickHomies() {
       if (now >= h.expiresAt) return;                                 // reaper handles removal below
       const r = h.craftRarity;
       const foilKey = "foil" + r.charAt(0).toUpperCase() + r.slice(1);
-      // Marketplace pressure: when every slot is taken, the homie can't
-      // off-load a crafted set — so they redirect that idle time into
-      // more crafting. Halve the craft interval so the queue still moves
-      // (the player will need to clear slots eventually).
+      // Always prioritize listing. Drain every crafted set of this rarity
+      // into open marketplace slots before considering more crafting.
+      // Foil first, then non-foil. Silent (no per-list hint or SFX); the
+      // batched renderAll at the end of tickHomies covers the repaint.
+      withActiveSet(h.setId, () => {
+        while (!listingSlotsFull()) {
+          if (listSetItem(foilKey, { silent: true })) { acted = true; continue; }
+          if (listSetItem(r,       { silent: true })) { acted = true; continue; }
+          break;                                       // both shelves empty
+        }
+      });
+      // Marketplace pressure: when every slot is still taken after the
+      // drain pass, the homie can't off-load — so they redirect that idle
+      // time into more crafting. Halve the craft interval.
       const effCraftTick = listingSlotsFull() ? CRAFT_HOMIE_TICK_MS / 2 : CRAFT_HOMIE_TICK_MS;
       if (now - (h.lastCraftAt || 0) >= effCraftTick) {
         // Route the craft into the homie's bound year. Foil first, then
         // non-foil — the homie keeps drilling on both tracks until expiry.
-        // Silent so the hint line + render don't fire per-tick — tickHomies
-        // batches them once at the end of the loop.
         withActiveSet(h.setId, () => {
           if (canCraftSet(foilKey)) { craftSet(foilKey, { silent: true }); acted = true; }
           if (canCraftSet(r))       { craftSet(r,       { silent: true }); acted = true; }
         });
         h.lastCraftAt = now;
-      }
-      // Independent list cadence — try to list a crafted set every
-      // CRAFT_HOMIE_LIST_TICK_MS. Foil-set first, non-foil if the foil
-      // shelf is empty. Cooldown advances on every attempt (even if
-      // skipped) so the timing stays predictable; the market-full branch
-      // above is what compensates by speeding up crafting.
-      if (now - (h.lastListAt || 0) >= CRAFT_HOMIE_LIST_TICK_MS) {
-        if (!listingSlotsFull()) {
-          withActiveSet(h.setId, () => {
-            if (listSetItem(foilKey, { silent: true }))      acted = true;
-            else if (listSetItem(r,   { silent: true }))     acted = true;
-          });
-        }
-        h.lastListAt = now;
       }
     } else {
       if (h.packsRemaining > 0 && now - (h.lastRipAt || 0) >= HOMIE_PACK_MS) {
