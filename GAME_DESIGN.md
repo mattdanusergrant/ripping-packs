@@ -258,9 +258,9 @@ Both rip and craft homies draw from a **shared token pool** (`state.homiePool`, 
 
 Every homie slot — both the 6 rip-homie sprites flanking the booster pack AND the 5 craft-homie slots on the rarity rows — is a **table** the homie sits at. Tables unlock **sequentially** along a single 11-step path: the 6 rip slots first (center-out order `1, 4, 0, 3, 2, 5`), then the 5 craft-homie rarities low-to-high (`standard → rare → epic → legendary → mythic`).
 
-Players start with **zero tables bought**. The very first slot — rip slot 1 (left-middle of the pack) — renders as a `🪑 BUY TABLE · $500` chip; every later slot is hidden. Buying the current next-in-line table costs a flat `TABLE_COST` (default **$500**, tunable) and **reveals the next slot** as the new purchaseable chip. The newly-revealed slot still needs its own table buy before it can be hired into — visibility and functionality are separate steps. Tables persist forever once bought.
+Players start with **zero tables bought**. The very first slot — rip slot 1 (left-middle of the pack) — renders as a `🪑 BUY TABLE · $100` chip; every later slot is hidden. Buying the current next-in-line table costs a flat `TABLE_COST` (default **$100**, tunable) and **reveals the next slot** as the new purchaseable chip. The newly-revealed slot still needs its own table buy before it can be hired into — visibility and functionality are separate steps. Tables persist forever once bought.
 
-The cascade: spend $500 → first rip table opens → spend $500 → second rip table opens (slot 4) → ... → after the 6th rip table → Standard craft table appears → spend → Rare craft → ... → final Mythic craft table.
+The cascade: spend $100 → first rip table opens → spend $100 → second rip table opens (slot 4) → ... → after the 6th rip table → Standard craft table appears → spend → Rare craft → ... → final Mythic craft table.
 
 For rip slots, locked-but-not-next-in-line renders nothing at all. For craft slots, locked-but-not-next renders an invisible placeholder so the 3-column rarity-row grid stays aligned with the rows above and below.
 
