@@ -977,13 +977,13 @@
   }
 
   /* ---- Marketplace listings -------------------------------------------- */
-  /* AVAILABLE | LISTINGS sit side-by-side under the Vintage Shop. Each
-     half claims equal width via flex:1 and sizes its own height to its
-     contents (align-items:flex-start), so a quiet AVAILABLE doesn't
-     stretch into empty space when LISTINGS is full. */
+  /* AVAILABLE | LISTINGS sit side-by-side under the Vintage Shop, each
+     claiming equal width via flex:1. align-items:stretch makes both
+     panels match the taller of the two, so the shorter side grows into
+     the empty space instead of leaving a ragged bottom edge. */
   .marketplace-split {
     display: flex; flex-direction: row; gap: 10px;
-    align-items: flex-start;
+    align-items: stretch;
   }
   .marketplace-split > * {
     flex: 1 1 0;
