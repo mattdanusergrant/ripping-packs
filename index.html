@@ -2612,7 +2612,7 @@ function addPull(card) {
   if (bulkPull) return { isNew: false, completed: false };
   const ownedList = card.foil ? cur().ownedFoil[card.rarity] : cur().owned[card.rarity];
   const wasNew = !ownedList.includes(card.id);
-  flashQueue.push({ setId: state.activeSetId, rarity: card.rarity, id: card.id, foil: card.foil, fresh: wasNew });
+  pushFlash(state.activeSetId, card.rarity, card.id, card.foil, wasNew);
   if (wasNew) {
     ownedList.push(card.id);
     const completed = ownedList.length >= SET_SIZES[card.rarity];
@@ -3252,8 +3252,34 @@ function showHits(pulls, meta = {}) {
 }
 
 // ---- Vault collection grid ----------------------------------------------
-// Cards just acquired in the latest rip are tagged here for one-shot VFX.
-let flashQueue = []; // [{rarity, id, foil, fresh}]
+// TTL registry of in-progress card-pop flashes — survives DOM rebuilds so
+// rapid pack clicks (which re-run renderVaultGrid before the previous
+// flash has finished its 0.7s/1.2s animation) don't tear down the
+// highlight. Keyed by `setId:rarity:id:foil`; latest push wins, so a
+// duplicate pull restarts the animation. Entries self-prune on lookup.
+const FLASH_DURATION_MS       = 700;
+const FLASH_FRESH_DURATION_MS = 1200;
+let _flashRegistry = new Map();
+function _flashKey(setId, rarity, id, foil) {
+  return setId + ":" + rarity + ":" + id + ":" + (foil ? 1 : 0);
+}
+function pushFlash(setId, rarity, id, foil, fresh) {
+  _flashRegistry.set(_flashKey(setId, rarity, id, foil), { startedAt: Date.now(), fresh });
+}
+function applyFlashToCell(cell, setId, rarity, id, foil) {
+  const key = _flashKey(setId, rarity, id, foil);
+  const entry = _flashRegistry.get(key);
+  if (!entry) return;
+  const duration = entry.fresh ? FLASH_FRESH_DURATION_MS : FLASH_DURATION_MS;
+  const elapsed = Date.now() - entry.startedAt;
+  if (elapsed >= duration) { _flashRegistry.delete(key); return; }
+  cell.classList.add(entry.fresh ? "flash-fresh" : "flash");
+  // Negative animation-delay starts the animation as if it began N ms
+  // ago — so a rebuilt cell picks up where the destroyed cell's
+  // animation left off instead of restarting from frame 0 (the bug
+  // that made the highlight vanish on rapid pack clicks).
+  if (elapsed > 0) cell.style.animationDelay = "-" + elapsed + "ms";
+}
 
 function buildCollectionCell(rarity, i, foil) {
   const ownedList = foil ? cur().ownedFoil[rarity] : cur().owned[rarity];
@@ -3263,11 +3289,7 @@ function buildCollectionCell(rarity, i, foil) {
     + (owned ? " owned" : "")
     + (foil  ? " foil"  : "");
   cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
-  const flashed = flashQueue.find(f =>
-    (f.setId == null || f.setId === state.activeSetId) &&
-    f.rarity === rarity && f.id === i && f.foil === foil
-  );
-  if (flashed) cell.classList.add(flashed.fresh ? "flash-fresh" : "flash");
+  applyFlashToCell(cell, state.activeSetId, rarity, i, foil);
   return cell;
 }
 
@@ -3320,8 +3342,6 @@ function renderVaultGrid() {
   wrap.appendChild(topRow);
 
   wrap.appendChild(buildCollectionRow("standard"));
-
-  flashQueue = [];
 }
 
 // ---- Marketplace listings ----------------------------------------------
@@ -3361,13 +3381,7 @@ function trackBulkCard(key, id) {
   const ownedList = bulkOwnedList(key);
   const wasNew = !ownedList.includes(id);
   if (wasNew) ownedList.push(id);
-  flashQueue.push({
-    setId: state.activeSetId,
-    rarity: bulkBaseRarity(key),
-    id,
-    foil: bulkIsFoil(key),
-    fresh: wasNew,
-  });
+  pushFlash(state.activeSetId, bulkBaseRarity(key), id, bulkIsFoil(key), wasNew);
 }
 
 function isSetListing(l) {
@@ -4013,11 +4027,10 @@ function runChainCrit(startCol, startRow, onDone) {
   applyBlast(startCol, startRow, CLICK_AOE_OFFSETS, detonators, refs);
   startSandAnim();
   // Mid-chain re-renders intentionally skip renderVaultGrid: rebuilding
-  // every collection cell every 90ms tears down in-flight .flash / .flash-
-  // fresh animations and restarts them on the new DOM, producing rapid
-  // visible stutter on collection highlights. The terminal renderAll() in
-  // the chain's onDone callback drains the accumulated flashQueue in one
-  // go after all waves settle.
+  // every collection cell every 90ms is wasted DOM work. The flash
+  // registry (TTL-based, with animation-delay resume on rebuild) is
+  // already safe across rebuilds, but the chain still bulks them at
+  // the terminal renderAll() callback for cheap throughput.
   renderHeader();
   renderVault();
   renderSandPile();
