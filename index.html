@@ -2837,12 +2837,13 @@ let VINTAGE_TYPE_WEIGHTS = def("VINTAGE_TYPE_WEIGHTS", { pack: 80, box: 16, case
 let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  5);
 let AVAILABLE_REFRESH_MS  = def("AVAILABLE_REFRESH_MS",  3 * 60 * 1000); // 3 min
 let AVAILABLE_PRICE_RATIO = def("AVAILABLE_PRICE_RATIO", 1.25);          // +25% premium
+// Standard / Rare (and their foils) are excluded: bulk-style commons
+// aren't what the AVAILABLE market is for — its job is targeted singles
+// of the cards a collector actually hunts for.
 const AVAILABLE_RARITIES = [
   { rarity: "epic",      foil: false },
   { rarity: "legendary", foil: false },
   { rarity: "mythic",    foil: false },
-  { rarity: "standard",  foil: true  },  // foil standard → bulk track, sorted id
-  { rarity: "rare",      foil: true  },
   { rarity: "epic",      foil: true  },
   { rarity: "legendary", foil: true  },
   { rarity: "mythic",    foil: true  },
@@ -2947,9 +2948,19 @@ function rollAvailableOffer(setId) {
 function syncAvailableSlotCount() {
   if (!state.available) state.available = { slots: [] };
   if (!Array.isArray(state.available.slots)) state.available.slots = [];
+  // Any stocked slot whose offer is for a different year (loaded saves
+  // from a prior active set, or drift) gets re-rolled to the current
+  // active set — AVAILABLE never shows cross-year offers.
+  const sid = state.activeSetId;
+  for (let i = 0; i < state.available.slots.length; i++) {
+    const s = state.available.slots[i];
+    if (s && s.cardId != null && s.setId !== sid) {
+      state.available.slots[i] = rollAvailableOffer(sid);
+    }
+  }
   const want = availableSlotsEffective();
   while (state.available.slots.length < want) {
-    state.available.slots.push(rollAvailableOffer(state.activeSetId));
+    state.available.slots.push(rollAvailableOffer(sid));
   }
 }
 
