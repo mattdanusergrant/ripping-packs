@@ -1710,43 +1710,41 @@ const RARITY_COLOURS = { standard: "#5ad06a",  rare: "#5aa8ff",  epic: "#c060ff"
 const RARITY_GLYPHS  = { standard: "◆",        rare: "★",        epic: "◈",         legendary: "✪",         mythic: "✦" };
 
 // ---- Per-card glyph -----------------------------------------------------
-// Each card carries a deterministic (shape, color) fingerprint computed
-// from (rarity, id). The intent is identity at a glance — paired with
-// the rarity-colored border, the glyph lets a player recognize "that's
-// the Mythic #2 I'm missing" on small tiles without needing per-card
-// art.
+// Each card carries a deterministic identity mark paired with the
+// rarity-colored border, so a player can recognize "that's the
+// Mythic #2 I'm missing" on small tiles without per-card art.
 //
-// Tracks that use glyphs: Epic (9 cards), Legendary (6), Mythic (3),
-// and their foil counterparts. Standard cards show their id as a
-// number (1-36); Rare cards show a letter (A-R) — handled in
-// cardGlyphHtml. So max glyph track is 9 cards; an 8×3 = 24 combo
-// palette is more than enough, and the direct id-based mapping below
-// guarantees within-track uniqueness by construction.
+//   Standard (1-36) → number, colored along a rainbow from left to right
+//   Rare     (A-R)  → letter, same rainbow gradient
+//   Epic / Legendary / Mythic → shape glyph in the rarity color
 //
-// Foil and non-foil share the same glyph — the shimmer treatment plus
-// the row pairing in the combined collection grid already differentiates
-// them, and sharing the glyph makes "foil/non-foil of the same card"
-// read as a pair instead of two unrelated cards.
+// Foil and non-foil share their identity mark — the shimmer treatment
+// plus the row pairing in the combined collection grid already
+// differentiates them, and sharing makes the pair read as one card
+// with two variants instead of two unrelated cards.
 const CARD_GLYPH_SHAPES = ["circle", "square", "diamond", "tri", "hex", "star", "plus", "ring"];
-// Three colors clear of every rarity color (epic purple, legendary
-// gold, mythic orange) so the glyph reads as card identity, not rarity.
-const CARD_GLYPH_COLORS = ["#65e0a8", "#5cc6ff", "#ff8fbb"];
+function rainbowColor(id, total) {
+  // Sweep hue 0 → 300 (red → violet) across the id range so a full
+  // row of identifiers reads as a smooth left-to-right rainbow.
+  const t = total > 1 ? (id - 1) / (total - 1) : 0;
+  return `hsl(${Math.round(t * 300)}, 80%, 65%)`;
+}
 function cardGlyph(rarity, id, _foil) {
-  // Per-rarity offset keeps Epic #1 / Legendary #1 / Mythic #1 from
-  // collapsing to the same (shape, color) pair across tracks.
+  if (rarity === "standard" || rarity === "rare") {
+    return { shape: null, color: rainbowColor(id, SET_SIZES[rarity] || 1) };
+  }
+  // Epic / Legendary / Mythic: shape cycles through the 8-shape pool
+  // with a per-rarity offset so Epic #1 / Legendary #1 / Mythic #1
+  // don't collapse to the same shape across tracks. Color is just
+  // the rarity color, so the glyph reads as the rarity at a glance.
   const rIdx = RARITIES.indexOf(rarity);
   const idx  = ((id - 1) + rIdx * 3);
   const s    = ((idx % CARD_GLYPH_SHAPES.length) + CARD_GLYPH_SHAPES.length) % CARD_GLYPH_SHAPES.length;
-  const c    = ((Math.floor(idx / CARD_GLYPH_SHAPES.length) % CARD_GLYPH_COLORS.length) + CARD_GLYPH_COLORS.length) % CARD_GLYPH_COLORS.length;
-  return { shape: CARD_GLYPH_SHAPES[s], color: CARD_GLYPH_COLORS[c] };
+  return { shape: CARD_GLYPH_SHAPES[s], color: RARITY_COLOURS[rarity] };
 }
 function cardGlyphHtml(rarity, id, foil, sizeClass) {
   const g = cardGlyph(rarity, id, foil);
   const sz = sizeClass ? " " + sizeClass : "";
-  // Two rarities get text glyphs instead of geometric shapes:
-  // - Standard (set size 36) uses the card id as a plain number
-  // - Rare    (set size 18) uses a letter A-R
-  // Epic / Legendary / Mythic + all foils keep the procedural shape.
   if (rarity === "standard") {
     return `<span class="card-glyph text${sz}" style="--glyph-color:${g.color}">${id}</span>`;
   }
