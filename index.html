@@ -2384,7 +2384,10 @@ const defaultState = () => ({
   // AVAILABLE buy-market: NPC dealer slots offering specific singles
   // from the active set's priced rarities / foils for a small premium.
   // Each slot rolls a new offer on its own cooldown after purchase.
-  available: { slots: blankAvailableSlots() },
+  // Left empty here — syncAvailableSlotCount fills it on the first
+  // renderAvailable, by which time `state` is fully constructed (rolling
+  // an offer reads state.sets via setStateFor for the unowned-id bias).
+  available: { slots: [] },
 });
 
 function blankVintageSlots() {
@@ -2921,15 +2924,10 @@ function rollAvailableOffer(setId) {
   const askPrice = Math.max(0.01, Math.round(availableOfferPrice(setId, rarity, foil) * 100) / 100);
   return { cardId, rarity, foil, setId, askPrice, cooldownEndsAt: 0 };
 }
-// Boot-order safe: AVAILABLE_SLOTS_BASE isn't declared at the moment
-// defaultState runs (same constraint blankVintageSlots manages), so we
-// hardcode the initial slot count and let syncAvailableSlotCount catch
-// up on first render if the tunable was raised.
-function blankAvailableSlots() {
-  const out = [];
-  for (let i = 0; i < 5; i++) out.push(rollAvailableOffer(CURRENT_SET_ID));
-  return out;
-}
+// Slots start empty in defaultState — this fills them on first render,
+// once `state` is fully constructed. (rollAvailableOffer reads
+// state.sets via setStateFor for the unowned-id bias, so it can't run
+// during defaultState construction itself.)
 function syncAvailableSlotCount() {
   if (!state.available) state.available = { slots: [] };
   if (!Array.isArray(state.available.slots)) state.available.slots = [];
