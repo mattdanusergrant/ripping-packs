@@ -665,6 +665,21 @@
   }
   .card-glyph.lg     { width: 14px; height: 14px; }
   .card-glyph.xl     { width: 18px; height: 18px; }
+  /* Text-glyph variant — Standard/Epic cards show their id as a number
+     or letter (procedurally colored, no geometric shape). Overrides the
+     base box-fill styling so the text reads cleanly at small sizes. */
+  .card-glyph.text {
+    width: auto; height: auto; min-width: 10px;
+    background: none;
+    color: var(--glyph-color, #fff);
+    font: bold 9px/1 'Segoe UI', Roboto, system-ui, sans-serif;
+    letter-spacing: 0;
+    text-align: center;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    filter: none;
+  }
+  .card-glyph.text.lg { font-size: 11px; }
+  .card-glyph.text.xl { font-size: 14px; }
   .card-glyph.shape-circle  { border-radius: 50%; }
   .card-glyph.shape-square  { /* default */ }
   .card-glyph.shape-diamond { transform: rotate(45deg); }
@@ -1690,6 +1705,18 @@ function cardGlyph(rarity, id, foil) {
 function cardGlyphHtml(rarity, id, foil, sizeClass) {
   const g = cardGlyph(rarity, id, foil);
   const sz = sizeClass ? " " + sizeClass : "";
+  // Two rarities get text glyphs instead of geometric shapes:
+  // - Standard (set size 36) uses the card id as a plain number
+  // - Epic    (set size 9) uses a letter A-I
+  // The rest (rare, legendary, mythic, all foils) keep the procedural
+  // 8x8 shape×color combo.
+  if (rarity === "standard") {
+    return `<span class="card-glyph text${sz}" style="--glyph-color:${g.color}">${id}</span>`;
+  }
+  if (rarity === "epic") {
+    const letter = id >= 1 && id <= 26 ? String.fromCharCode(64 + id) : String(id);
+    return `<span class="card-glyph text${sz}" style="--glyph-color:${g.color}">${letter}</span>`;
+  }
   return `<span class="card-glyph shape-${g.shape}${sz}" style="--glyph-color:${g.color}"></span>`;
 }
 
