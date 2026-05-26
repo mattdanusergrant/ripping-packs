@@ -457,12 +457,19 @@
     animation: speech-bubble-life 4s ease-out forwards;
   }
   .speech-bubble.above { transform: translate(-50%, -100%); }
+  .speech-bubble.below { transform: translate(-50%, 0); }
   .speech-bubble.right { transform: translate(8px, -50%); }
   .speech-bubble.above::after {
     content: ""; position: absolute;
     bottom: -5px; left: 50%; transform: translateX(-50%);
     border: 5px solid transparent;
     border-top-color: var(--panel-light); border-bottom: 0;
+  }
+  .speech-bubble.below::after {
+    content: ""; position: absolute;
+    top: -5px; left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-bottom-color: var(--panel-light); border-top: 0;
   }
   .speech-bubble.right::after {
     content: ""; position: absolute;
@@ -5533,6 +5540,9 @@ function _popSpeechBubble(anchorEl, text, position) {
   if (position === "above") {
     bubble.style.left = (rect.left + rect.width / 2) + "px";
     bubble.style.top  = (rect.top - 4) + "px";
+  } else if (position === "below") {
+    bubble.style.left = (rect.left + rect.width / 2) + "px";
+    bubble.style.top  = (rect.bottom + 4) + "px";
   } else {
     bubble.style.left = (rect.right + 4) + "px";
     bubble.style.top  = (rect.top + rect.height / 2) + "px";
@@ -5563,7 +5573,7 @@ function _maybePopHomieSpeech() {
     const key = "idle-" + i;
     if (now - (_lastSpeechAt.get(key) || 0) < SPEECH_PER_HOMIE_COOLDOWN_MS) return;
     const lines = (state.tablesOwned || 0) === 0 ? SPEECH_LINES.idleNoTable : SPEECH_LINES.idle;
-    candidates.push({ el, key, lines, anchor: "right" });
+    candidates.push({ el, key, lines, anchor: "below" });
   });
   if (candidates.length === 0) return;
   const pick = candidates[Math.floor(Math.random() * candidates.length)];
