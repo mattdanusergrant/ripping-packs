@@ -2498,7 +2498,16 @@ function load() {
     return null;
   }
 }
-function save() { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
+// Set true by resetGame() / resetDesignOverrides() once they've cleared
+// localStorage and called location.reload(). The navigation isn't
+// instant — any setInterval tick (tickHomies/save/etc.) firing in that
+// window would re-save the live in-memory state and resurrect the keys
+// before unload. Gating save() on this flag prevents the resurrection.
+let _resetting = false;
+function save() {
+  if (_resetting) return;
+  localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+}
 function fmt(n) {
   if (n == null || !Number.isFinite(n)) return "0";
   if (n < 1) return n.toFixed(2);
@@ -5800,6 +5809,7 @@ function ripOne() {
 
 function resetGame() {
   if (!confirm("Wipe everything and start over?\n\nThis also resets any Game Design panel changes back to defaults.")) return;
+  _resetting = true;
   localStorage.removeItem(SAVE_KEY);
   localStorage.removeItem(DESIGN_KEY);
   // Reload rather than mutating in place — the design constants are
