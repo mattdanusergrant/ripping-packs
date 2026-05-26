@@ -189,25 +189,35 @@
   }
   .homie-sprite.empty .homie-plus { line-height: 1; }
   .homie-sprite.empty .homie-meta { font-size: 0.5rem; letter-spacing: 1px; color: inherit; }
-  /* Locked slot — no table bought yet. Dimmer than empty, with a 🪑 CTA
-     instead of a +. Hover tints toward CASH green since the action is a
-     cash purchase. */
+  /* Locked slot — no table bought yet. Cash-green tinted by default
+     (since the action is a cash purchase); the price is the primary
+     visual, with a "TABLE" label below it. No emoji — the dollar amount
+     itself reads as the call-to-action and leaves room for the price. */
   .homie-sprite.locked {
     pointer-events: auto; cursor: pointer;
     animation: none;
     width: 48px; height: 60px;
-    border: 1.5px dashed rgba(255,255,255,0.14);
+    border: 1.5px dashed rgba(133,187,101,0.55);
     border-radius: 10px;
-    background: rgba(0,0,0,0.3);
+    background: rgba(133,187,101,0.10);
     align-items: center; justify-content: center;
-    color: rgba(255,255,255,0.35);
-    font-size: 1.2rem; font-weight: bold;
-    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    color: var(--cash);
+    font-weight: bold;
+    transition: border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.15s;
   }
-  .homie-sprite.locked:hover { border-color: var(--cash); color: var(--cash); background: rgba(133,187,101,0.10); }
-  .homie-sprite.locked.disabled { pointer-events: none; opacity: 0.35; }
-  .homie-sprite.locked .homie-plus { line-height: 1; filter: grayscale(0.35); }
-  .homie-sprite.locked .homie-meta { font-size: 0.5rem; letter-spacing: 1px; color: inherit; }
+  .homie-sprite.locked:hover {
+    border-color: var(--cash); color: #fff;
+    background: rgba(133,187,101,0.22);
+    box-shadow: 0 0 6px rgba(133,187,101,0.35);
+  }
+  .homie-sprite.locked.disabled { pointer-events: none; opacity: 0.5; }
+  .homie-sprite.locked .homie-plus {
+    font-size: 0.95rem; line-height: 1; letter-spacing: 0.5px;
+  }
+  .homie-sprite.locked .homie-meta {
+    font-size: 0.5rem; letter-spacing: 2px;
+    color: inherit; opacity: 0.85;
+  }
 
   /* Idle-homies window — sits at the left edge of #pack-area showing one
      🧢 per available pool token. Anchored absolute so it doesn't push
@@ -1082,12 +1092,15 @@
     background: rgba(90,208,106,0.10); border-color: #5ad06a;
   }
   .craft-homie-slot.locked {
-    background: rgba(0,0,0,0.3);
-    border-style: dashed; border-color: rgba(255,255,255,0.16);
-    color: rgba(255,255,255,0.4);
+    background: rgba(133,187,101,0.10);
+    border-style: dashed; border-color: rgba(133,187,101,0.55);
+    color: var(--cash);
   }
+  .craft-homie-slot.locked .homie-plus,
+  .craft-homie-slot.locked .homie-meta { color: inherit; }
   .craft-homie-slot.locked:not(.disabled):hover {
-    background: rgba(133,187,101,0.12); border-color: var(--cash); color: var(--cash);
+    background: rgba(133,187,101,0.22); border-color: var(--cash); color: #fff;
+    box-shadow: 0 0 6px rgba(133,187,101,0.35);
   }
   /* Locked-but-not-next slots are an invisible placeholder so the rarity
      row's 3-column grid stays aligned with rows that DO have a slot. */
@@ -2942,8 +2955,8 @@ function craftHomieSlotHtml(rarity) {
         ? `Need ${usd(cost - state.coins)} more to buy this ${RARITY_LABELS[rarity]} craft table.`
         : `Buy a ${RARITY_LABELS[rarity]} craft table — ${usd(cost)}. Unlocks the slot so you can hire a ${RARITY_LABELS[rarity]} craft homie, and reveals the next slot in line.`;
       return `<div class="${cls}" data-buy-table title="${title}">`
-           + `<span class="homie-plus">🪑</span>`
-           + `<span class="homie-meta">BUY ${usd(cost)}</span>`
+           + `<span class="homie-plus">${usd(cost)}</span>`
+           + `<span class="homie-meta">TABLE</span>`
            + `</div>`;
     }
     // Locked but not next-in-line — invisible placeholder so the rarity
@@ -4676,7 +4689,7 @@ function renderHomieSprites() {
       el.dataset.slot = slot;
       el.dataset.state = wantClass;
       if (wantClass === "locked") {
-        el.innerHTML = `<span class="homie-plus">🪑</span><span class="homie-meta">BUY TABLE</span>`;
+        el.innerHTML = `<span class="homie-plus">${usd(tableCost())}</span><span class="homie-meta">TABLE</span>`;
       } else if (wantClass === "empty") {
         el.innerHTML = `<span class="homie-plus">+</span><span class="homie-meta">HIRE</span>`;
       } else {
