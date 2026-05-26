@@ -19,18 +19,18 @@ BUY → RIP → SORT → CRAFT → LIST → SELL → BUY ...
 ```
 
 1. **Buy** packs, sealed boxes, or cases from the shop.
-2. **Rip** a pack — three input modes, all routing to the same `ripOne()`:
-   - **Click** the booster (manual single rip)
-   - **Hover** the booster (passive autorip every `HOVER_AUTORIP_MS`, default 1s)
-   - **Hold** mouse button on the booster (autorip rate **doubles** to every 500ms while held)
+2. **Rip** a pack — input modes routing into the same `ripOne()`:
+   - **Click** the booster (manual single rip — always available)
    - **Type** the on-screen prompt word (post-unlock — see §8)
+   - **Hover** the booster — passive autorip every `HOVER_AUTORIP_MS` (default 1s). Gated behind `eff().packAutorip`; no CLOUT node grants it yet, so dark by default. Pre-wired for a future upgrade.
+   - **Hold** mouse button on the booster — autorip rate **doubles** to every 500ms while held. Gated behind `eff().packAutoripHold` (which also requires `packAutorip`). Same future-upgrade hook.
 3. **Sort** the unsorted pile by clicking the sand canvas — every click detonates the nearest grain plus a 4-orthogonal AoE, and any non-standard caught in the blast chain-explodes (rares trigger a `RARE_BLAST_REACH`-cell "+" arm, foils trigger a `FOIL_BLAST_REACH`-cell "+" arm; see §4).
 4. **Craft** Standard / Rare / Foil Standard sets when you've collected one of every card in that rarity.
 5. **List** crafted sets on the marketplace, max 10 active listings.
 6. **Sell** — each listing resolves on its own cooldown for the current market price.
 7. **Reinvest** profits into more packs, Sorters ($1,000 each, permanent), or Homies ($20 + 1 box, temporary).
 
-The pack's CTA tag rotates through `["CLICK TO RIP", "HOVER TO RIP", "HOLD TO RIP"]` every 30s on a module-level `setInterval` — passive discovery of the three rip modes without a tutorial popup. The autorip system uses `canRip()` to gate the tick, so empty supply / full pile silently no-ops instead of spamming the error SFX. A window-level `mouseup` catches the "press → drag off pack → release" case so the doubled rate can't get stuck on.
+The pack's CTA tag rotates every 30s through whatever rip modes the player has actually unlocked (`activeCtaMessages()`) — so until the autorip upgrades are granted, it stays parked on "CLICK TO RIP" rather than advertising modes that do nothing. Once enabled, the autorip system uses `canRip()` to gate each tick (empty supply / full pile silently no-ops instead of spamming the error SFX) and a window-level `mouseup` catches the "press → drag off pack → release" case so the doubled rate can't get stuck on.
 
 > **Multi-set context.** The game ships with 30 yearly sets (2001 – 2030). The
 > sections below describe the loop *within an active year*. Set 30 is the

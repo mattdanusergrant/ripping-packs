@@ -5428,15 +5428,24 @@ function canRip() {
 }
 
 // ---- Pack CTA rotator ----------------------------------------------------
-// The little "CLICK TO RIP" tag on the pack face cycles through the three
-// ways to rip — surface the hover/hold mechanics passively without a
-// tutorial popup. Advances every 30s on a module-level interval.
-const PACK_CTA_MESSAGES = ["CLICK TO RIP", "HOVER TO RIP", "HOLD TO RIP"];
+// The little "CLICK TO RIP" tag on the pack face cycles through whatever
+// rip modes the player has actually unlocked — surfaces the hover/hold
+// mechanics passively without a tutorial popup. Until packAutoripEnabled()
+// goes true (via a future CLOUT node) the list collapses to just CLICK,
+// so the CTA never advertises a mode that does nothing.
+function activeCtaMessages() {
+  const msgs = ["CLICK TO RIP"];
+  if (packAutoripEnabled())   msgs.push("HOVER TO RIP");
+  if (packAutoripHoldBoost()) msgs.push("HOLD TO RIP");
+  return msgs;
+}
 let _packCtaIndex = 0;
 setInterval(() => {
-  _packCtaIndex = (_packCtaIndex + 1) % PACK_CTA_MESSAGES.length;
+  const msgs = activeCtaMessages();
+  if (msgs.length <= 1) { _packCtaIndex = 0; return; }
+  _packCtaIndex = (_packCtaIndex + 1) % msgs.length;
   const el = $("pack-cta");
-  if (el) el.textContent = PACK_CTA_MESSAGES[_packCtaIndex];
+  if (el) el.textContent = msgs[_packCtaIndex];
 }, 30000);
 
 // ---- Homie speech bubbles ------------------------------------------------
@@ -5557,7 +5566,14 @@ _scheduleHomieSpeech();
 
 // ---- Pack hover-autorip --------------------------------------------------
 // While the cursor is over the pack, automatically rip on an interval.
-// Holding the mouse button down on the pack doubles the rate.
+// Holding the mouse button down on the pack doubles the rate. Both
+// behaviors are gated behind eff() hooks so a future CLOUT upgrade
+// node can flip them on with `effect: { packAutorip: 1 }` (and
+// `packAutoripHold: 1` for the held-doubles boost). Currently neither
+// is granted by any node, so the feature is dark by default while the
+// code path stays intact for those upgrades.
+function packAutoripEnabled()   { return !!(eff().packAutorip || 0); }
+function packAutoripHoldBoost() { return packAutoripEnabled() && !!(eff().packAutoripHold || 0); }
 let HOVER_AUTORIP_MS = def("HOVER_AUTORIP_MS", 1000);
 let _packAutoripTimer = null;
 let _packHovering = false;
@@ -5821,15 +5837,18 @@ function resetGame() {
 // ---- Boot ----------------------------------------------------------------
 $("pack").addEventListener("click", ripOne);
 $("pack").addEventListener("mouseenter", () => {
+  if (!packAutoripEnabled()) return;
   _packHovering = true;
   _startPackAutorip();
 });
 $("pack").addEventListener("mouseleave", () => {
+  if (!packAutoripEnabled()) return;
   _packHovering = false;
   _packHeld = false;
   _stopPackAutorip();
 });
 $("pack").addEventListener("mousedown", () => {
+  if (!packAutoripHoldBoost()) return;
   _packHeld = true;
   if (_packHovering) _startPackAutorip();
 });
