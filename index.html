@@ -5629,11 +5629,13 @@ function ripOne() {
 
 
 function resetGame() {
-  if (!confirm("Wipe everything and start over?")) return;
-  state = defaultState();
-  save();
-  renderAll();
-  $("hint").textContent = "Fresh start. A case on the house — start ripping!";
+  if (!confirm("Wipe everything and start over?\n\nThis also resets any Game Design panel changes back to defaults.")) return;
+  localStorage.removeItem(SAVE_KEY);
+  localStorage.removeItem(DESIGN_KEY);
+  // Reload rather than mutating in place — the design constants are
+  // captured into module-scope `let` bindings at boot via def(), so
+  // clearing DESIGN_KEY only takes effect after a fresh page load.
+  location.reload();
 }
 
 // ---- Boot ----------------------------------------------------------------
