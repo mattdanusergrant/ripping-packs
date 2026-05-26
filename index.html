@@ -1006,6 +1006,26 @@
     color: var(--muted); font-size: 0.72rem; font-style: italic;
     text-align: center; padding: 8px 0;
   }
+  /* Cooling-down restock tiles reuse the listing-card shell but
+     desaturate so they read as "not interactable yet" at a glance. */
+  .listing-card.cooling {
+    border-color: rgba(255,255,255,0.18);
+    background: rgba(0,0,0,0.4);
+    box-shadow: none;
+    cursor: default;
+    filter: grayscale(0.6) brightness(0.85);
+  }
+  .listing-card.cooling:hover { transform: none; filter: grayscale(0.6) brightness(0.85); }
+  /* Offers the player can't afford / can't reach (wrong year) get a
+     dim treatment — same trick the Vintage shop uses. */
+  .listing-card.available-offer.unaffordable {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .listing-card.available-offer.unaffordable:hover {
+    transform: none;
+    filter: brightness(1);
+  }
   .listings-header {
     display: flex; justify-content: space-between; align-items: center; gap: 10px;
     font-size: 0.72rem; letter-spacing: 3px; color: var(--gold);
@@ -2361,6 +2381,10 @@ const defaultState = () => ({
   // Vintage shop: 3 (upgradeable) slots, each holds a random past-year pack
   // or a cooldown timestamp after purchase. Filled at boot.
   vintageShop: { slots: blankVintageSlots() },
+  // AVAILABLE buy-market: NPC dealer slots offering specific singles
+  // from the active set's priced rarities / foils for a small premium.
+  // Each slot rolls a new offer on its own cooldown after purchase.
+  available: { slots: blankAvailableSlots() },
 });
 
 function blankVintageSlots() {
@@ -2784,6 +2808,30 @@ let VINTAGE_REFRESH_MS = def("VINTAGE_REFRESH_MS", 5 * 60 * 1000); // 5 min
 // Pack/box/case weights — overwhelmingly packs, occasional box, rare case.
 // Re-tunable in the design panel.
 let VINTAGE_TYPE_WEIGHTS = def("VINTAGE_TYPE_WEIGHTS", { pack: 80, box: 16, case: 4 });
+
+// AVAILABLE buy-side market — NPC dealers offering specific singles for
+// a convenience premium over the derived per-card market price. Slot
+// behavior mirrors the Vintage shop: each slot rolls an offer on a
+// per-slot cooldown after purchase. Eligible tracks are the priced
+// rarities + every foil (excluding non-foil Standard / Rare, which are
+// trivial bulk and would just become an alternate cash sink).
+let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  5);
+let AVAILABLE_REFRESH_MS  = def("AVAILABLE_REFRESH_MS",  3 * 60 * 1000); // 3 min
+let AVAILABLE_PRICE_RATIO = def("AVAILABLE_PRICE_RATIO", 1.25);          // +25% premium
+const AVAILABLE_RARITIES = [
+  { rarity: "epic",      foil: false },
+  { rarity: "legendary", foil: false },
+  { rarity: "mythic",    foil: false },
+  { rarity: "standard",  foil: true  },  // foil standard → bulk track, sorted id
+  { rarity: "rare",      foil: true  },
+  { rarity: "epic",      foil: true  },
+  { rarity: "legendary", foil: true  },
+  { rarity: "mythic",    foil: true  },
+];
+function availableSlotsEffective()    { return AVAILABLE_SLOTS_BASE + (eff().availableSlots || 0); }
+function availableRefreshMsEffective() {
+  return Math.max(15000, AVAILABLE_REFRESH_MS + (eff().availableRefreshDelta || 0));
+}
 function vintageSlotCountEffective() {
   return VINTAGE_SLOTS_BASE + (eff().vintageSlots || 0);
 }
@@ -2837,6 +2885,80 @@ function rollVintageType() {
 // One slot fill — picks both type and year.
 function rollVintageSlot() {
   return { year: rollVintageYear(), type: rollVintageType(), cooldownEndsAt: 0 };
+}
+
+// ---- AVAILABLE buy-market helpers --------------------------------------
+// Per-card price is derived from the Set baseline since the game has no
+// native per-card market (singles aren't listable; only Sets are). We
+// divide the current dynamic Set price by the Set size so the per-card
+// number tracks the same supply/demand curve as the corresponding Set.
+function singleCardMarketPrice(setId, rarity, foil) {
+  const stem = foil ? "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1) : rarity;
+  const setKey = stem + "Set";
+  if (!BASELINE[setKey]) return 0;
+  const setPrice = marketPriceFor(setId, setKey, 1);
+  const size = SET_SIZES[rarity] || 1;
+  return setPrice / size;
+}
+function availableOfferPrice(setId, rarity, foil) {
+  return Math.max(0.01, singleCardMarketPrice(setId, rarity, foil) * AVAILABLE_PRICE_RATIO);
+}
+// Pick a random rarity from the buy-eligible pool, then prefer an
+// unowned id within that rarity so the panel stays useful as the
+// collection fills out. Once everything in a rolled rarity is owned,
+// fall back to a uniform id (a dupe is still spendable via crafting).
+function rollAvailableOffer(setId) {
+  const pick = AVAILABLE_RARITIES[Math.floor(Math.random() * AVAILABLE_RARITIES.length)];
+  const { rarity, foil } = pick;
+  const size = SET_SIZES[rarity] || 1;
+  const bundle = setStateFor(setId);
+  const ownedList = (foil ? bundle.ownedFoil[rarity] : bundle.owned[rarity]) || [];
+  const ownedSet = new Set(ownedList);
+  const unowned = [];
+  for (let id = 1; id <= size; id++) if (!ownedSet.has(id)) unowned.push(id);
+  const pool = unowned.length > 0 ? unowned : Array.from({ length: size }, (_, i) => i + 1);
+  const cardId = pool[Math.floor(Math.random() * pool.length)];
+  const askPrice = Math.max(0.01, Math.round(availableOfferPrice(setId, rarity, foil) * 100) / 100);
+  return { cardId, rarity, foil, setId, askPrice, cooldownEndsAt: 0 };
+}
+// Boot-order safe: AVAILABLE_SLOTS_BASE isn't declared at the moment
+// defaultState runs (same constraint blankVintageSlots manages), so we
+// hardcode the initial slot count and let syncAvailableSlotCount catch
+// up on first render if the tunable was raised.
+function blankAvailableSlots() {
+  const out = [];
+  for (let i = 0; i < 5; i++) out.push(rollAvailableOffer(CURRENT_SET_ID));
+  return out;
+}
+function syncAvailableSlotCount() {
+  if (!state.available) state.available = { slots: [] };
+  if (!Array.isArray(state.available.slots)) state.available.slots = [];
+  const want = availableSlotsEffective();
+  while (state.available.slots.length < want) {
+    state.available.slots.push(rollAvailableOffer(state.activeSetId));
+  }
+}
+
+// Mirror of addPull for AVAILABLE purchases. Routes the bought card into
+// inventory + collection but skips pack-rip side effects (opened
+// counters, market-inv absorption) — a purchase isn't a pack rip. Foil
+// Standard buys go straight to sorted bulk (specific id), not the
+// unsorted grain pile, since the player chose the id at purchase.
+function depositBoughtCard(card) {
+  const isFoilStandard = card.rarity === "standard" && card.foil;
+  const ownedList = card.foil ? cur().ownedFoil[card.rarity] : cur().owned[card.rarity];
+  const wasNew = !ownedList.includes(card.id);
+  if (isFoilStandard) {
+    trackBulkCard("foilStandard", card.id);
+  } else {
+    if (card.foil) cur().stockFoil[card.rarity] += 1;
+    else           cur().stock[card.rarity]     += 1;
+    const mk = marketKey(card.rarity, card.foil);
+    if (mk) cur().invById[mk][card.id] = (cur().invById[mk][card.id] || 0) + 1;
+    if (wasNew) ownedList.push(card.id);
+    pushFlash(state.activeSetId, card.rarity, card.id, card.foil, wasNew);
+  }
+  return { isNew: wasNew };
 }
 // How much a vintage offering costs based on its type + year.
 function vintageSlotCost(slot) {
@@ -3800,18 +3922,94 @@ function listingCountdownLabel(l) {
   return `${s}s`;
 }
 
+function buyAvailableSlot(slotIdx) {
+  const slot = state.available?.slots?.[slotIdx];
+  if (!slot || slot.cardId == null) return;
+  if (slot.setId !== state.activeSetId) {
+    SFX.error();
+    $("hint").textContent = `That offer is for The ${setYearLabel(slot.setId)} Set — switch year to buy.`;
+    return;
+  }
+  const cost = slot.askPrice;
+  if (state.coins < cost) {
+    SFX.error();
+    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that ${slot.foil ? "foil " : ""}${RARITY_LABELS[slot.rarity].toLowerCase()}.`;
+    return;
+  }
+  SFX.buy();
+  state.coins -= cost;
+  if (slot.rarity === "mythic" || slot.rarity === "legendary") SFX.pullMythic();
+  else if (slot.foil && slot.rarity !== "standard")            SFX.pullFoil();
+  depositBoughtCard({ rarity: slot.rarity, id: slot.cardId, foil: !!slot.foil });
+  state.available.slots[slotIdx] = { cardId: null, cooldownEndsAt: Date.now() + availableRefreshMsEffective() };
+  renderAll();
+  save();
+  const idLabel = cardFullId(slot.rarity, slot.cardId, GAME_ID, slot.setId);
+  $("hint").textContent = `Bought ${slot.foil ? "foil " : ""}${RARITY_LABELS[slot.rarity].toLowerCase()} ${idLabel} @ ${usd(cost)}.`;
+}
+
+function tickAvailable() {
+  if (!state.available || !Array.isArray(state.available.slots)) return;
+  const now = Date.now();
+  let changed = false;
+  state.available.slots.forEach((slot, i) => {
+    if (!slot || slot.cardId != null) return;
+    if (now >= (slot.cooldownEndsAt || 0)) {
+      state.available.slots[i] = rollAvailableOffer(state.activeSetId);
+      changed = true;
+    }
+  });
+  if (changed) { renderAvailable(); save(); }
+  else if (state.available.slots.some(s => s && s.cardId == null)) renderAvailable();
+}
+
 function renderAvailable() {
   const wrap = $("available-panel");
   if (!wrap) return;
-  // Phase 1 placeholder. Phase 2 fills this with NPC-dealer slots that
-  // refresh on a per-slot cooldown and let the player buy specific
-  // priced-rarity cards directly (Epic+ and every foil track).
+  // Mirror the Vintage shop visibility gate — buying singles before the
+  // first Set craft would short-circuit the core rip → sort → craft loop.
+  wrap.hidden = !state.firstSetCrafted;
+  if (!state.firstSetCrafted) { wrap.innerHTML = ""; return; }
+  syncAvailableSlotCount();
+  const slots = state.available.slots;
+  const now = Date.now();
+  const used = slots.filter(s => s && s.cardId != null).length;
+  const tiles = slots.map((slot, i) => {
+    if (slot && slot.cardId != null) {
+      const setId = slot.setId;
+      const patinaCls = patinaClassFor(setId);
+      const color = RARITY_COLOURS[slot.rarity];
+      const cls = "listing-card available-offer" + (slot.foil ? " foil" : "") + patinaCls;
+      const idLabel = cardFullId(slot.rarity, slot.cardId, GAME_ID, setId);
+      const yearTag = `The ${setYearLabel(setId)} Set`;
+      const unaffordable = state.coins < slot.askPrice;
+      const wrongYear = setId !== state.activeSetId;
+      const disabledCls = (unaffordable || wrongYear) ? " unaffordable" : "";
+      const title = `${yearTag} · ${(slot.foil ? "Foil " : "") + RARITY_LABELS[slot.rarity]} ${idLabel} · ${usd(slot.askPrice)}\n`
+                  + (wrongYear ? "Switch year to buy." : "Click to buy");
+      return `<button type="button" class="${cls}${disabledCls}" data-avail-slot="${i}" style="--cell-color:${color}" title="${title}">`
+           + `<span class="lst-set">S${setId}</span>`
+           + cardGlyphHtml(slot.rarity, slot.cardId, !!slot.foil, "lg")
+           + `<span class="lst-price">${compactUsd(slot.askPrice)}</span>`
+           + `<span class="lst-id">${idLabel}</span>`
+           + `</button>`;
+    } else {
+      const cd = (slot && slot.cooldownEndsAt) || 0;
+      const ms = Math.max(0, cd - now);
+      const label = ms > 60000 ? `${Math.ceil(ms/60000)}m` : `${Math.ceil(ms/1000)}s`;
+      return `<button type="button" class="listing-card cooling" disabled data-avail-slot="${i}" title="Restocking in ${label}">`
+           + `<span class="lst-glyph">⏳</span>`
+           + `<span class="lst-price">${label}</span>`
+           + `<span class="lst-id">RESTOCK</span>`
+           + `</button>`;
+    }
+  });
   wrap.innerHTML = `
     <div class="available-header">
       <span>AVAILABLE</span>
-      <span class="available-count">soon</span>
+      <span class="available-count">${used} / ${slots.length} stocked</span>
     </div>
-    <div class="available-empty">No dealers have stock yet.</div>`;
+    <div class="listings-grid">${tiles.join("")}</div>`;
 }
 
 function renderListings() {
@@ -4575,6 +4773,9 @@ const DESIGN_FIELDS = [
   { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.pack",       path: "VINTAGE_TYPE_WEIGHTS.pack", label: "Vintage roll: pack weight",     step: 1, min: 0, int: true },
   { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.box",        path: "VINTAGE_TYPE_WEIGHTS.box",  label: "Vintage roll: box weight",      step: 1, min: 0, int: true },
   { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.case",       path: "VINTAGE_TYPE_WEIGHTS.case", label: "Vintage roll: case weight",     step: 1, min: 0, int: true },
+  { group: "Available market", key: "AVAILABLE_SLOTS_BASE",            path: "AVAILABLE_SLOTS_BASE",      label: "Available dealer slots",        step: 1, min: 1, int: true },
+  { group: "Available market", key: "AVAILABLE_REFRESH_MS",            path: "AVAILABLE_REFRESH_MS",      label: "Available slot refresh (min)",  step: 0.5, min: 0.25, scale: 60000 },
+  { group: "Available market", key: "AVAILABLE_PRICE_RATIO",           path: "AVAILABLE_PRICE_RATIO",     label: "Available price multiplier",    step: 0.05, min: 1.0 },
 ];
 
 function _resolvePath(root, path) {
@@ -4601,6 +4802,7 @@ function _liveDesignSnapshot() {
     TABLE_COST, HOMIE_POOL_BASE,
     CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
     VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
+    AVAILABLE_SLOTS_BASE, AVAILABLE_REFRESH_MS, AVAILABLE_PRICE_RATIO,
     SORTER_COST, SORTER_MAX,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
     SORTER_UPGRADE_BASE_COST, SORTER_UPGRADE_STEP, SORTER_BUFFER_PER_LEVEL,
@@ -6044,6 +6246,15 @@ function switchToSet(sid) {
     return;
   }
   state.activeSetId = sid;
+  // AVAILABLE offers always reflect the active year — re-roll any
+  // stocked slots so the player sees offers for the year they're in.
+  // Cooling-down slots keep their countdown but will re-roll for the
+  // new active year when they expire (via tickAvailable).
+  if (state.available && Array.isArray(state.available.slots)) {
+    state.available.slots = state.available.slots.map(s =>
+      (s && s.cardId != null) ? rollAvailableOffer(sid) : s
+    );
+  }
   SFX.switch();
   renderAll(); save();
   $("hint").textContent = `Now viewing The ${setYearLabel(sid)} Set. Packs ${usd(packCost())} each.`;
@@ -6069,6 +6280,12 @@ $("vintage-slots").addEventListener("click", (e) => {
 $("listings-panel").addEventListener("click", (e) => {
   const card = e.target.closest(".listing-card");
   if (card && card.dataset.uid) cancelListing(parseInt(card.dataset.uid, 10));
+});
+$("available-panel").addEventListener("click", (e) => {
+  const card = e.target.closest(".listing-card");
+  if (!card || card.disabled) return;
+  const idx = card.dataset.availSlot;
+  if (idx != null) buyAvailableSlot(parseInt(idx, 10));
 });
 $("stock-rows").addEventListener("click", (e) => {
   // Complete Set actions take priority — distinguished by data-*-complete
@@ -6246,6 +6463,7 @@ setInterval(() => {
 }, 1000);
 // Vintage shop tick — refills expired slots + repaints cooldown countdowns.
 setInterval(tickVintageShop, 1000);
+setInterval(tickAvailable, 1000);
 resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", () => {
