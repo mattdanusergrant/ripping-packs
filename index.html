@@ -437,6 +437,46 @@
     50%      { opacity: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.6), 0 0 8px rgba(255,255,255,0.35); }
   }
 
+  /* Homie speech bubbles — short flavor lines that pop above (or to the
+     right of) a working/idle homie on a random scheduler. Positioned
+     absolutely from JS with a tiny CSS tail pointing back at the anchor. */
+  .speech-bubble {
+    position: fixed; z-index: 100;
+    pointer-events: none;
+    background: var(--panel-light);
+    color: var(--ink);
+    font-size: 0.65rem; font-weight: normal;
+    letter-spacing: 0.3px; line-height: 1.3;
+    padding: 4px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.18);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    white-space: nowrap;
+    max-width: 220px;
+    opacity: 0;
+    animation: speech-bubble-life 4s ease-out forwards;
+  }
+  .speech-bubble.above { transform: translate(-50%, -100%); }
+  .speech-bubble.right { transform: translate(8px, -50%); }
+  .speech-bubble.above::after {
+    content: ""; position: absolute;
+    bottom: -5px; left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--panel-light); border-bottom: 0;
+  }
+  .speech-bubble.right::after {
+    content: ""; position: absolute;
+    top: 50%; left: -5px; transform: translateY(-50%);
+    border: 5px solid transparent;
+    border-right-color: var(--panel-light); border-left: 0;
+  }
+  @keyframes speech-bubble-life {
+    0%   { opacity: 0; }
+    8%   { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
   #hint { text-align: center; font-size: 0.9rem; color: var(--gold); min-height: 1.2em; transition: color 0.18s; }
   #hint.flash-error { animation: hint-flash-error 0.7s ease-out; }
   @keyframes hint-flash-error {
@@ -5389,6 +5429,122 @@ setInterval(() => {
   const el = $("pack-cta");
   if (el) el.textContent = PACK_CTA_MESSAGES[_packCtaIndex];
 }, 30000);
+
+// ---- Homie speech bubbles ------------------------------------------------
+// Flavor lines that pop above (or beside) a homie on a randomized schedule.
+// Idle homies hint at the next purchase (especially "buy a table"); active
+// rip/craft homies just chatter about the work. A per-homie cooldown keeps
+// the same one from talking back-to-back, and the global cadence (5-12s
+// between bubbles across the whole roster) is tuned to read as "alive" but
+// not "spammy."
+const SPEECH_LINES = {
+  idleNoTable: [
+    "buy a table so I can rip!",
+    "i need a table to sit at",
+    "give me a table, boss",
+    "no table, no rips",
+    "even a folding chair would do",
+  ],
+  idle: [
+    "i'm bored, hire me!",
+    "psst... need a homie?",
+    "let me at those packs",
+    "any work for me?",
+    "i'm ready when you are",
+    "yo, set me up",
+    "are we ripping yet?",
+    "i was BORN to rip",
+    "put me in coach",
+  ],
+  ripping: [
+    "another pack down",
+    "rip rip rip",
+    "smells like cardboard",
+    "i feel a foil 👀",
+    "fingers crossed",
+    "ohh that's a clean one",
+    "this booster's heavy...",
+    "wonder what's in this one",
+    "i love this job",
+    "let's gooo",
+    "almost done with this box",
+    "gimme another box",
+    "this one's gonna hit",
+    "yesss another one",
+    "wait — is that a—",
+    "💎?",
+  ],
+  crafting: [
+    "set complete!",
+    "listing this up",
+    "another one to the market",
+    "fresh off the press",
+    "stack 'em high",
+    "ka-ching incoming",
+    "almost there...",
+    "the market eats this stuff up",
+  ],
+};
+const SPEECH_INTERVAL_MIN_MS = 5000;   // shortest gap between any two bubbles
+const SPEECH_INTERVAL_MAX_MS = 12000;  // longest
+const SPEECH_DURATION_MS = 4000;       // on-screen lifetime — matches the keyframe
+const SPEECH_PER_HOMIE_COOLDOWN_MS = 15000; // a given homie won't talk twice within this
+const _lastSpeechAt = new Map();       // key -> timestamp
+function _pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function _popSpeechBubble(anchorEl, text, position) {
+  if (!anchorEl || !document.body.contains(anchorEl)) return;
+  const rect = anchorEl.getBoundingClientRect();
+  // Skip if the anchor isn't in the viewport (offscreen homies don't talk).
+  if (rect.width === 0 && rect.height === 0) return;
+  const bubble = document.createElement("div");
+  bubble.className = "speech-bubble " + position;
+  bubble.textContent = text;
+  if (position === "above") {
+    bubble.style.left = (rect.left + rect.width / 2) + "px";
+    bubble.style.top  = (rect.top - 4) + "px";
+  } else {
+    bubble.style.left = (rect.right + 4) + "px";
+    bubble.style.top  = (rect.top + rect.height / 2) + "px";
+  }
+  document.body.appendChild(bubble);
+  setTimeout(() => bubble.remove(), SPEECH_DURATION_MS);
+}
+function _maybePopHomieSpeech() {
+  // Don't talk while the opening splash is still showing — it covers the
+  // anchors anyway, and a stray bubble pre-dismiss feels janky.
+  if (document.getElementById("opening-screen")) return;
+  const now = Date.now();
+  const candidates = [];
+  // Active rip homies — sprites flanking the pack with data-state="active".
+  document.querySelectorAll(".homie-sprite[data-state='active']").forEach(el => {
+    const key = "rip-" + el.dataset.slot;
+    if (now - (_lastSpeechAt.get(key) || 0) < SPEECH_PER_HOMIE_COOLDOWN_MS) return;
+    candidates.push({ el, key, lines: SPEECH_LINES.ripping, anchor: "above" });
+  });
+  // Active craft homies — slots inside the vault rarity rows.
+  document.querySelectorAll(".craft-homie-slot.active").forEach(el => {
+    const key = "craft-" + (el.dataset.rarity || "?");
+    if (now - (_lastSpeechAt.get(key) || 0) < SPEECH_PER_HOMIE_COOLDOWN_MS) return;
+    candidates.push({ el, key, lines: SPEECH_LINES.crafting, anchor: "above" });
+  });
+  // Idle homies — 🧢 emojis in the left-gutter IDLE window.
+  document.querySelectorAll("#idle-hats .idle-hat").forEach((el, i) => {
+    const key = "idle-" + i;
+    if (now - (_lastSpeechAt.get(key) || 0) < SPEECH_PER_HOMIE_COOLDOWN_MS) return;
+    const lines = (state.tablesOwned || 0) === 0 ? SPEECH_LINES.idleNoTable : SPEECH_LINES.idle;
+    candidates.push({ el, key, lines, anchor: "right" });
+  });
+  if (candidates.length === 0) return;
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  _popSpeechBubble(pick.el, _pickRandom(pick.lines), pick.anchor);
+  _lastSpeechAt.set(pick.key, now);
+}
+function _scheduleHomieSpeech() {
+  const delay = SPEECH_INTERVAL_MIN_MS
+              + Math.random() * (SPEECH_INTERVAL_MAX_MS - SPEECH_INTERVAL_MIN_MS);
+  setTimeout(() => { _maybePopHomieSpeech(); _scheduleHomieSpeech(); }, delay);
+}
+_scheduleHomieSpeech();
 
 // ---- Pack hover-autorip --------------------------------------------------
 // While the cursor is over the pack, automatically rip on an interval.
