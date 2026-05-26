@@ -977,11 +977,34 @@
   }
 
   /* ---- Marketplace listings -------------------------------------------- */
-  #listings-panel {
+  /* AVAILABLE | LISTINGS sit side-by-side under the Vintage Shop. Each
+     half claims equal width via flex:1 and sizes its own height to its
+     contents (align-items:flex-start), so a quiet AVAILABLE doesn't
+     stretch into empty space when LISTINGS is full. */
+  .marketplace-split {
+    display: flex; flex-direction: row; gap: 10px;
+    align-items: flex-start;
+  }
+  .marketplace-split > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  #listings-panel, #available-panel {
     display: flex; flex-direction: column; gap: 8px;
     padding: 10px 12px;
     background: rgba(0,0,0,0.22); border-radius: 8px;
-    border: 1px solid rgba(245,197,66,0.18);
+  }
+  #listings-panel  { border: 1px solid rgba(245,197,66,0.18); }
+  #available-panel { border: 1px solid rgba(101,224,168,0.22); }
+  /* Phase-1 placeholder — replaced by the buy-side market in Phase 2. */
+  .available-header {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    font-size: 0.72rem; letter-spacing: 3px; color: #65e0a8;
+  }
+  .available-header .available-count { color: var(--muted); font-size: 0.65rem; letter-spacing: 1px; flex: 1; text-align: right; }
+  .available-empty {
+    color: var(--muted); font-size: 0.72rem; font-style: italic;
+    text-align: center; padding: 8px 0;
   }
   .listings-header {
     display: flex; justify-content: space-between; align-items: center; gap: 10px;
@@ -1669,7 +1692,10 @@
     </div>
     <div class="vintage-slots" id="vintage-slots"></div>
   </div>
-  <div id="listings-panel"></div>
+  <div class="marketplace-split">
+    <div id="available-panel"></div>
+    <div id="listings-panel"></div>
+  </div>
   <div id="vault-grid"></div>
   <div id="stock-rows"></div>
 </section>
@@ -3776,6 +3802,20 @@ function listingCountdownLabel(l) {
   return `${s}s`;
 }
 
+function renderAvailable() {
+  const wrap = $("available-panel");
+  if (!wrap) return;
+  // Phase 1 placeholder. Phase 2 fills this with NPC-dealer slots that
+  // refresh on a per-slot cooldown and let the player buy specific
+  // priced-rarity cards directly (Epic+ and every foil track).
+  wrap.innerHTML = `
+    <div class="available-header">
+      <span>AVAILABLE</span>
+      <span class="available-count">soon</span>
+    </div>
+    <div class="available-empty">No dealers have stock yet.</div>`;
+}
+
 function renderListings() {
   const wrap = $("listings-panel");
   if (!wrap) return;
@@ -5485,7 +5525,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
 
 // Pulse the upgrade-branch triggers (⬆ PAINT / ⬆ VINTAGE / ⬆ SLOTS) when
 // the player has CLOUT to spend on at least one node in that branch. Run
