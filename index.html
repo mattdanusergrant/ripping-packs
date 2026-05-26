@@ -1026,6 +1026,22 @@
     transform: none;
     filter: brightness(1);
   }
+  /* Each AVAILABLE slot is a vertical stack: the card-tile on top,
+     the price label beneath. The wrapper exists so flex-wrap in the
+     listings-grid keeps the tile and its price together. */
+  .avail-cell {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 3px;
+    flex: 0 0 auto;
+  }
+  .avail-price {
+    font-size: 0.62rem; font-weight: bold;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    line-height: 1;
+    letter-spacing: 0;
+  }
+  .avail-price.avail-cd { color: var(--muted); font-weight: normal; }
   .listings-header {
     display: flex; justify-content: space-between; align-items: center; gap: 10px;
     font-size: 0.72rem; letter-spacing: 3px; color: var(--gold);
@@ -3981,21 +3997,25 @@ function renderAvailable() {
       const disabledCls = (unaffordable || wrongYear) ? " unaffordable" : "";
       const title = `${yearTag} · ${(slot.foil ? "Foil " : "") + RARITY_LABELS[slot.rarity]} ${idLabel} · ${usd(slot.askPrice)}\n`
                   + (wrongYear ? "Switch year to buy." : "Click to buy");
-      return `<button type="button" class="${cls}${disabledCls}" data-avail-slot="${i}" style="--cell-color:${color}" title="${title}">`
-           + `<span class="lst-set">S${setId}</span>`
-           + cardGlyphHtml(slot.rarity, slot.cardId, !!slot.foil, "lg")
-           + `<span class="lst-price">${compactUsd(slot.askPrice)}</span>`
-           + `<span class="lst-id">${idLabel}</span>`
-           + `</button>`;
+      // Tile holds the per-card glyph only; price sits beneath as a
+      // separate label so the symbol is the visual anchor and the
+      // number doesn't compete for space inside a 30px square.
+      return `<div class="avail-cell">`
+           + `<button type="button" class="${cls}${disabledCls}" data-avail-slot="${i}" style="--cell-color:${color}" title="${title}">`
+           + cardGlyphHtml(slot.rarity, slot.cardId, !!slot.foil, "xl")
+           + `</button>`
+           + `<div class="avail-price">${compactUsd(slot.askPrice)}</div>`
+           + `</div>`;
     } else {
       const cd = (slot && slot.cooldownEndsAt) || 0;
       const ms = Math.max(0, cd - now);
       const label = ms > 60000 ? `${Math.ceil(ms/60000)}m` : `${Math.ceil(ms/1000)}s`;
-      return `<button type="button" class="listing-card cooling" disabled data-avail-slot="${i}" title="Restocking in ${label}">`
+      return `<div class="avail-cell">`
+           + `<button type="button" class="listing-card cooling" disabled data-avail-slot="${i}" title="Restocking in ${label}">`
            + `<span class="lst-glyph">⏳</span>`
-           + `<span class="lst-price">${label}</span>`
-           + `<span class="lst-id">RESTOCK</span>`
-           + `</button>`;
+           + `</button>`
+           + `<div class="avail-price avail-cd">${label}</div>`
+           + `</div>`;
     }
   });
   wrap.innerHTML = `
