@@ -2955,8 +2955,9 @@ function craftHomieSlotHtml(rarity) {
         ? `Need ${usd(cost - state.coins)} more to buy this ${RARITY_LABELS[rarity]} craft table.`
         : `Buy a ${RARITY_LABELS[rarity]} craft table — ${usd(cost)}. Unlocks the slot so you can hire a ${RARITY_LABELS[rarity]} craft homie, and reveals the next slot in line.`;
       return `<div class="${cls}" data-buy-table title="${title}">`
-           + `<span class="homie-plus">${usd(cost)}</span>`
+           + `<span class="homie-meta">BUY</span>`
            + `<span class="homie-meta">TABLE</span>`
+           + `<span class="homie-plus">${usd(cost)}</span>`
            + `</div>`;
     }
     // Locked but not next-in-line — invisible placeholder so the rarity
@@ -4689,7 +4690,7 @@ function renderHomieSprites() {
       el.dataset.slot = slot;
       el.dataset.state = wantClass;
       if (wantClass === "locked") {
-        el.innerHTML = `<span class="homie-plus">${usd(tableCost())}</span><span class="homie-meta">TABLE</span>`;
+        el.innerHTML = `<span class="homie-meta">BUY</span><span class="homie-meta">TABLE</span><span class="homie-plus">${usd(tableCost())}</span>`;
       } else if (wantClass === "empty") {
         el.innerHTML = `<span class="homie-plus">+</span><span class="homie-meta">HIRE</span>`;
       } else {
