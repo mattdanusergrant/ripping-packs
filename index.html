@@ -1685,35 +1685,46 @@ const RARITY_GLYPHS  = { standard: "◆",        rare: "★",        epic: "◈"
 
 // ---- Per-card glyph -----------------------------------------------------
 // Each card carries a deterministic (shape, color) fingerprint computed
-// from (rarity, id, foil). The intent is identity at a glance — paired
-// with the rarity-colored border, the glyph lets a player recognize
-// "that's the Mythic #2 I'm missing" on small tiles without needing
-// per-card art. 8 shapes × 8 colors = 64 combos, comfortably more than
-// the largest set (36 standard cards).
+// from (rarity, id). The intent is identity at a glance — paired with
+// the rarity-colored border, the glyph lets a player recognize "that's
+// the Mythic #2 I'm missing" on small tiles without needing per-card
+// art.
+//
+// Tracks that use glyphs: Epic (9 cards), Legendary (6), Mythic (3),
+// and their foil counterparts. Standard cards show their id as a
+// number (1-36); Rare cards show a letter (A-R) — handled in
+// cardGlyphHtml. So max glyph track is 9 cards; an 8×3 = 24 combo
+// palette is more than enough, and the direct id-based mapping below
+// guarantees within-track uniqueness by construction.
+//
+// Foil and non-foil share the same glyph — the shimmer treatment plus
+// the row pairing in the combined collection grid already differentiates
+// them, and sharing the glyph makes "foil/non-foil of the same card"
+// read as a pair instead of two unrelated cards.
 const CARD_GLYPH_SHAPES = ["circle", "square", "diamond", "tri", "hex", "star", "plus", "ring"];
-const CARD_GLYPH_COLORS = ["#ff7e7e", "#5cc6ff", "#65e0a8", "#b78bff", "#ffaa6e", "#4ed0c5", "#ff8fbb", "#e0d18a"];
-function cardGlyph(rarity, id, foil) {
+// Three colors clear of every rarity color (epic purple, legendary
+// gold, mythic orange) so the glyph reads as card identity, not rarity.
+const CARD_GLYPH_COLORS = ["#65e0a8", "#5cc6ff", "#ff8fbb"];
+function cardGlyph(rarity, id, _foil) {
+  // Per-rarity offset keeps Epic #1 / Legendary #1 / Mythic #1 from
+  // collapsing to the same (shape, color) pair across tracks.
   const rIdx = RARITIES.indexOf(rarity);
-  // Two co-prime multipliers + a foil offset keep the (shape, color)
-  // pair from collapsing into stripes for the small id ranges.
-  const seed = ((rIdx + 1) * 53 + id * 7 + (foil ? 23 : 0)) >>> 0;
-  return {
-    shape: CARD_GLYPH_SHAPES[seed % CARD_GLYPH_SHAPES.length],
-    color: CARD_GLYPH_COLORS[Math.floor(seed / CARD_GLYPH_SHAPES.length) % CARD_GLYPH_COLORS.length],
-  };
+  const idx  = ((id - 1) + rIdx * 3);
+  const s    = ((idx % CARD_GLYPH_SHAPES.length) + CARD_GLYPH_SHAPES.length) % CARD_GLYPH_SHAPES.length;
+  const c    = ((Math.floor(idx / CARD_GLYPH_SHAPES.length) % CARD_GLYPH_COLORS.length) + CARD_GLYPH_COLORS.length) % CARD_GLYPH_COLORS.length;
+  return { shape: CARD_GLYPH_SHAPES[s], color: CARD_GLYPH_COLORS[c] };
 }
 function cardGlyphHtml(rarity, id, foil, sizeClass) {
   const g = cardGlyph(rarity, id, foil);
   const sz = sizeClass ? " " + sizeClass : "";
   // Two rarities get text glyphs instead of geometric shapes:
   // - Standard (set size 36) uses the card id as a plain number
-  // - Epic    (set size 9) uses a letter A-I
-  // The rest (rare, legendary, mythic, all foils) keep the procedural
-  // 8x8 shape×color combo.
+  // - Rare    (set size 18) uses a letter A-R
+  // Epic / Legendary / Mythic + all foils keep the procedural shape.
   if (rarity === "standard") {
     return `<span class="card-glyph text${sz}" style="--glyph-color:${g.color}">${id}</span>`;
   }
-  if (rarity === "epic") {
+  if (rarity === "rare") {
     const letter = id >= 1 && id <= 26 ? String.fromCharCode(64 + id) : String(id);
     return `<span class="card-glyph text${sz}" style="--glyph-color:${g.color}">${letter}</span>`;
   }
