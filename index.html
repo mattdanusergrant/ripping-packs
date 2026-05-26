@@ -3964,10 +3964,6 @@ function tickAvailable() {
 function renderAvailable() {
   const wrap = $("available-panel");
   if (!wrap) return;
-  // Mirror the Vintage shop visibility gate — buying singles before the
-  // first Set craft would short-circuit the core rip → sort → craft loop.
-  wrap.hidden = !state.firstSetCrafted;
-  if (!state.firstSetCrafted) { wrap.innerHTML = ""; return; }
   syncAvailableSlotCount();
   const slots = state.available.slots;
   const now = Date.now();
