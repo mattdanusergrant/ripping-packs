@@ -652,6 +652,33 @@
     grid-template-columns: repeat(var(--cols, 18), 18px);
     justify-content: start;
   }
+  /* Per-card glyph — 8 shape × 8 color combinations rendered via clip-path
+     or border tricks. The base box is the colored fill; classes pick the
+     shape. Default size is small (~10px); .lg bumps it for marketplace
+     tiles where it's the primary identifier. */
+  .card-glyph {
+    display: inline-block; vertical-align: middle;
+    width: 10px; height: 10px;
+    background: var(--glyph-color, #fff);
+    flex: 0 0 auto;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.55));
+  }
+  .card-glyph.lg     { width: 14px; height: 14px; }
+  .card-glyph.xl     { width: 18px; height: 18px; }
+  .card-glyph.shape-circle  { border-radius: 50%; }
+  .card-glyph.shape-square  { /* default */ }
+  .card-glyph.shape-diamond { transform: rotate(45deg); }
+  .card-glyph.shape-tri     { clip-path: polygon(50% 0, 0 100%, 100% 100%); }
+  .card-glyph.shape-hex     { clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); }
+  .card-glyph.shape-star    { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+  .card-glyph.shape-plus    { clip-path: polygon(35% 0%, 65% 0%, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0% 65%, 0% 35%, 35% 35%); }
+  .card-glyph.shape-ring    {
+    background: radial-gradient(circle at center, transparent 30%, var(--glyph-color, #fff) 33%, var(--glyph-color, #fff) 100%);
+    border-radius: 50%;
+  }
+  /* Unowned collection cells get a heavily-dimmed glyph so they hint at
+     identity without competing visually with owned cells. */
+  .collection-cell:not(.owned) .card-glyph { opacity: 0.18; filter: none; }
   .collection-cell {
     position: relative;
     width: 18px;
@@ -966,12 +993,18 @@
     color: #fff;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
+    gap: 1px;
     font-weight: bold; font-family: inherit;
     cursor: pointer; user-select: none;
     padding: 0;
     box-shadow: 0 0 6px color-mix(in srgb, var(--cell-color, #fff) 45%, transparent);
     transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
   }
+  /* When a card-glyph lives inside a listing tile, give it a small drop-
+     shadow lift so it reads as the card's identity rather than blending
+     into the rarity-tinted background. */
+  .listing-card .card-glyph { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7)); }
+  .listing-card.foil .card-glyph { filter: drop-shadow(0 1px 2px rgba(255,255,255,0.45)); }
   .listing-card:hover {
     transform: translateY(-3px);
     box-shadow: 0 6px 12px rgba(0,0,0,0.55),
@@ -1634,6 +1667,31 @@ const RARITIES = ["standard", "rare", "epic", "legendary", "mythic"];
 const RARITY_LABELS  = { standard: "STANDARD", rare: "RARE",     epic: "EPIC",      legendary: "LEGENDARY", mythic: "MYTHIC" };
 const RARITY_COLOURS = { standard: "#5ad06a",  rare: "#5aa8ff",  epic: "#c060ff",   legendary: "#ffd84d",   mythic: "#ff7a3d" };
 const RARITY_GLYPHS  = { standard: "◆",        rare: "★",        epic: "◈",         legendary: "✪",         mythic: "✦" };
+
+// ---- Per-card glyph -----------------------------------------------------
+// Each card carries a deterministic (shape, color) fingerprint computed
+// from (rarity, id, foil). The intent is identity at a glance — paired
+// with the rarity-colored border, the glyph lets a player recognize
+// "that's the Mythic #2 I'm missing" on small tiles without needing
+// per-card art. 8 shapes × 8 colors = 64 combos, comfortably more than
+// the largest set (36 standard cards).
+const CARD_GLYPH_SHAPES = ["circle", "square", "diamond", "tri", "hex", "star", "plus", "ring"];
+const CARD_GLYPH_COLORS = ["#ff7e7e", "#5cc6ff", "#65e0a8", "#b78bff", "#ffaa6e", "#4ed0c5", "#ff8fbb", "#e0d18a"];
+function cardGlyph(rarity, id, foil) {
+  const rIdx = RARITIES.indexOf(rarity);
+  // Two co-prime multipliers + a foil offset keep the (shape, color)
+  // pair from collapsing into stripes for the small id ranges.
+  const seed = ((rIdx + 1) * 53 + id * 7 + (foil ? 23 : 0)) >>> 0;
+  return {
+    shape: CARD_GLYPH_SHAPES[seed % CARD_GLYPH_SHAPES.length],
+    color: CARD_GLYPH_COLORS[Math.floor(seed / CARD_GLYPH_SHAPES.length) % CARD_GLYPH_COLORS.length],
+  };
+}
+function cardGlyphHtml(rarity, id, foil, sizeClass) {
+  const g = cardGlyph(rarity, id, foil);
+  const sz = sizeClass ? " " + sizeClass : "";
+  return `<span class="card-glyph shape-${g.shape}${sz}" style="--glyph-color:${g.color}"></span>`;
+}
 
 // ---- Design overrides ---------------------------------------------------
 // All tunables flow through `def()`. The Game Design panel reads the
@@ -3296,6 +3354,7 @@ function buildCollectionCell(rarity, i, foil) {
     + (owned ? " owned" : "")
     + (foil  ? " foil"  : "");
   cell.style.setProperty("--cell-color", RARITY_COLOURS[rarity]);
+  cell.innerHTML = cardGlyphHtml(rarity, i, foil);
   applyFlashToCell(cell, state.activeSetId, rarity, i, foil);
   return cell;
 }
@@ -3729,9 +3788,15 @@ function renderListings() {
       const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId, GAME_ID, lSetId) : RARITY_LABELS[l.rarity].slice(0,1);
       const color = RARITY_COLOURS[l.rarity];
       const cls = "listing-card" + (l.foil ? " foil" : "") + patinaCls;
+      // Single-card listings show the per-card glyph in place of the
+      // rarity glyph — the listing tile is the primary surface where a
+      // player needs to identify which specific card they posted.
+      const glyphHtml = l.cardId != null
+        ? cardGlyphHtml(l.rarity, l.cardId, !!l.foil, "lg")
+        : `<span class="lst-glyph">${RARITY_GLYPHS[l.rarity]}</span>`;
       html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${(l.foil ? "Foil " : "") + RARITY_LABELS[l.rarity]} ${idLabel} · ${usd(l.askPrice)}\nClick to cancel">`
             + setChip
-            + `<span class="lst-glyph">${RARITY_GLYPHS[l.rarity]}</span>`
+            + glyphHtml
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
             + `<span class="lst-id">${idLabel}</span>`
