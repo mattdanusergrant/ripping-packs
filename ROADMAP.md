@@ -56,6 +56,12 @@ The sand sort is the most-unique-to-this-game mechanic. Worth deepening.
 - **Named homies (T3)** — each pool token is a named homie with a generated nickname ("Jonny Foils", "Slow Pete", "Lucky Lisa"). Different homies have small stat quirks. Player feels attached.
 - **Hat shop (T2 mechanics, T4 art)** — cosmetics for homies: top hat, baseball cap variants, bandanas. Cosmetic CLOUT sink late-game.
 - **Homie XP / loyalty (T3)** — each homie levels up the more they complete jobs, gaining a small perma-bonus that survives expiry-and-rehire.
+- **Scout (T2)** — auto-buys from AVAILABLE. Picks the cheapest unowned offer each tick. Costs a homie-pool token. Limited because it can't trigger refreshes — it just clears the panel faster, turning AVAILABLE from "watch and click" into a passive trickle. Closes the loop on the Phase-2 buy market.
+- **Loader (T2)** — auto-presses LOAD on a bound sorter whenever its input drops to zero and there's pile to grab. Trivially solves the busiest manual click in the rip→sort loop without breaking the sand-pile risk (overflow still happens if the loader can't keep up). Pair-cost with the sorter it's bound to.
+- **Picker (T2)** — auto-buys Vintage Shop offers below a player-set max price (or for unowned years only). Same shape as Scout. Tradeoff: cash hemorrhage if you set the cap loose, which gives the player a real knob to lose money on.
+- **Vaulter (T2)** — auto-vaults crafted Sets/Complete Sets for CLOUT instead of listing. Inverse of the Craft Homie's "auto-list" behavior. Forces a real strategic split between cash income (craft homie) vs CLOUT income (vaulter) — you can only afford one per rarity. Probably the most interesting one because the choice has actual weight.
+- **Field Agent (T3)** — un-pinned from a year. Costs 3× the normal token, or uses a separate "agent" pool unlocked deep in CREW. Tradeoff: rare, expensive, works wherever you switch. Late-game power play.
+- **Hype Man (T2)** — doesn't do work; speeds adjacent homies by ~20% while alive. Pure multiplier with diminishing returns (two on the same target = 30% not 40%). Adds a positioning puzzle without adding a new action.
 
 ### F. World / lore (the cryptid TCG)
 
