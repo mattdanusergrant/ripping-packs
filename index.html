@@ -2275,22 +2275,85 @@ function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
 // of packs to complete that rarity (rough): standard/rare ~50, epic ~250,
 // legendary ~600, mythic ~2,500. Foils 5–10× harder. At $3/pack the long
 // horizon target is ~$4/pack revenue.
-let BASELINE = def("BASELINE", {
-  standardSet:        50,
-  rareSet:            150,
-  epicSet:            300,
-  legendarySet:       700,
-  mythicSet:          2000,
-  foilStandardSet:    500,
-  foilRareSet:        2000,
-  foilEpicSet:        7000,
-  foilLegendarySet:   20000,
-  foilMythicSet:      60000,
-  // Apex sets — modest premium over the sum of components so crafting a
-  // Complete beats spot-selling the parts, without dwarfing them.
-  completeSet:        4000,    // non-foil components sum to $3,200 (~1.25×)
-  foilCompleteSet:    120000,  // foil components sum to $89,500 (~1.34×)
-});
+// ---- Market baselines (derived from print sheets) ----------------------
+// Set prices are no longer hand-tuned numbers; they're computed from the
+// PRINT_SHEETS print runs and PACK_COST. The formula for one Set's baseline
+// price is:
+//
+//   baseline = N · H(N) · PACK_COST · VALUE_MULTIPLIER / specificCardRate
+//
+// where N is the rarity's card count, H(N) is the harmonic number (coupon-
+// collector overhead for collecting all N), and specificCardRate is the
+// expected per-pack rate of pulling one *specific* card of that rarity.
+// In words: "expected pack spend to complete this Set" × value multiplier.
+//
+// Apex sets (completeSet / foilCompleteSet) sum their components and add
+// COMPLETE_SET_PREMIUM as a crafting bonus over the raw sum.
+let VALUE_MULTIPLIER     = def("VALUE_MULTIPLIER", 1.0);
+let COMPLETE_SET_PREMIUM = def("COMPLETE_SET_PREMIUM", 0.25);
+
+function _harmonic(n) {
+  let h = 0;
+  for (let i = 1; i <= n; i++) h += 1 / i;
+  return h;
+}
+function _sheetTotalSlots(sheetKey) {
+  const sheet = PRINT_SHEETS[sheetKey] || {};
+  let total = 0;
+  for (const r in sheet) total += (SET_SIZES[r] || 0) * (sheet[r] || 0);
+  return total;
+}
+// Expected per-pack rate of pulling one specific (rarity, foil-flag) card.
+function specificCardRatePerPack(rarity, foil) {
+  const sheetKey = foil ? "foil" : (rarity === "standard" ? "common" : "rare");
+  const prints = (PRINT_SHEETS[sheetKey] || {})[rarity] || 0;
+  if (prints <= 0) return 0;
+  const total = _sheetTotalSlots(sheetKey);
+  if (total <= 0) return 0;
+  const perCardShare = prints / total;
+  // How many slots in a pack draw from this sheet?
+  let slots = 0;
+  if (sheetKey === "common") slots = Math.max(0, PACK_COMMON_SLOTS - FOIL_PER_PACK);
+  else if (sheetKey === "rare") slots = PACK_RARE_SLOTS;
+  else if (sheetKey === "foil") slots = FOIL_PER_PACK;
+  return slots * perCardShare;
+}
+function setBaselineFor(rarity, foil) {
+  const rate = specificCardRatePerPack(rarity, foil);
+  const n = SET_SIZES[rarity] || 0;
+  if (rate <= 0 || n <= 0) return 0;
+  return n * _harmonic(n) * (PACK_COST || 0) * VALUE_MULTIPLIER / rate;
+}
+const _SET_KEY_TO_RARITY = {
+  standardSet:      { rarity: "standard",  foil: false },
+  rareSet:          { rarity: "rare",      foil: false },
+  epicSet:          { rarity: "epic",      foil: false },
+  legendarySet:     { rarity: "legendary", foil: false },
+  mythicSet:        { rarity: "mythic",    foil: false },
+  foilStandardSet:  { rarity: "standard",  foil: true  },
+  foilRareSet:      { rarity: "rare",      foil: true  },
+  foilEpicSet:      { rarity: "epic",      foil: true  },
+  foilLegendarySet: { rarity: "legendary", foil: true  },
+  foilMythicSet:    { rarity: "mythic",    foil: true  },
+};
+const _COMPONENT_SET_KEYS = ["standardSet", "rareSet", "epicSet", "legendarySet", "mythicSet"];
+const _FOIL_COMPONENT_SET_KEYS = ["foilStandardSet", "foilRareSet", "foilEpicSet", "foilLegendarySet", "foilMythicSet"];
+function computedBaselineSet(setKey) {
+  if (setKey === "completeSet") {
+    const sum = _COMPONENT_SET_KEYS.reduce((s, k) => s + computedBaselineSet(k), 0);
+    return sum * (1 + COMPLETE_SET_PREMIUM);
+  }
+  if (setKey === "foilCompleteSet") {
+    const sum = _FOIL_COMPONENT_SET_KEYS.reduce((s, k) => s + computedBaselineSet(k), 0);
+    return sum * (1 + COMPLETE_SET_PREMIUM);
+  }
+  const map = _SET_KEY_TO_RARITY[setKey];
+  if (!map) return 0;
+  return setBaselineFor(map.rarity, map.foil);
+}
+function isMarketSetKey(setKey) {
+  return setKey === "completeSet" || setKey === "foilCompleteSet" || !!_SET_KEY_TO_RARITY[setKey];
+}
 // Repurposed as a global Set-price multiplier applied in marketPriceFor
 // (was: derivation coefficient when per-card baselines fed into Set
 // baselines). Default 1.0 — the "Premium Sets" upgrade node bumps it by
@@ -3056,7 +3119,7 @@ function decayMarketInv(setId, key, id, now) {
 // Sets upgrade node bumps SET_CRAFT_MULTIPLIER (default 1.0) → +10% sell
 // price across every Set listing globally.
 function marketPriceFor(setId, key, id) {
-  const baseRaw = BASELINE[key];
+  const baseRaw = computedBaselineSet(key);
   if (!baseRaw) return 0;
   const baseline = baseRaw * cloutScaleFor(setId) * setCraftMultiplierEffective();
   const inv = decayMarketInv(setId, key, id, Date.now());
@@ -3571,7 +3634,7 @@ function rollVintageSlot() {
 function singleCardMarketPrice(setId, rarity, foil) {
   const stem = foil ? "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1) : rarity;
   const setKey = stem + "Set";
-  if (!BASELINE[setKey]) return 0;
+  if (!isMarketSetKey(setKey)) return 0;
   const setPrice = marketPriceFor(setId, setKey, 1);
   const size = SET_SIZES[rarity] || 1;
   return setPrice / size;
@@ -4871,7 +4934,7 @@ function resolveListings() {
       // NPC absorbs one unit into market inventory — drops the price of the
       // next sale of this exact (key, id). Works for both set items and
       // per-id priced cards (l.rarity is the market key in either case).
-      if (BASELINE[l.rarity] != null) npcAbsorbSale(l.setId, l.rarity, l.cardId || 1);
+      if (isMarketSetKey(l.rarity)) npcAbsorbSale(l.setId, l.rarity, l.cardId || 1);
       const setTag = `Set ${l.setId}`;
       if (isCompleteSetKey(l.rarity)) {
         lastMessage = `Sold ${setTag} ${completeSetDef(l.rarity).label} @ ${usd(l.askPrice)}.`;
@@ -5809,7 +5872,7 @@ function renderSandPile() {
 
 // ---- Game Design panel --------------------------------------------------
 // Each entry binds a form input to a current variable. `path` may include a
-// dot to address nested object keys (e.g., "BASELINE.epic"); `key` is
+// dot to address nested object keys (e.g., "PRINT_SHEETS.rare.mythic"); `key` is
 // the registered design key (so we read its default from _DESIGN_DEFAULTS
 // and write the merged result back into _designOverrides on apply).
 const DESIGN_FIELDS = [
@@ -5839,18 +5902,8 @@ const DESIGN_FIELDS = [
 
   // Market baselines — every Set is explicit since singles don't list.
   // Numbers reflect the long-horizon cash value of completing that rarity.
-  { group: "Market baselines", key: "BASELINE.standardSet",            path: "BASELINE.standardSet",          label: "Standard Set ($)",       step: 5,    min: 0 },
-  { group: "Market baselines", key: "BASELINE.rareSet",                path: "BASELINE.rareSet",              label: "Rare Set ($)",           step: 10,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.epicSet",                path: "BASELINE.epicSet",              label: "Epic Set ($)",           step: 10,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.legendarySet",           path: "BASELINE.legendarySet",         label: "Legendary Set ($)",      step: 25,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.mythicSet",              path: "BASELINE.mythicSet",            label: "Mythic Set ($)",         step: 50,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilStandardSet",        path: "BASELINE.foilStandardSet",      label: "Foil Standard Set ($)",  step: 25,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilRareSet",            path: "BASELINE.foilRareSet",          label: "Foil Rare Set ($)",      step: 50,   min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilEpicSet",            path: "BASELINE.foilEpicSet",          label: "Foil Epic Set ($)",      step: 100,  min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilLegendarySet",       path: "BASELINE.foilLegendarySet",     label: "Foil Legendary Set ($)", step: 500,  min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilMythicSet",          path: "BASELINE.foilMythicSet",        label: "Foil Mythic Set ($)",    step: 1000, min: 0 },
-  { group: "Market baselines", key: "BASELINE.completeSet",            path: "BASELINE.completeSet",          label: "Complete Set ($)",       step: 100,  min: 0 },
-  { group: "Market baselines", key: "BASELINE.foilCompleteSet",        path: "BASELINE.foilCompleteSet",      label: "Complete Foil Set ($)",  step: 1000, min: 0 },
+  { group: "Market baselines", key: "VALUE_MULTIPLIER",                path: "VALUE_MULTIPLIER",              label: "Value multiplier (× pack-spend)", step: 0.05, min: 0 },
+  { group: "Market baselines", key: "COMPLETE_SET_PREMIUM",             path: "COMPLETE_SET_PREMIUM",          label: "Complete-Set premium (× sum)",    step: 0.05, min: 0 },
   { group: "Market baselines", key: "SET_CRAFT_MULTIPLIER",            path: "SET_CRAFT_MULTIPLIER",          label: "Global Set sell multiplier",     step: 0.05, min: 0.1 },
   { group: "Market baselines", key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",             label: "Scarcity floor (× baseline)",    step: 0.05, min: 0.1 },
   { group: "Market baselines", key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",              label: "Scarcity ceiling (× baseline)",  step: 0.05, min: 1   },
@@ -5940,7 +5993,7 @@ function _liveDesignSnapshot() {
   return {
     PACK_COST, BOX_COST, CASE_COST, BOX_SIZE, CASE_SIZE,
     PRINT_SHEETS, PACK_COMMON_SLOTS, PACK_RARE_SLOTS, FOIL_PER_PACK,
-    BASELINE,
+    VALUE_MULTIPLIER, COMPLETE_SET_PREMIUM,
     SET_SIZES,
     HOVER_AUTORIP_MS,
     SORT_MODE, SORT_PULSE_MS,
