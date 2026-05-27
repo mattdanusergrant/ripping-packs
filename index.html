@@ -127,18 +127,21 @@
   .buy-btn .save { color: var(--uncommon); font-size: 0.65rem; }
 
   #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-height: 0; position: relative; }
-  /* Two-column row: activity log on the left, pack stage on the right.
-     The pack stage reserves room on its right for the outer-right sprite
-     lane (which positions absolutely relative to pack-wrap at +200px). */
-  #pack-row { display: flex; flex-direction: row; align-items: stretch; gap: 12px; min-height: 0; }
-  .pack-stage {
-    flex: 0 0 auto;
-    position: relative;
-    /* Pack-wrap is 200px wide (matches the pack). Right padding leaves
-       room for the outer-right sprite (~225px right of pack-wrap's
-       center). 130px keeps the layout balanced without empty space. */
-    padding-right: 130px;
+  /* Three-column grid so the booster pack stays horizontally centered
+     in the OPENING column (above the typing zone). Activity log lives
+     in the left column; the right column is an empty spacer that
+     mirrors the log's width, AND it absorbs the overflow from the
+     outer-right sprite lane (which positions absolutely relative to
+     pack-wrap at calc(50% + 200px) — those sprites visually float into
+     the right column without crowding the pack). */
+  #pack-row {
+    display: grid;
+    grid-template-columns: 1fr 200px 1fr;
+    gap: 12px;
+    align-items: start;
+    min-height: 0;
   }
+  .pack-row-spacer { pointer-events: none; }
   /* Positioning container for homie sprites — sized exactly to the pack so
      "top: 25/50/75%" map to vertical thirds of the pack itself, not of a
      fluid pack-area. */
@@ -1726,11 +1729,11 @@
     footer { grid-column: 1; padding: 0; font-size: 0.65rem; }
     #shop, #vault { padding: 10px; gap: 8px; }
     #pack-area { gap: 8px; flex: 0 0 auto; }
-    /* Mobile pack is narrower (150px), so outer-right sprite is at +160px.
-       Tighter padding keeps the stage from bleeding off the column edge. */
-    #pack-row { gap: 8px; }
-    .pack-stage { padding-right: 100px; }
-    #activity-log { min-width: 110px; font-size: 0.65rem; max-height: 220px; }
+    /* Mobile pack is narrower (150px) so the middle grid column shrinks
+       to match. Side columns still flex with 1fr so the pack stays
+       centered over the typing zone. */
+    #pack-row { grid-template-columns: 1fr 150px 1fr; gap: 8px; }
+    #activity-log { min-width: 95px; font-size: 0.65rem; max-height: 220px; }
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
@@ -1857,14 +1860,13 @@
     </div>
     <div id="pack-row">
       <div id="activity-log" aria-label="Activity log"></div>
-      <div class="pack-stage">
-        <div id="pack-wrap">
-          <div class="pack" id="pack">
-            <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
-            <div class="pack-cta" id="pack-cta">CLICK TO RIP</div>
-          </div>
+      <div id="pack-wrap">
+        <div class="pack" id="pack">
+          <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
+          <div class="pack-cta" id="pack-cta">CLICK TO RIP</div>
         </div>
       </div>
+      <div class="pack-row-spacer" aria-hidden="true"></div>
     </div>
     <div id="typing-zone">
       <div id="rip-progress" class="rip-progress" hidden>
