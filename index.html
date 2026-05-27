@@ -129,10 +129,9 @@
   #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-height: 0; position: relative; }
   /* Three-column grid so the booster pack stays horizontally centered
      in the OPENING column (above the typing zone). Outer columns are
-     empty spacers — the right one absorbs overflow from the outer-right
-     sprite lane (which positions absolutely relative to pack-wrap at
-     calc(50% + 200px) — those sprites visually float into the right
-     column without crowding the pack). */
+     empty spacers — they absorb overflow from the rip-lane sprites,
+     which position absolutely relative to pack-wrap at calc(50% ± 130px)
+     and visually float into the side columns without crowding the pack. */
   #pack-row {
     display: grid;
     grid-template-columns: 1fr 200px 1fr;
@@ -154,24 +153,18 @@
     z-index: 5;
     transform: translate(-50%, -50%);
   }
-  /* Twelve fixed slots in two lanes per side, three vertical tiers each:
-       inner lane (0-2 left, 3-5 right) hugs the pack;
-       outer lane (6-8 left, 9-11 right) sits one sprite-width further out.
-     Slots 0/3/6/9 are top, 2/5/8/11 are bottom. Sprite is centered on
-     `left` via translateX so the offsets read symmetrically. The
-     SLOT_UNLOCK_ORDER table controls which of these are reachable as
-     the player buys tables. */
-  /* Right-side ripping lanes only — the left lanes were retired to make
-     room for the activity log. Inner lane (slots 3-5) at +130px from the
-     pack center; outer lane (slots 9-11) at +200px. Top/mid/bottom
-     vertical tiers at 22% / 50% / 78%. Slots 0-2 and 6-8 are intentionally
-     unmapped — SLOT_UNLOCK_ORDER never includes them. */
+  /* Six fixed rip-table slots in a single lane on each side of the pack,
+     three vertical tiers per side: left lane (0-2) at calc(50% - 130px),
+     right lane (3-5) at calc(50% + 130px). Slots 0/3 are top, 2/5 are
+     bottom. Sprite is centered on `left` via translateX so the offsets
+     read symmetrically. SLOT_UNLOCK_ORDER controls which are reachable
+     as the player buys tables. */
+  .homie-sprite[data-slot="0"]  { left: calc(50% - 130px); top: 22%; }
+  .homie-sprite[data-slot="1"]  { left: calc(50% - 130px); top: 50%; }
+  .homie-sprite[data-slot="2"]  { left: calc(50% - 130px); top: 78%; }
   .homie-sprite[data-slot="3"]  { left: calc(50% + 130px); top: 22%; }
   .homie-sprite[data-slot="4"]  { left: calc(50% + 130px); top: 50%; }
   .homie-sprite[data-slot="5"]  { left: calc(50% + 130px); top: 78%; }
-  .homie-sprite[data-slot="9"]  { left: calc(50% + 200px); top: 22%; }
-  .homie-sprite[data-slot="10"] { left: calc(50% + 200px); top: 50%; }
-  .homie-sprite[data-slot="11"] { left: calc(50% + 200px); top: 78%; }
   .homie-sprite .homie-emoji { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
   .homie-sprite .homie-count {
     background: var(--gold); color: #111;
@@ -239,7 +232,7 @@
 
   /* Idle-homies row — horizontal strip above the pack showing one 🧢 per
      available pool token. Lives as a flex item in #pack-area (not absolute)
-     so it can't collide with the outer-lane sprites at ±200px. */
+     so it can't collide with the rip-lane sprites at ±130px. */
   #idle-homies {
     display: flex; flex-direction: row;
     align-items: center; justify-content: center;
@@ -1725,10 +1718,10 @@
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
-    /* Tighter homie offsets for the narrower mobile pack — right-side
-       lanes only; the left lanes belong to the activity log. */
+    /* Tighter homie offsets for the narrower mobile pack — one lane
+       each side, three tiers high. */
+    .homie-sprite[data-slot="0"], .homie-sprite[data-slot="1"], .homie-sprite[data-slot="2"] { left: calc(50% - 100px); }
     .homie-sprite[data-slot="3"], .homie-sprite[data-slot="4"], .homie-sprite[data-slot="5"] { left: calc(50% + 100px); }
-    .homie-sprite[data-slot="9"], .homie-sprite[data-slot="10"], .homie-sprite[data-slot="11"] { left: calc(50% + 160px); }
     #sand-canvas { width: 100%; height: auto; aspect-ratio: 50 / 26; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
@@ -2159,7 +2152,7 @@ let CASE_SIZE = def("CASE_SIZE", 216);
 // ---- Staff --------------------------------------------------------------
 let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
 let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
-const HOMIE_MAX     = 12; // two lanes per side of the pack, three tiers each
+const HOMIE_MAX     = 12; // 11 deployable seats (6 rip + 5 craft) + 1 spare in IDLE
 // Per-rarity craft homies — sit on a single craft track and tick on a
 // unified cooldown (CRAFT_HOMIE_TICK_MS). On each tick a list-first
 // decision tree picks exactly ONE action: list a foil set, else list a
@@ -2178,19 +2171,18 @@ let CRAFT_HOMIE_DURATION_MS  = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
 // from — base size HOMIE_POOL_BASE, grown by the CLOUT "crew" branch.
 let TABLE_COST       = def("TABLE_COST", 100);
 let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 1);
-// Sequential unlock order. Six rip slots on the right side of the pack
-// (inner lane first, then outer), then the five craft-homie rarities
-// low-to-high. The left side of the pack was retired to make room for
-// the activity log, so left-lane rip slots (0-2, 6-8) are absent here
-// — and a save with deployed homies in those slots gets them evicted +
-// pool-refunded on load (see migration block).
+// Sequential unlock order. Six rip slots — one lane per side of the
+// pack, three tiers each — alternating sides middle-out, then the five
+// craft-homie rarities low-to-high. The outer-lane slots (6-11) were
+// retired; any save with deployed homies in those slots gets them
+// evicted + pool-refunded on load (see migration block).
 const SLOT_UNLOCK_ORDER = [
+  { kind: "rip",   slot: 1 },
   { kind: "rip",   slot: 4 },
+  { kind: "rip",   slot: 0 },
   { kind: "rip",   slot: 3 },
+  { kind: "rip",   slot: 2 },
   { kind: "rip",   slot: 5 },
-  { kind: "rip",   slot: 10 },
-  { kind: "rip",   slot: 9 },
-  { kind: "rip",   slot: 11 },
   { kind: "craft", rarity: "standard" },
   { kind: "craft", rarity: "rare" },
   { kind: "craft", rarity: "epic" },
@@ -2767,21 +2759,21 @@ function load() {
     // Activity log: empty array for pre-log saves. Entries are append-
     // only and capped by ACTIVITY_LOG_MAX, so we don't trim here on load.
     if (!Array.isArray(parsed.activity)) parsed.activity = [];
-    // Left-lane retirement: rip slots 0,1,2,6,7,8 no longer exist in
-    // SLOT_UNLOCK_ORDER (their column was reclaimed for the activity
-    // log). Evict any homies sitting there so the slot grid render
-    // doesn't try to position sprites against missing CSS. The pool
-    // refund happens below as part of the homiePool init step.
-    const RETIRED_RIP_SLOTS = new Set([0, 1, 2, 6, 7, 8]);
+    // Outer-lane retirement: rip slots 6-11 no longer exist in
+    // SLOT_UNLOCK_ORDER (collapsed back to a single inner lane on each
+    // side of the pack). Evict any homies sitting there so the slot
+    // grid render doesn't try to position sprites against missing CSS.
+    // The pool refund happens below as part of the homiePool init step.
+    const RETIRED_RIP_SLOTS = new Set([6, 7, 8, 9, 10, 11]);
     if (Array.isArray(parsed.homies)) {
       parsed.homies = parsed.homies.filter(h => !(h.kind !== "craft" && RETIRED_RIP_SLOTS.has(h.slot)));
     }
     // Tables migration. tablesOwned now indexes into SLOT_UNLOCK_ORDER
-    // (rip slots 3,4,5,9,10,11 first, then 5 craft rarities). Ensure
-    // tablesOwned is at least the highest sequence position needed to
-    // cover any currently-deployed homies so the new lock doesn't
-    // evict them. Homies that survived the retirement filter above
-    // are necessarily on a kept slot, so this stays consistent.
+    // (rip slots 0-5 first, then 5 craft rarities). Ensure tablesOwned
+    // is at least the highest sequence position needed to cover any
+    // currently-deployed homies so the new lock doesn't evict them.
+    // Homies that survived the retirement filter above are necessarily
+    // on a kept slot, so this stays consistent.
     if (typeof parsed.tablesOwned !== "number") parsed.tablesOwned = 0;
     const ripSlotsUsed = new Set();
     const craftRaritiesUsed = new Set();
