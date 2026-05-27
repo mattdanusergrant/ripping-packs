@@ -3155,6 +3155,11 @@ function vintageRefreshMsEffective() {
 // ~18%, Set 25 ~6%, Set 1 ~1%. Current year (Set 30) is excluded — vintage
 // means past years only.
 function rollVintageYear() {
+  // Single-set build: CURRENT_SET_ID is 1, so there are no past years to
+  // roll. Return null and let downstream renderers handle empty slots —
+  // this used to crash during defaultState() init via blankVintageSlots()
+  // since the choices array was empty and we still indexed into it.
+  if (CURRENT_SET_ID <= 1) return null;
   const choices = [];
   let total = 0;
   for (let s = 1; s < CURRENT_SET_ID; s++) {
