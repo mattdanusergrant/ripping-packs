@@ -1054,6 +1054,72 @@
   }
   #listings-panel  { border: 1px solid rgba(245,197,66,0.18); }
   #available-panel { border: 1px solid rgba(101,224,168,0.22); }
+  /* Requests panel — buyers' standing orders. Sits above the AVAILABLE
+     / LISTINGS split because requests are an active stream (timed
+     expiry, per-cell countdowns) that benefits from being closer to
+     eye level than the more static listings/dealer columns. */
+  #requests-panel {
+    background: var(--panel); border-radius: 10px; padding: 12px;
+    border: 1px solid rgba(255,126,179,0.22);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .requests-header {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    font-size: 0.72rem; letter-spacing: 3px; color: #ff7eb3;
+  }
+  .requests-header .requests-count { color: var(--muted); font-size: 0.65rem; letter-spacing: 1px; }
+  .requests-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+    gap: 8px;
+  }
+  .request-cell {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 3px;
+    padding: 8px 6px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+    font: inherit; cursor: pointer;
+    transition: transform 0.12s, border-color 0.15s, background 0.15s;
+    min-height: 110px;
+  }
+  .request-cell:hover:not(.disabled) {
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.32);
+    background: rgba(0,0,0,0.5);
+  }
+  .request-cell.disabled { opacity: 0.55; cursor: not-allowed; }
+  .request-cell .req-kind {
+    font-size: 0.55rem; letter-spacing: 2px; font-weight: bold;
+    color: var(--muted);
+  }
+  .request-cell.kind-player    { border-color: rgba(101,214,255,0.32); }
+  .request-cell.kind-player    .req-kind { color: #65d6ff; }
+  .request-cell.kind-store     { border-color: rgba(245,197,66,0.32); }
+  .request-cell.kind-store     .req-kind { color: var(--gold); }
+  .request-cell.kind-collector { border-color: rgba(255,126,179,0.42); background: rgba(60,12,40,0.45); }
+  .request-cell.kind-collector .req-kind { color: #ff7eb3; }
+  .request-cell.kind-boutique  { border-color: rgba(186,140,255,0.32); }
+  .request-cell.kind-boutique  .req-kind { color: #ba8cff; }
+  .request-cell .req-art       { font-size: 1.3rem; line-height: 1; }
+  .request-cell .req-pile-glyph { font-size: 1.4rem; }
+  .request-cell .req-desc      { font-size: 0.62rem; color: rgba(255,255,255,0.82); text-align: center; line-height: 1.2; }
+  .request-cell .req-pay       { font-size: 0.65rem; font-weight: bold; color: var(--gold); }
+  .request-cell .req-expires {
+    font-size: 0.55rem; font-weight: bold; letter-spacing: 1px;
+    color: rgba(255,255,255,0.55);
+  }
+  .request-cell.empty {
+    border-style: dashed;
+    opacity: 0.4;
+    cursor: default;
+    background: rgba(0,0,0,0.18);
+    justify-content: center;
+  }
+  .request-cell.empty:hover { transform: none; background: rgba(0,0,0,0.18); }
+  .request-cell .req-empty-glyph { font-size: 1.8rem; color: var(--muted); }
   /* Phase-1 placeholder — replaced by the buy-side market in Phase 2. */
   .available-header {
     display: flex; justify-content: space-between; align-items: center; gap: 10px;
@@ -1818,6 +1884,7 @@
     </div>
     <div class="vintage-slots" id="vintage-slots"></div>
   </div>
+  <div id="requests-panel"></div>
   <div class="marketplace-split">
     <div id="available-panel"></div>
     <div id="listings-panel"></div>
@@ -2518,10 +2585,16 @@ const defaultState = () => ({
   // for the unowned-id bias, so it can't run during defaultState).
   // tickAt is initialized lazily on first tickAvailable.
   available: { slots: [], tickAt: 0 },
+  // Buy-side requests — each slot holds one buyer's standing order
+  // ({kind: player|store|collector|boutique, expiresAt, payout, clout,
+  // ...requirements}). Rolled lazily by syncRequestSlotCount on first
+  // render. tickRequests evicts expired slots and refills with a fresh
+  // request on the next tick.
+  requests: { slots: [], uidCounter: 0 },
   // Persistent activity log — ring-buffered list of {ts, kind, text}
   // entries, capped at ACTIVITY_LOG_MAX (200). Replaces the old single-
   // line #hint ticker. Kinds drive color coding in the panel: info,
-  // success, error, milestone, sale, rip, craft, buy.
+  // success, error, milestone, sale, rip, craft, buy, request.
   activity: [],
 });
 
@@ -2804,6 +2877,14 @@ function load() {
       return keep;
     });
     if (typeof parsed.available.tickAt !== "number") parsed.available.tickAt = 0;
+    // Requests panel migration. Pre-requests saves get an empty
+    // slots[] + zero uid counter; syncRequestSlotCount on first render
+    // fills the slots with fresh rolls.
+    if (!parsed.requests || typeof parsed.requests !== "object") {
+      parsed.requests = { slots: [], uidCounter: 0 };
+    }
+    if (!Array.isArray(parsed.requests.slots)) parsed.requests.slots = [];
+    if (typeof parsed.requests.uidCounter !== "number") parsed.requests.uidCounter = 0;
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     if (!Array.isArray(parsed.sorters)) parsed.sorters = [];
@@ -3150,6 +3231,236 @@ function syncAvailableSlotCount() {
   while (state.available.slots.length > want) {
     state.available.slots.pop();
   }
+}
+
+// ---- Requests (buy-side standing orders) ---------------------------------
+// Buyers come in four flavors:
+//   player     — wants one specific priced single (Epic+/Mythic, or foil
+//                Rare). Drains a card from invById[mk][cardId].
+//   store      — wants N Standard or Rare Sets (bulk). Drains
+//                invById["standardSet" | "rareSet" | foil variants].
+//   collector  — wants one Complete Set (foil or non-foil) for the active
+//                year. Drains invById["completeSet" | "foilCompleteSet"].
+//   boutique   — wants N priced-rarity Sets (Epic/Legendary/Mythic).
+//                Drains invById[<rarity>Set | foil<Rarity>Set].
+// Each fulfilled request pays out cash + CLOUT, both scaled to what
+// the player is parting with (singleCardMarketPrice / Set baseline,
+// times REQUEST_PRICE_BONUS for the dealer-bonus premium). Requests
+// expire on a per-slot timer (REQUEST_EXPIRE_MS), and the empty slot
+// is refilled with a fresh request on the next tick.
+let REQUEST_SLOTS_BASE   = def("REQUEST_SLOTS_BASE",   5);
+let REQUEST_EXPIRE_MS    = def("REQUEST_EXPIRE_MS",    5 * 60 * 1000);
+let REQUEST_PRICE_BONUS  = def("REQUEST_PRICE_BONUS",  1.10);
+// Relative weights for which kind rolls. Player requests are common
+// (low payout, low CLOUT, lots of turnover); collectors are rare
+// (huge payout, big CLOUT, but you only get one if you've crafted a
+// Complete Set). Boutique sits in the middle.
+const REQUEST_WEIGHTS = { player: 50, store: 25, boutique: 20, collector: 5 };
+function requestSlotsEffective() { return REQUEST_SLOTS_BASE + (eff().requestSlots || 0); }
+function requestExpireMsEffective() {
+  return Math.max(30000, REQUEST_EXPIRE_MS + (eff().requestExpireDelta || 0));
+}
+function nextRequestUid() {
+  if (!state.requests) state.requests = { slots: [], uidCounter: 0 };
+  state.requests.uidCounter = (state.requests.uidCounter || 0) + 1;
+  return state.requests.uidCounter;
+}
+function rollPlayerRequest(setId) {
+  // Players hunt for the cards that matter — priced singles only. Skip
+  // the bulk tracks (standard non-foil + rare non-foil + foil standard)
+  // since those funnel through Set crafting, not single trades.
+  const pool = [
+    { rarity: "rare",      foil: true  },
+    { rarity: "epic",      foil: false },
+    { rarity: "epic",      foil: true  },
+    { rarity: "legendary", foil: false },
+    { rarity: "legendary", foil: true  },
+    { rarity: "mythic",    foil: false },
+    { rarity: "mythic",    foil: true  },
+  ];
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  const size = SET_SIZES[pick.rarity] || 1;
+  const cardId = 1 + Math.floor(Math.random() * size);
+  const single = singleCardMarketPrice(setId, pick.rarity, pick.foil);
+  const payout = Math.max(1, Math.round(single * REQUEST_PRICE_BONUS * 100) / 100);
+  const cloutMap = { rare: 1, epic: 2, legendary: 3, mythic: 5 };
+  const clout = (cloutMap[pick.rarity] || 1) * (pick.foil ? 2 : 1);
+  return {
+    uid: nextRequestUid(), kind: "player", setId,
+    rarity: pick.rarity, foil: pick.foil, cardId, quantity: 1,
+    payout, clout, expiresAt: Date.now() + requestExpireMsEffective(),
+  };
+}
+function rollStoreRequest(setId) {
+  // Stores buy bulk by the boxful. Standard is most common; rare is
+  // a step up; foil Standard is rarer still (~30% chance when rolling
+  // Standard). Quantity 3-8 keeps it ambitious but not unreachable.
+  const base = Math.random() < 0.75 ? "standard" : "rare";
+  const foil = base === "standard" && Math.random() < 0.35;
+  const setItemKey = foil
+    ? (base === "standard" ? "foilStandardSet" : "foilRareSet")
+    : (base + "Set");
+  const quantity = 3 + Math.floor(Math.random() * 6);
+  const setPrice = marketPriceFor(setId, setItemKey, 1);
+  const payout = Math.max(1, Math.round(setPrice * quantity * REQUEST_PRICE_BONUS * 100) / 100);
+  const clout = quantity * (foil ? 6 : 3);
+  return {
+    uid: nextRequestUid(), kind: "store", setId,
+    setItemKey, quantity, payout, clout,
+    expiresAt: Date.now() + requestExpireMsEffective(),
+  };
+}
+function rollCollectorRequest(setId) {
+  const foil = Math.random() < 0.25;
+  const setItemKey = foil ? "foilCompleteSet" : "completeSet";
+  const setPrice = marketPriceFor(setId, setItemKey, 1);
+  const payout = Math.max(1, Math.round(setPrice * REQUEST_PRICE_BONUS * 100) / 100);
+  // 40% of what vaulting awards — vaulting is one-time per (year ×
+  // variant) and exclusive, so requests can't undercut that lifetime
+  // payoff. Collectors are still the biggest CLOUT source per
+  // fulfillment.
+  const baseClout = foil ? FOIL_COMPLETE_SET_CLOUT : COMPLETE_SET_CLOUT;
+  const clout = Math.max(1, Math.round(baseClout * 0.4));
+  return {
+    uid: nextRequestUid(), kind: "collector", setId,
+    setItemKey, quantity: 1, payout, clout,
+    expiresAt: Date.now() + requestExpireMsEffective(),
+  };
+}
+function rollBoutiqueRequest(setId) {
+  const rarities = ["epic", "legendary", "mythic"];
+  const rarity = rarities[Math.floor(Math.random() * rarities.length)];
+  const foil = Math.random() < 0.4;
+  const quantity = 2 + Math.floor(Math.random() * 3);
+  const stem = foil ? "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1) : rarity;
+  const setItemKey = stem + "Set";
+  const setPrice = marketPriceFor(setId, setItemKey, 1);
+  const payout = Math.max(1, Math.round(setPrice * quantity * REQUEST_PRICE_BONUS * 100) / 100);
+  const cloutMap = { epic: 8, legendary: 15, mythic: 25 };
+  const clout = quantity * cloutMap[rarity] * (foil ? 2 : 1);
+  return {
+    uid: nextRequestUid(), kind: "boutique", setId,
+    setItemKey, rarity, foil, quantity, payout, clout,
+    expiresAt: Date.now() + requestExpireMsEffective(),
+  };
+}
+function rollRequest(setId) {
+  const w = REQUEST_WEIGHTS;
+  const total = w.player + w.store + w.collector + w.boutique;
+  let r = Math.random() * total;
+  if ((r -= w.player) < 0)    return rollPlayerRequest(setId);
+  if ((r -= w.store) < 0)     return rollStoreRequest(setId);
+  if ((r -= w.collector) < 0) return rollCollectorRequest(setId);
+  return rollBoutiqueRequest(setId);
+}
+function syncRequestSlotCount() {
+  if (!state.requests) state.requests = { slots: [], uidCounter: 0 };
+  if (!Array.isArray(state.requests.slots)) state.requests.slots = [];
+  // Re-roll any slot whose request is for a non-active year — requests
+  // are local to the active year (drains active-year inventory).
+  const sid = state.activeSetId;
+  for (let i = 0; i < state.requests.slots.length; i++) {
+    const r = state.requests.slots[i];
+    if (r && r.setId !== sid) state.requests.slots[i] = rollRequest(sid);
+  }
+  const want = requestSlotsEffective();
+  while (state.requests.slots.length < want) state.requests.slots.push(rollRequest(sid));
+  while (state.requests.slots.length > want) state.requests.slots.pop();
+}
+function canFulfillRequest(req) {
+  if (!req) return false;
+  if (req.setId !== state.activeSetId) return false;
+  if (req.kind === "player") {
+    const mk = marketKey(req.rarity, req.foil);
+    return ((cur().invById[mk] || {})[req.cardId] || 0) >= 1;
+  }
+  // store / collector / boutique — N copies of a Set item
+  return ((cur().invById[req.setItemKey] || {})[1] || 0) >= req.quantity;
+}
+// Compact human label for a request — used in tooltips and the activity
+// log when a fulfillment fires.
+function requestSummary(req) {
+  if (req.kind === "player") {
+    const idLabel = cardFullId(req.rarity, req.cardId, GAME_ID, req.setId);
+    return `${req.foil ? "Foil " : ""}${RARITY_LABELS[req.rarity]} ${idLabel}`;
+  }
+  if (req.kind === "collector") {
+    return `${req.setItemKey === "foilCompleteSet" ? "COMPLETE FOIL" : "COMPLETE"} SET`;
+  }
+  const meta = setItemMeta(req.setItemKey);
+  if (!meta) return req.setItemKey;
+  return `${req.quantity}× ${meta.foil ? "FOIL " : ""}${RARITY_LABELS[meta.baseRarity]} SET`;
+}
+function requestKindLabel(kind) {
+  return { player: "PLAYER", store: "STORE", collector: "COLLECTOR", boutique: "BOUTIQUE" }[kind] || kind.toUpperCase();
+}
+function fulfillRequest(idx) {
+  const req = state.requests && state.requests.slots && state.requests.slots[idx];
+  if (!req) return;
+  if (req.setId !== state.activeSetId) {
+    SFX.error();
+    logActivity(`That request is for The ${setYearLabel(req.setId)} Set — switch year to fulfill.`, "error");
+    return;
+  }
+  if (!canFulfillRequest(req)) {
+    SFX.error();
+    logActivity(`Can't fulfill — you don't have ${requestSummary(req)}.`, "error");
+    return;
+  }
+  // Drain inventory.
+  if (req.kind === "player") {
+    const mk = marketKey(req.rarity, req.foil);
+    const inv = cur().invById[mk];
+    inv[req.cardId] -= 1;
+    if (inv[req.cardId] <= 0) delete inv[req.cardId];
+  } else {
+    const inv = cur().invById[req.setItemKey];
+    inv[1] -= req.quantity;
+    if (inv[1] <= 0) delete inv[1];
+  }
+  // Pay out cash + CLOUT.
+  state.coins = Math.round((state.coins + req.payout) * 100) / 100;
+  state.clout = (state.clout || 0) + req.clout;
+  // Clear the slot — tickRequests will refill on the next tick.
+  state.requests.slots[idx] = null;
+  SFX.buy();
+  logActivity(`${requestKindLabel(req.kind)} fulfilled — ${requestSummary(req)} for ${usd(req.payout)} + ${req.clout} CLOUT`, "request");
+  renderAll(); save();
+}
+function tickRequests() {
+  if (!state.requests || !Array.isArray(state.requests.slots)) return;
+  syncRequestSlotCount();
+  const now = Date.now();
+  let changed = false;
+  for (let i = 0; i < state.requests.slots.length; i++) {
+    const r = state.requests.slots[i];
+    if (!r || now >= (r.expiresAt || 0)) {
+      state.requests.slots[i] = rollRequest(state.activeSetId);
+      changed = true;
+    }
+  }
+  if (changed) { renderRequests(); save(); }
+  else paintRequestCountdowns();
+}
+// In-place patch for per-request countdowns — avoids a full render of
+// the panel at 1 Hz just to advance text by a second.
+function paintRequestCountdowns() {
+  const wrap = $("requests-panel");
+  if (!wrap) return;
+  const cells = wrap.querySelectorAll(".request-cell[data-request-idx]");
+  const now = Date.now();
+  cells.forEach(cell => {
+    const idx = parseInt(cell.dataset.requestIdx, 10);
+    const r = state.requests?.slots?.[idx];
+    if (!r) return;
+    const chip = cell.querySelector(".req-expires");
+    if (!chip) return;
+    const ms = Math.max(0, (r.expiresAt || 0) - now);
+    const label = ms >= 60000
+      ? `${Math.floor(ms/60000)}:${String(Math.floor((ms%60000)/1000)).padStart(2,"0")}`
+      : `0:${String(Math.ceil(ms/1000)).padStart(2,"0")}`;
+    chip.textContent = `⏳ ${label}`;
+  });
 }
 
 // Mirror of addPull for AVAILABLE purchases. Routes the bought card into
@@ -4292,6 +4603,54 @@ function tickAvailable() {
   else paintAvailableShiftCountdown();
 }
 
+function renderRequests() {
+  const wrap = $("requests-panel");
+  if (!wrap) return;
+  syncRequestSlotCount();
+  const slots = state.requests.slots;
+  const now = Date.now();
+  const tiles = slots.map((req, i) => {
+    if (!req) {
+      return `<div class="request-cell empty"><span class="req-empty-glyph">…</span></div>`;
+    }
+    const ms = Math.max(0, (req.expiresAt || 0) - now);
+    const expLabel = ms >= 60000
+      ? `${Math.floor(ms/60000)}:${String(Math.floor((ms%60000)/1000)).padStart(2,"0")}`
+      : `0:${String(Math.ceil(ms/1000)).padStart(2,"0")}`;
+    const canFulfill = canFulfillRequest(req);
+    const wrongYear  = req.setId !== state.activeSetId;
+    const summary = requestSummary(req);
+    const kindLabel = requestKindLabel(req.kind);
+    const title = `${kindLabel} wants ${summary} (The ${setYearLabel(req.setId)} Set)\n`
+                + `Payout: ${usd(req.payout)} + ${req.clout} CLOUT\n`
+                + (wrongYear ? `Switch year to fulfill.` :
+                    (canFulfill ? `Click to fulfill` : `Don't have it yet.`));
+    const cls = "request-cell kind-" + req.kind + (canFulfill ? "" : " disabled");
+    // Player requests get the rarity color band; the others get a flat
+    // accent driven by .kind-X CSS so the player can tell buyer types
+    // apart at a glance.
+    const colorVar = req.kind === "player" ? RARITY_COLOURS[req.rarity] : "";
+    const styleAttr = colorVar ? ` style="--cell-color:${colorVar}"` : "";
+    const glyph = req.kind === "player"
+      ? cardGlyphHtml(req.rarity, req.cardId, !!req.foil, "lg")
+      : `<span class="req-pile-glyph">${({store:"📦",collector:"💎",boutique:"✨"})[req.kind] || "•"}</span>`;
+    return `<button type="button" class="${cls}" data-request-idx="${i}"${styleAttr} title="${title.replace(/"/g,'&quot;')}">`
+         + `<span class="req-kind">${kindLabel}</span>`
+         + `<span class="req-art">${glyph}</span>`
+         + `<span class="req-desc">${summary}</span>`
+         + `<span class="req-pay">${usd(req.payout)} · +${req.clout} ✨</span>`
+         + `<span class="req-expires">⏳ ${expLabel}</span>`
+         + `</button>`;
+  });
+  const stocked = slots.filter(s => s).length;
+  wrap.innerHTML = `
+    <div class="requests-header">
+      <span>REQUESTS</span>
+      <span class="requests-count">${stocked} / ${slots.length}</span>
+    </div>
+    <div class="requests-grid">${tiles.join("")}</div>`;
+}
+
 function renderAvailable() {
   const wrap = $("available-panel");
   if (!wrap) return;
@@ -5117,6 +5476,9 @@ const DESIGN_FIELDS = [
   { group: "Available market", key: "AVAILABLE_SLOTS_BASE",            path: "AVAILABLE_SLOTS_BASE",      label: "Available dealer slots",        step: 1, min: 1, int: true },
   { group: "Available market", key: "AVAILABLE_CONVEYOR_MS",           path: "AVAILABLE_CONVEYOR_MS",     label: "Available conveyor shift (min)", step: 0.5, min: 0.25, scale: 60000 },
   { group: "Available market", key: "AVAILABLE_PRICE_RATIO",           path: "AVAILABLE_PRICE_RATIO",     label: "Available price multiplier",    step: 0.05, min: 1.0 },
+  { group: "Requests",         key: "REQUEST_SLOTS_BASE",            path: "REQUEST_SLOTS_BASE",        label: "Request slots",                 step: 1, min: 1, int: true },
+  { group: "Requests",         key: "REQUEST_EXPIRE_MS",             path: "REQUEST_EXPIRE_MS",         label: "Request expire (min)",          step: 0.5, min: 0.5, scale: 60000 },
+  { group: "Requests",         key: "REQUEST_PRICE_BONUS",           path: "REQUEST_PRICE_BONUS",       label: "Request payout multiplier",     step: 0.05, min: 1.0 },
 ];
 
 function _resolvePath(root, path) {
@@ -5144,6 +5506,7 @@ function _liveDesignSnapshot() {
     CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
     VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
     AVAILABLE_SLOTS_BASE, AVAILABLE_CONVEYOR_MS, AVAILABLE_PRICE_RATIO,
+    REQUEST_SLOTS_BASE, REQUEST_EXPIRE_MS, REQUEST_PRICE_BONUS,
     SORTER_COST, SORTER_MAX,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
     SORTER_UPGRADE_BASE_COST, SORTER_UPGRADE_STEP, SORTER_BUFFER_PER_LEVEL,
@@ -6083,7 +6446,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderRequests(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
 // One-shot at boot: populate the activity-log scrollback from saved
 // state. renderAll() doesn't include this because the log is append-
 // only — logActivity patches the DOM directly on each new entry, and
@@ -6651,6 +7014,12 @@ $("available-panel").addEventListener("click", (e) => {
   const idx = card.dataset.availSlot;
   if (idx != null) buyAvailableSlot(parseInt(idx, 10));
 });
+$("requests-panel").addEventListener("click", (e) => {
+  const cell = e.target.closest(".request-cell");
+  if (!cell || cell.classList.contains("empty") || cell.classList.contains("disabled")) return;
+  const idx = cell.dataset.requestIdx;
+  if (idx != null) fulfillRequest(parseInt(idx, 10));
+});
 $("stock-rows").addEventListener("click", (e) => {
   // Complete Set actions take priority — distinguished by data-*-complete
   // attributes that carry the specific key (completeSet / foilCompleteSet).
@@ -6828,6 +7197,7 @@ setInterval(() => {
 // Vintage shop tick — refills expired slots + repaints cooldown countdowns.
 setInterval(tickVintageShop, 1000);
 setInterval(tickAvailable, 1000);
+setInterval(tickRequests, 1000);
 resolveListings(); // settle anything that expired while the page was closed
 window.addEventListener("beforeunload", save);
 window.addEventListener("resize", () => {
