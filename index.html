@@ -1753,6 +1753,51 @@
     border-top: 1px solid rgba(255,255,255,0.08);
   }
   .design-spacer { flex: 1; }
+  /* Debug-mode toggle row + scoped visibility. The Game Design panel is
+     hidden behind a "Enable Debug Mode" gate so casual users don't
+     stumble into raw knobs. */
+  .debug-toggle-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .debug-toggle-row .debug-toggle-btn {
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 6px;
+    padding: 8px 16px; cursor: pointer;
+    font: bold 0.78rem inherit; letter-spacing: 1.5px;
+  }
+  .debug-toggle-row .debug-toggle-btn:hover { background: #2e2752; }
+  body.debug-mode .debug-toggle-row .debug-toggle-btn {
+    border-color: var(--gold); color: var(--gold);
+  }
+  .debug-toggle-row .debug-toggle-hint {
+    color: var(--muted); font-size: 0.72rem;
+  }
+  /* Hide the game-design innards when debug mode is off. */
+  body:not(.debug-mode) #design-modal .design-modal-note,
+  body:not(.debug-mode) #design-modal #design-form,
+  body:not(.debug-mode) #design-modal .design-modal-footer { display: none; }
+  /* Debug-only UI bits elsewhere on the page. */
+  .debug-only { display: none !important; }
+  body.debug-mode .debug-only { display: revert !important; }
+  /* Debug fill-bulk button under the activity log. */
+  .debug-fill-bulk {
+    margin-top: 6px;
+    align-self: flex-start;
+    background: rgba(245,197,66,0.08); color: var(--gold);
+    border: 1px solid rgba(245,197,66,0.5); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer;
+    font: bold 0.7rem inherit; letter-spacing: 1.5px;
+  }
+  .debug-fill-bulk:hover { background: rgba(245,197,66,0.18); }
+  /* Sort-hint mode-cycler — only clickable in debug mode. */
+  body.debug-mode #sort-hint-text {
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  body.debug-mode #sort-hint-text:hover { color: var(--gold); }
   .design-modal-footer button {
     background: var(--panel-light); color: var(--ink);
     border: 1px solid rgba(255,255,255,0.10); border-radius: 6px;
@@ -1912,6 +1957,10 @@
       <h2 id="design-title">GAME DESIGN</h2>
       <button class="design-close" id="design-close" aria-label="Close">×</button>
     </div>
+    <div class="debug-toggle-row">
+      <button type="button" class="debug-toggle-btn" id="debug-toggle">Enable Debug Mode</button>
+      <span class="debug-toggle-hint" id="debug-toggle-hint">Game design knobs and dev shortcuts are hidden until enabled.</span>
+    </div>
     <div class="design-modal-note">
       Edit any value, then <b>Apply &amp; Reload</b>. Overrides persist in this browser until reset.
     </div>
@@ -1981,6 +2030,7 @@
     </div>
     <canvas id="sand-canvas"></canvas>
     <div id="activity-log" aria-label="Activity log"></div>
+    <button type="button" class="debug-fill-bulk debug-only" id="debug-fill-bulk">FILL BULK</button>
   </div>
 </section>
 
@@ -2055,9 +2105,11 @@ function cardGlyphHtml(rarity, id, foil, sizeClass) {
 // registered defaults, presents them as a form, and persists overrides to
 // localStorage; reloading the page applies them.
 const DESIGN_KEY = "ripping_packs_design_overrides";
+const DEBUG_MODE_KEY = "ripping_packs_debug_mode";
 const _DESIGN_DEFAULTS = {};
 let _designOverrides = {};
 try { _designOverrides = JSON.parse(localStorage.getItem(DESIGN_KEY) || "{}"); } catch { _designOverrides = {}; }
+let _debugMode = (() => { try { return localStorage.getItem(DEBUG_MODE_KEY) === "1"; } catch { return false; } })();
 function def(key, fallback) {
   _DESIGN_DEFAULTS[key] = fallback;
   if (Object.prototype.hasOwnProperty.call(_designOverrides, key)) {
@@ -2682,6 +2734,66 @@ function setSfxMuted(m) {
     btn.textContent = _sfxMuted ? "🔇" : "🔊";
     btn.title = _sfxMuted ? "Sound off — click to enable" : "Sound on — click to mute";
   }
+}
+
+// ---- Debug mode ----------------------------------------------------------
+// Behind-the-scenes toggle that unhides the Game Design knobs and a handful
+// of dev shortcuts (sort-mode cycler, fill-bulk). Persisted in localStorage
+// so it survives reloads. Toggling does NOT reload the page — the gated UI
+// is plain CSS so a class flip on <body> is enough.
+function setDebugMode(on) {
+  _debugMode = !!on;
+  try { localStorage.setItem(DEBUG_MODE_KEY, _debugMode ? "1" : "0"); } catch (_) {}
+  document.body.classList.toggle("debug-mode", _debugMode);
+  const btn = document.getElementById("debug-toggle");
+  if (btn) btn.textContent = _debugMode ? "Disable Debug Mode" : "Enable Debug Mode";
+  const hint = document.getElementById("debug-toggle-hint");
+  if (hint) hint.textContent = _debugMode
+    ? "Game design knobs unlocked. Dev shortcuts active."
+    : "Game design knobs and dev shortcuts are hidden until enabled.";
+}
+
+// Debug helper: cycle SORT_MODE in-place (no reload). Persists the choice
+// through the design-override channel so it survives reloads and matches
+// what the GAME DESIGN dropdown would have done.
+const _SORT_MODE_CYCLE = ["hover_and_click", "hover_and_move", "hover_and_pulse"];
+function cycleSortMode() {
+  const i = _SORT_MODE_CYCLE.indexOf(SORT_MODE);
+  const next = _SORT_MODE_CYCLE[(i + 1) % _SORT_MODE_CYCLE.length];
+  SORT_MODE = next;
+  _designOverrides.SORT_MODE = next;
+  try { localStorage.setItem(DESIGN_KEY, JSON.stringify(_designOverrides)); } catch (_) {}
+  clearMarkedGrains();
+  drawSand();
+  logActivity(`Debug: SORT_MODE → ${next}`, "info");
+}
+
+// Debug helper: fill the unsorted pile up to UNSORTED_CAPACITY with a
+// plausible mix of grains, then rebuild the visual stack. Skips the
+// physics drop so the pile materializes instantly.
+function debugFillBulk() {
+  ensureBulkInv();
+  const cur0 = cur();
+  let total = SAND_BULK_KEYS.reduce((s, k) => s + (cur0.unsorted[k] || 0), 0);
+  const cap = UNSORTED_CAPACITY;
+  if (total >= cap) { logActivity("Bulk already full.", "info"); return; }
+  // 80% standard / 18% rare / 2% foil — roughly mirrors pack output.
+  const weights = { standard: 80, rare: 18, foilStandard: 2 };
+  const roll = () => {
+    const t = weights.standard + weights.rare + weights.foilStandard;
+    let r = Math.random() * t;
+    if ((r -= weights.standard) < 0) return "standard";
+    if ((r -= weights.rare) < 0) return "rare";
+    return "foilStandard";
+  };
+  while (total < cap) {
+    const k = roll();
+    cur0.unsorted[k] = (cur0.unsorted[k] || 0) + 1;
+    total++;
+  }
+  rebuildPileFromStock();
+  renderAll(); save();
+  logActivity(`Debug: filled bulk to ${cap}.`, "info");
 }
 
 // Floating "+$N" cash popup over the header coins + a gold pulse on the
@@ -7492,6 +7604,11 @@ $("design-close").addEventListener("click", closeDesignPanel);
 $("design-cancel").addEventListener("click", closeDesignPanel);
 $("design-apply").addEventListener("click", applyDesignAndReload);
 $("design-reset").addEventListener("click", resetDesignOverrides);
+$("debug-toggle").addEventListener("click", () => setDebugMode(!_debugMode));
+$("debug-fill-bulk").addEventListener("click", debugFillBulk);
+$("sort-hint-text").addEventListener("click", () => { if (_debugMode) cycleSortMode(); });
+// Initialize body class + button labels from persisted debug state.
+setDebugMode(_debugMode);
 $("upgrades-close").addEventListener("click", closeUpgradesPanel);
 $("upgrades-backdrop").addEventListener("click", closeUpgradesPanel);
 $("upgrades-body").addEventListener("click", (e) => {
