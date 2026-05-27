@@ -1797,9 +1797,52 @@
     .collection-cell { width: 16px; }
     .stock-row { padding: 8px 10px; gap: 8px; }
   }
+
+  /* Mobile gate — hover/click sorting modes don't work on touch devices, so
+     block the game and show a "try on desktop" card. Triggers on small
+     screens OR coarse pointers (touch primary). Once shown, everything else
+     in <body> is hidden so the game doesn't render underneath. */
+  #mobile-gate { display: none; }
+  @media (max-width: 760px), (hover: none) and (pointer: coarse) {
+    body > *:not(#mobile-gate) { display: none !important; }
+    #mobile-gate {
+      display: flex;
+      position: fixed; inset: 0;
+      align-items: center; justify-content: center;
+      background: #0e0a1f;
+      color: var(--ink, #e7e5f2);
+      padding: 24px;
+      z-index: 100000;
+    }
+    .mobile-gate-card {
+      max-width: 360px; width: 100%;
+      text-align: center;
+      background: #1a1430;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 28px 24px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+    }
+    .mobile-gate-title {
+      font-size: 1.1rem; letter-spacing: 3px;
+      color: #f5c542; font-weight: bold;
+      margin-bottom: 12px;
+    }
+    .mobile-gate-body {
+      font-size: 0.95rem; color: #a8a4c0;
+      letter-spacing: 1px;
+    }
+  }
 </style>
 </head>
 <body>
+
+<div id="mobile-gate" role="dialog" aria-modal="true" aria-label="Mobile not supported">
+  <div class="mobile-gate-card">
+    <div class="mobile-gate-title">MOBILE NOT SUPPORTED YET</div>
+    <div class="mobile-gate-body">try on desktop</div>
+  </div>
+</div>
 
 <div id="opening-screen" role="presentation" aria-label="Opening">
   <div class="opening-content">
