@@ -2279,12 +2279,15 @@ function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
 // horizon target is ~$4/pack revenue.
 // ---- Market baselines (derived from print sheets) ----------------------
 // Single-card prices come first; Set prices are bundles built from them.
+// VALUE_MULTIPLIER is the "pack EV / pack cost" ratio: with VM=1.0 the
+// total expected value of cards in a pack equals what the pack cost. Each
+// distinct (rarity, foil-flag, card-id) printed in the game contributes
+// an equal share of that EV; per-card price is K / specificCardRate, so
+// rarer cards are proportionally more valuable than common ones.
 //
-//   singleCardBaseline(r, foil) = PACK_COST · VALUE_MULTIPLIER / specificCardRate
-//     i.e. "what would you pay to find one specific copy by ripping packs?"
-//
+//   K = PACK_COST · VALUE_MULTIPLIER / total_unique_printed_cards
+//   singleCardBaseline(r, foil) = K / specificCardRate(r, foil)
 //   setBaseline(r, foil) = N · single · (1 + SET_BUNDLE_BONUS)
-//     +SET_BUNDLE_BONUS rewards selling a Set assembled vs. spot-selling parts.
 //
 // Apex (completeSet / foilCompleteSet) sum their component Sets and add
 // COMPLETE_SET_PREMIUM on top of that raw component sum.
@@ -2312,10 +2315,27 @@ function specificCardRatePerPack(rarity, foil) {
   else if (sheetKey === "foil") slots = FOIL_PER_PACK;
   return slots * perCardShare;
 }
+// Count distinct printed cards across all sheets that can drop in a pack.
+// Each (rarity, foil-flag) only counts if its specific-rate is > 0 — sheets
+// with a missing rarity contribute nothing.
+function _totalUniquePrintedCards() {
+  let n = 0;
+  for (const r of RARITIES) {
+    if (specificCardRatePerPack(r, false) > 0) n += (SET_SIZES[r] || 0);
+    if (specificCardRatePerPack(r, true)  > 0) n += (SET_SIZES[r] || 0);
+  }
+  return n;
+}
 function singleCardBaseline(rarity, foil) {
   const rate = specificCardRatePerPack(rarity, foil);
   if (rate <= 0) return 0;
-  return (PACK_COST || 0) * VALUE_MULTIPLIER / rate;
+  const totalUnique = _totalUniquePrintedCards();
+  if (totalUnique <= 0) return 0;
+  // Per-card EV share: pack EV / total unique cards. Per-card price is then
+  // K / rate, so rarer cards command higher prices but pack EV stays fixed
+  // at PACK_COST × VALUE_MULTIPLIER no matter how many sheets/rarities exist.
+  const K = (PACK_COST || 0) * VALUE_MULTIPLIER / totalUnique;
+  return K / rate;
 }
 function setBaselineFor(rarity, foil) {
   const single = singleCardBaseline(rarity, foil);
@@ -5901,7 +5921,7 @@ const DESIGN_FIELDS = [
 
   // Market baselines — every Set is explicit since singles don't list.
   // Numbers reflect the long-horizon cash value of completing that rarity.
-  { group: "Market baselines", key: "VALUE_MULTIPLIER",                path: "VALUE_MULTIPLIER",              label: "Value multiplier (× single price)", step: 0.05, min: 0 },
+  { group: "Market baselines", key: "VALUE_MULTIPLIER",                path: "VALUE_MULTIPLIER",              label: "Pack EV / pack cost ratio",         step: 0.05, min: 0 },
   { group: "Market baselines", key: "SET_BUNDLE_BONUS",                 path: "SET_BUNDLE_BONUS",              label: "Set bundle bonus (× N singles)",    step: 0.05, min: 0 },
   { group: "Market baselines", key: "COMPLETE_SET_PREMIUM",             path: "COMPLETE_SET_PREMIUM",          label: "Complete-Set premium (× sum)",      step: 0.05, min: 0 },
   { group: "Market baselines", key: "SET_CRAFT_MULTIPLIER",            path: "SET_CRAFT_MULTIPLIER",          label: "Global Set sell multiplier",     step: 0.05, min: 0.1 },
