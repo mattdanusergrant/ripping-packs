@@ -1166,18 +1166,32 @@
     letter-spacing: 0;
   }
   .avail-price.avail-cd { color: var(--muted); font-weight: normal; }
-  /* Conveyor countdown chip — sits above the leftmost cell, showing the
+  /* Two-column layout: countdown chip rail on the left, then the
+     scrolling card grid. The chip sits opposite the eviction edge so
+     it reads as "this is when the leftmost goes". */
+  .avail-row {
+    display: flex; flex-direction: row;
+    align-items: center; gap: 10px;
+  }
+  .avail-row .listings-grid {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  /* Conveyor countdown chip — left rail of the avail-row showing the
      time until the next conveyor advance evicts whatever is in slot 0. */
   .avail-shift {
-    font-size: 0.55rem; font-weight: bold;
+    flex: 0 0 auto;
+    font-size: 0.6rem; font-weight: bold;
     letter-spacing: 1px;
     color: #65e0a8;
     background: rgba(101,224,168,0.12);
     border: 1px solid rgba(101,224,168,0.32);
     border-radius: 4px;
-    padding: 1px 4px;
+    padding: 3px 6px;
     line-height: 1.3;
     user-select: none;
+    text-align: center;
+    min-width: 48px;
   }
   /* Sold-out gap riding the conveyor — dashed placeholder, no interaction. */
   .listing-card.avail-empty-cell {
@@ -4674,9 +4688,6 @@ function renderAvailable() {
     ? `${Math.floor(msToShift/60000)}:${String(Math.floor((msToShift%60000)/1000)).padStart(2,"0")}`
     : `0:${String(Math.ceil(msToShift/1000)).padStart(2,"0")}`;
   const tiles = slots.map((slot, i) => {
-    const leftmostBadge = i === 0
-      ? `<div class="avail-shift" title="Next shift in ${shiftLabel} — the leftmost slot rotates off the conveyor every ${Math.round(availableConveyorMsEffective()/1000)} s.">⏳ ${shiftLabel}</div>`
-      : "";
     if (slot && slot.cardId != null) {
       const setId = slot.setId;
       const patinaCls = patinaClassFor(setId);
@@ -4693,7 +4704,6 @@ function renderAvailable() {
       // separate label so the symbol is the visual anchor and the
       // number doesn't compete for space inside a 30px square.
       return `<div class="avail-cell">`
-           + leftmostBadge
            + `<button type="button" class="${cls}${disabledCls}" data-avail-slot="${i}" style="--cell-color:${color}" title="${title}">`
            + cardGlyphHtml(slot.rarity, slot.cardId, !!slot.foil, "xl")
            + `</button>`
@@ -4704,7 +4714,6 @@ function renderAvailable() {
       // it shifts off the left edge. Dashed placeholder keeps the grid
       // alignment consistent so cards don't jump to fill the hole.
       return `<div class="avail-cell">`
-           + leftmostBadge
            + `<div class="listing-card avail-empty-cell" title="Sold — this gap will shift off the conveyor in ${shiftLabel} or less.">`
            + `<span class="lst-glyph avail-empty-glyph">—</span>`
            + `</div>`
@@ -4712,12 +4721,19 @@ function renderAvailable() {
            + `</div>`;
     }
   });
+  // Conveyor countdown lives in its own column to the LEFT of the cell
+  // grid — sits opposite the eviction side so its sweep is the player's
+  // peripheral cue that the leftmost card is about to go.
+  const shiftChip = `<div class="avail-shift" title="Next shift in ${shiftLabel} — the leftmost slot rotates off the conveyor every ${Math.round(availableConveyorMsEffective()/1000)} s.">⏳ ${shiftLabel}</div>`;
   wrap.innerHTML = `
     <div class="available-header">
       <span>AVAILABLE</span>
       <span class="available-count">${used} / ${slots.length} stocked</span>
     </div>
-    <div class="listings-grid">${tiles.join("")}</div>`;
+    <div class="avail-row">
+      ${shiftChip}
+      <div class="listings-grid">${tiles.join("")}</div>
+    </div>`;
 }
 
 function renderListings() {
