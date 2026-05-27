@@ -1050,6 +1050,29 @@
     letter-spacing: 0;
   }
   .avail-price.avail-cd { color: var(--muted); font-weight: normal; }
+  /* Conveyor countdown chip — sits above the leftmost cell, showing the
+     time until the next conveyor advance evicts whatever is in slot 0. */
+  .avail-shift {
+    font-size: 0.55rem; font-weight: bold;
+    letter-spacing: 1px;
+    color: #65e0a8;
+    background: rgba(101,224,168,0.12);
+    border: 1px solid rgba(101,224,168,0.32);
+    border-radius: 4px;
+    padding: 1px 4px;
+    line-height: 1.3;
+    user-select: none;
+  }
+  /* Sold-out gap riding the conveyor — dashed placeholder, no interaction. */
+  .listing-card.avail-empty-cell {
+    border: 1px dashed rgba(255,255,255,0.18);
+    background: rgba(0,0,0,0.18);
+    box-shadow: none;
+    cursor: default;
+    opacity: 0.55;
+  }
+  .listing-card.avail-empty-cell:hover { transform: none; filter: none; }
+  .avail-empty-glyph { color: var(--muted); font-size: 1.4rem; font-weight: bold; }
   .listings-header {
     display: flex; justify-content: space-between; align-items: center; gap: 10px;
     font-size: 0.72rem; letter-spacing: 3px; color: var(--gold);
@@ -2440,11 +2463,15 @@ const defaultState = () => ({
   vintageShop: { slots: blankVintageSlots() },
   // AVAILABLE buy-market: NPC dealer slots offering specific singles
   // from the active set's priced rarities / foils for a small premium.
-  // Each slot rolls a new offer on its own cooldown after purchase.
-  // Left empty here — syncAvailableSlotCount fills it on the first
-  // renderAvailable, by which time `state` is fully constructed (rolling
-  // an offer reads state.sets via setStateFor for the unowned-id bias).
-  available: { slots: [] },
+  // Buy-side conveyor. Slots flow leftward: the leftmost slot evicts
+  // every AVAILABLE_CONVEYOR_MS (tickAt holds the next eviction), every
+  // other slot shifts one position left, and a fresh offer enters at
+  // the rightmost slot. Left empty here — syncAvailableSlotCount fills
+  // it on the first renderAvailable, by which time `state` is fully
+  // constructed (rollAvailableOffer reads state.sets via setStateFor
+  // for the unowned-id bias, so it can't run during defaultState).
+  // tickAt is initialized lazily on first tickAvailable.
+  available: { slots: [], tickAt: 0 },
 });
 
 function blankVintageSlots() {
@@ -2694,6 +2721,24 @@ function load() {
     if (!parsed.vintageShop || !Array.isArray(parsed.vintageShop.slots)) {
       parsed.vintageShop = { slots: blankVintageSlots() };
     }
+    // AVAILABLE conveyor migration. Pre-conveyor saves carried per-slot
+    // cooldowns (cooldownEndsAt on empty slots) that are obsolete under
+    // the global conveyor tick. Drop those fields and ensure tickAt is
+    // present so tickAvailable's lazy init starts a clean 2-min cycle.
+    // syncAvailableSlotCount will grow the array to the new 10-slot
+    // ceiling on the next render — preserved offers stay in place.
+    if (!parsed.available || typeof parsed.available !== "object") {
+      parsed.available = { slots: [], tickAt: 0 };
+    }
+    if (!Array.isArray(parsed.available.slots)) parsed.available.slots = [];
+    parsed.available.slots = parsed.available.slots.map(s => {
+      if (!s) return { cardId: null };
+      if (s.cardId == null) return { cardId: null };
+      // Strip any stale per-slot cooldown; conveyor doesn't use it.
+      const { cooldownEndsAt, ...keep } = s;
+      return keep;
+    });
+    if (typeof parsed.available.tickAt !== "number") parsed.available.tickAt = 0;
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
     if (!Array.isArray(parsed.sorters)) parsed.sorters = [];
@@ -2895,8 +2940,13 @@ let VINTAGE_TYPE_WEIGHTS = def("VINTAGE_TYPE_WEIGHTS", { pack: 80, box: 16, case
 // per-slot cooldown after purchase. Eligible tracks are the priced
 // rarities + every foil (excluding non-foil Standard / Rare, which are
 // trivial bulk and would just become an alternate cash sink).
-let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  5);
-let AVAILABLE_REFRESH_MS  = def("AVAILABLE_REFRESH_MS",  3 * 60 * 1000); // 3 min
+let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  10);
+// The AVAILABLE market is a left-flowing conveyor: every
+// AVAILABLE_CONVEYOR_MS the leftmost slot is discarded, every other
+// slot shifts one position left, and a fresh offer enters at the
+// rightmost slot. Purchasing a slot empties it in place — the empty
+// rides along the conveyor until it shifts off on its own.
+let AVAILABLE_CONVEYOR_MS = def("AVAILABLE_CONVEYOR_MS", 2 * 60 * 1000); // 2 min
 let AVAILABLE_PRICE_RATIO = def("AVAILABLE_PRICE_RATIO", 1.25);          // +25% premium
 // Standard / Rare (and their foils) are excluded: bulk-style commons
 // aren't what the AVAILABLE market is for — its job is targeted singles
@@ -2910,8 +2960,8 @@ const AVAILABLE_RARITIES = [
   { rarity: "mythic",    foil: true  },
 ];
 function availableSlotsEffective()    { return AVAILABLE_SLOTS_BASE + (eff().availableSlots || 0); }
-function availableRefreshMsEffective() {
-  return Math.max(15000, AVAILABLE_REFRESH_MS + (eff().availableRefreshDelta || 0));
+function availableConveyorMsEffective() {
+  return Math.max(15000, AVAILABLE_CONVEYOR_MS + (eff().availableRefreshDelta || 0));
 }
 function vintageSlotCountEffective() {
   return VINTAGE_SLOTS_BASE + (eff().vintageSlots || 0);
@@ -3000,7 +3050,7 @@ function rollAvailableOffer(setId) {
   const pool = unowned.length > 0 ? unowned : Array.from({ length: size }, (_, i) => i + 1);
   const cardId = pool[Math.floor(Math.random() * pool.length)];
   const askPrice = Math.max(0.01, Math.round(availableOfferPrice(setId, rarity, foil) * 100) / 100);
-  return { cardId, rarity, foil, setId, askPrice, cooldownEndsAt: 0 };
+  return { cardId, rarity, foil, setId, askPrice };
 }
 // Slots start empty in defaultState — this fills them on first render,
 // once `state` is fully constructed. (rollAvailableOffer reads
@@ -3020,8 +3070,16 @@ function syncAvailableSlotCount() {
     }
   }
   const want = availableSlotsEffective();
+  // Grow toward the current cap (e.g., a save from when the conveyor
+  // was 5 slots wide gets brand-new offers appended to fill out to 10).
   while (state.available.slots.length < want) {
     state.available.slots.push(rollAvailableOffer(sid));
+  }
+  // Shrink if the cap was lowered (design-panel retuning); drop
+  // rightmost first so a slot that's about to evict on the left
+  // doesn't get yanked early.
+  while (state.available.slots.length > want) {
+    state.available.slots.pop();
   }
 }
 
@@ -4043,26 +4101,66 @@ function buyAvailableSlot(slotIdx) {
   if (slot.rarity === "mythic" || slot.rarity === "legendary") SFX.pullMythic();
   else if (slot.foil && slot.rarity !== "standard")            SFX.pullFoil();
   depositBoughtCard({ rarity: slot.rarity, id: slot.cardId, foil: !!slot.foil });
-  state.available.slots[slotIdx] = { cardId: null, cooldownEndsAt: Date.now() + availableRefreshMsEffective() };
+  // Empty the slot in place. The conveyor (advanceAvailableConveyor)
+  // will rotate it off when it reaches the leftmost position; no
+  // per-slot cooldown anymore.
+  state.available.slots[slotIdx] = { cardId: null };
   renderAll();
   save();
   const idLabel = cardFullId(slot.rarity, slot.cardId, GAME_ID, slot.setId);
   $("hint").textContent = `Bought ${slot.foil ? "foil " : ""}${RARITY_LABELS[slot.rarity].toLowerCase()} ${idLabel} @ ${usd(cost)}.`;
 }
 
+// Advance the conveyor by one position: drop slot 0, shift every later
+// slot one to the left, and push a fresh offer onto the rightmost slot.
+// Empty slots ride the conveyor like any other position — buying a
+// middle slot creates a visible gap that walks left until it falls off.
+function advanceAvailableConveyor() {
+  if (!state.available || !Array.isArray(state.available.slots)) return;
+  const slots = state.available.slots;
+  if (slots.length === 0) return;
+  slots.shift();
+  slots.push(rollAvailableOffer(state.activeSetId));
+}
+// In-place patch for the leftmost-slot countdown chip — avoids a full
+// renderAvailable() (which rebuilds 10 buttons + glyph SVGs) at 1 Hz
+// just to advance the countdown text by one second.
+function paintAvailableShiftCountdown() {
+  if (!state.available) return;
+  const chip = document.querySelector("#available-panel .avail-shift");
+  if (!chip) return;
+  const ms = Math.max(0, (state.available.tickAt || 0) - Date.now());
+  const label = ms >= 60000
+    ? `${Math.floor(ms/60000)}:${String(Math.floor((ms%60000)/1000)).padStart(2,"0")}`
+    : `0:${String(Math.ceil(ms/1000)).padStart(2,"0")}`;
+  chip.textContent = `⏳ ${label}`;
+}
 function tickAvailable() {
   if (!state.available || !Array.isArray(state.available.slots)) return;
   const now = Date.now();
-  let changed = false;
-  state.available.slots.forEach((slot, i) => {
-    if (!slot || slot.cardId != null) return;
-    if (now >= (slot.cooldownEndsAt || 0)) {
-      state.available.slots[i] = rollAvailableOffer(state.activeSetId);
-      changed = true;
-    }
-  });
-  if (changed) { renderAvailable(); save(); }
-  else if (state.available.slots.some(s => s && s.cardId == null)) renderAvailable();
+  const interval = availableConveyorMsEffective();
+  if (typeof state.available.tickAt !== "number" || state.available.tickAt <= 0) {
+    state.available.tickAt = now + interval;
+  }
+  let advanced = false;
+  // Catch up on missed ticks (tab was backgrounded etc.) — one
+  // conveyor step per elapsed interval, capped at slots.length since
+  // advancing more than once per position would just re-overwrite the
+  // freshly-pushed offer. Any larger backlog is collapsed into a
+  // single 'fully cycled' state with tickAt reset to now + interval.
+  let safety = state.available.slots.length;
+  while (now >= state.available.tickAt && safety-- > 0) {
+    advanceAvailableConveyor();
+    state.available.tickAt += interval;
+    advanced = true;
+  }
+  if (now >= state.available.tickAt) {
+    // Loop hit its safety cap; the conveyor has already been fully
+    // cycled, so anything past this point is wasted work.
+    state.available.tickAt = now + interval;
+  }
+  if (advanced) { renderAvailable(); save(); }
+  else paintAvailableShiftCountdown();
 }
 
 function renderAvailable() {
@@ -4072,7 +4170,17 @@ function renderAvailable() {
   const slots = state.available.slots;
   const now = Date.now();
   const used = slots.filter(s => s && s.cardId != null).length;
+  // Countdown to the next conveyor advance — shown as a small chip on
+  // the leftmost cell so the player can see when slot 0 rotates off.
+  const tickAt = (state.available.tickAt || 0);
+  const msToShift = Math.max(0, tickAt - now);
+  const shiftLabel = msToShift >= 60000
+    ? `${Math.floor(msToShift/60000)}:${String(Math.floor((msToShift%60000)/1000)).padStart(2,"0")}`
+    : `0:${String(Math.ceil(msToShift/1000)).padStart(2,"0")}`;
   const tiles = slots.map((slot, i) => {
+    const leftmostBadge = i === 0
+      ? `<div class="avail-shift" title="Next shift in ${shiftLabel} — the leftmost slot rotates off the conveyor every ${Math.round(availableConveyorMsEffective()/60000)} min.">⏳ ${shiftLabel}</div>`
+      : "";
     if (slot && slot.cardId != null) {
       const setId = slot.setId;
       const patinaCls = patinaClassFor(setId);
@@ -4089,20 +4197,22 @@ function renderAvailable() {
       // separate label so the symbol is the visual anchor and the
       // number doesn't compete for space inside a 30px square.
       return `<div class="avail-cell">`
+           + leftmostBadge
            + `<button type="button" class="${cls}${disabledCls}" data-avail-slot="${i}" style="--cell-color:${color}" title="${title}">`
            + cardGlyphHtml(slot.rarity, slot.cardId, !!slot.foil, "xl")
            + `</button>`
            + `<div class="avail-price">${compactUsd(slot.askPrice)}</div>`
            + `</div>`;
     } else {
-      const cd = (slot && slot.cooldownEndsAt) || 0;
-      const ms = Math.max(0, cd - now);
-      const label = ms > 60000 ? `${Math.ceil(ms/60000)}m` : `${Math.ceil(ms/1000)}s`;
+      // Empty (bought) slot — visual gap that rides the conveyor until
+      // it shifts off the left edge. Dashed placeholder keeps the grid
+      // alignment consistent so cards don't jump to fill the hole.
       return `<div class="avail-cell">`
-           + `<button type="button" class="listing-card cooling" disabled data-avail-slot="${i}" title="Restocking in ${label}">`
-           + `<span class="lst-glyph">⏳</span>`
-           + `</button>`
-           + `<div class="avail-price avail-cd">${label}</div>`
+           + leftmostBadge
+           + `<div class="listing-card avail-empty-cell" title="Sold — this gap will shift off the conveyor in ${shiftLabel} or less.">`
+           + `<span class="lst-glyph avail-empty-glyph">—</span>`
+           + `</div>`
+           + `<div class="avail-price avail-cd">SOLD</div>`
            + `</div>`;
     }
   });
@@ -4876,7 +4986,7 @@ const DESIGN_FIELDS = [
   { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.box",        path: "VINTAGE_TYPE_WEIGHTS.box",  label: "Vintage roll: box weight",      step: 1, min: 0, int: true },
   { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.case",       path: "VINTAGE_TYPE_WEIGHTS.case", label: "Vintage roll: case weight",     step: 1, min: 0, int: true },
   { group: "Available market", key: "AVAILABLE_SLOTS_BASE",            path: "AVAILABLE_SLOTS_BASE",      label: "Available dealer slots",        step: 1, min: 1, int: true },
-  { group: "Available market", key: "AVAILABLE_REFRESH_MS",            path: "AVAILABLE_REFRESH_MS",      label: "Available slot refresh (min)",  step: 0.5, min: 0.25, scale: 60000 },
+  { group: "Available market", key: "AVAILABLE_CONVEYOR_MS",           path: "AVAILABLE_CONVEYOR_MS",     label: "Available conveyor shift (min)", step: 0.5, min: 0.25, scale: 60000 },
   { group: "Available market", key: "AVAILABLE_PRICE_RATIO",           path: "AVAILABLE_PRICE_RATIO",     label: "Available price multiplier",    step: 0.05, min: 1.0 },
 ];
 
@@ -4904,7 +5014,7 @@ function _liveDesignSnapshot() {
     TABLE_COST, HOMIE_POOL_BASE,
     CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
     VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
-    AVAILABLE_SLOTS_BASE, AVAILABLE_REFRESH_MS, AVAILABLE_PRICE_RATIO,
+    AVAILABLE_SLOTS_BASE, AVAILABLE_CONVEYOR_MS, AVAILABLE_PRICE_RATIO,
     SORTER_COST, SORTER_MAX,
     SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
     SORTER_UPGRADE_BASE_COST, SORTER_UPGRADE_STEP, SORTER_BUFFER_PER_LEVEL,
