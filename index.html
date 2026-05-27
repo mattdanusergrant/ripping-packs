@@ -2146,6 +2146,10 @@ let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // a card is just sampling a slot on a sheet uniformly. The per-card print
 // run IS the drop rate — no separate weight tables to keep in sync.
 //
+// All sheets share one factory dimension: 12 × 18 = 216 slots per sheet.
+// Each sheet's per-card prints sum to exactly 216. Foils get a dedicated
+// sheet (foils are printed on different stock than non-foils in reality).
+//
 // Three sheets:
 //   common  — standards only
 //   rare    — rare / epic / legendary / mythic, weighted by per-card print
@@ -2158,15 +2162,13 @@ let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // probability FOIL_PER_PACK one of the COMMON slots is replaced by a
 // foil-sheet pull (matches the real-world "foil replaces a common" pattern).
 let PRINT_SHEETS = def("PRINT_SHEETS", {
-  // 18 standards × 7 prints each = 126-slot common sheet.
-  common: { standard: 7 },
-  // 9 rares × 8 + 3 epics × 4 + 3 legs × 3 + 3 mythics × 2 = 99 slots.
-  // Mythic share = 6/99 ≈ 6.1% of rare-slot pulls.
-  rare:   { rare: 8, epic: 4, legendary: 3, mythic: 2 },
-  // Foil sheet uses its own per-card runs (foils are physically printed on a
-  // separate sheet in real-world TCG factories). Differential prints — mythic
-  // 1 / leg 2 / epic 3 / rare 6 / std 8 — keep foil mythics as the rarity
-  // trophy without making other foil tiers unattainable.
+  // 18 standards × 12 prints = 216-slot common sheet (12×18 grid).
+  common: { standard: 12 },
+  // 9 rares × 18 + 3 epics × 8 + 3 legs × 6 + 3 mythics × 4 = 216.
+  // Mythic slot share = 12/216 ≈ 5.6% of rare-slot pulls.
+  rare:   { rare: 18, epic: 8, legendary: 6, mythic: 4 },
+  // 18 std × 8 + 9 rare × 6 + 3 epic × 3 + 3 leg × 2 + 3 mythic × 1 = 216.
+  // Foil mythic share = 3/216 ≈ 1.4% of foil-sheet pulls.
   foil:   { standard: 8, rare: 6, epic: 3, legendary: 2, mythic: 1 },
 });
 let PACK_COMMON_SLOTS = def("PACK_COMMON_SLOTS", 14);
@@ -2301,6 +2303,37 @@ function _sheetTotalSlots(sheetKey) {
   for (const r in sheet) total += (SET_SIZES[r] || 0) * (sheet[r] || 0);
   return total;
 }
+// Audit helper: return the most-square XxY factorization for a slot count,
+// or null if the count is prime/inadmissible. A "real" factory sheet must
+// be a rectangle with both sides ≥ 6 (no 1×N or 2×N strips).
+function _sheetDimensions(n) {
+  let best = null;
+  for (let a = Math.floor(Math.sqrt(n)); a >= 6; a--) {
+    if (n % a === 0 && (n / a) >= 6) { best = [a, n / a]; break; }
+  }
+  return best;
+}
+function auditPrintSheets() {
+  const out = [];
+  for (const key of Object.keys(PRINT_SHEETS)) {
+    const total = _sheetTotalSlots(key);
+    const dims = _sheetDimensions(total);
+    out.push({
+      sheet: key,
+      slots: total,
+      dimensions: dims ? `${dims[0]}×${dims[1]}` : "INVALID (not a sensible rectangle)",
+    });
+  }
+  return out;
+}
+// Surface a warning at boot if any sheet isn't a clean XxY rectangle.
+(function () {
+  const report = auditPrintSheets();
+  const bad = report.filter(r => r.dimensions.startsWith("INVALID"));
+  if (bad.length > 0) {
+    console.warn("PRINT_SHEETS audit:", report);
+  }
+})();
 // Expected per-pack rate of pulling one specific (rarity, foil-flag) card.
 function specificCardRatePerPack(rarity, foil) {
   const sheetKey = foil ? "foil" : (rarity === "standard" ? "common" : "rare");
