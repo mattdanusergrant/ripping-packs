@@ -126,9 +126,11 @@
      "top: 25/50/75%" map to vertical thirds of the pack itself, not of a
      fluid pack-area. */
   #pack-wrap { position: relative; }
-  /* Six fixed slots: 0-2 stacked to the left of the pack, 3-5 to the right.
-     Slot 0 / 3 are at the top, 2 / 5 at the bottom. Sprite is centered on
-     `left` via translateX so the offset reads symmetrically. */
+  /* Twelve fixed slots in two lanes per side, three vertical tiers each:
+       inner lane (0-2 left, 3-5 right) hugs the pack;
+       outer lane (6-8 left, 9-11 right) sits one sprite-width further out.
+     Slots 0/3/6/9 are top, 2/5/8/11 are bottom. Sprite is centered on
+     `left` via translateX so the offsets read symmetrically. */
   .homie-sprite {
     position: absolute;
     display: flex; flex-direction: column; align-items: center;
@@ -138,12 +140,18 @@
     z-index: 5;
     transform: translate(-50%, -50%);
   }
-  .homie-sprite[data-slot="0"] { left: calc(50% - 130px); top: 22%; }
-  .homie-sprite[data-slot="1"] { left: calc(50% - 130px); top: 50%; }
-  .homie-sprite[data-slot="2"] { left: calc(50% - 130px); top: 78%; }
-  .homie-sprite[data-slot="3"] { left: calc(50% + 130px); top: 22%; }
-  .homie-sprite[data-slot="4"] { left: calc(50% + 130px); top: 50%; }
-  .homie-sprite[data-slot="5"] { left: calc(50% + 130px); top: 78%; }
+  .homie-sprite[data-slot="0"]  { left: calc(50% - 130px); top: 22%; }
+  .homie-sprite[data-slot="1"]  { left: calc(50% - 130px); top: 50%; }
+  .homie-sprite[data-slot="2"]  { left: calc(50% - 130px); top: 78%; }
+  .homie-sprite[data-slot="3"]  { left: calc(50% + 130px); top: 22%; }
+  .homie-sprite[data-slot="4"]  { left: calc(50% + 130px); top: 50%; }
+  .homie-sprite[data-slot="5"]  { left: calc(50% + 130px); top: 78%; }
+  .homie-sprite[data-slot="6"]  { left: calc(50% - 200px); top: 22%; }
+  .homie-sprite[data-slot="7"]  { left: calc(50% - 200px); top: 50%; }
+  .homie-sprite[data-slot="8"]  { left: calc(50% - 200px); top: 78%; }
+  .homie-sprite[data-slot="9"]  { left: calc(50% + 200px); top: 22%; }
+  .homie-sprite[data-slot="10"] { left: calc(50% + 200px); top: 50%; }
+  .homie-sprite[data-slot="11"] { left: calc(50% + 200px); top: 78%; }
   .homie-sprite .homie-emoji { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
   .homie-sprite .homie-set {
     background: rgba(255,216,77,0.22); color: #ffd84d;
@@ -1234,9 +1242,11 @@
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
-    /* Tighter homie offset for the narrower mobile pack. */
+    /* Tighter homie offsets for the narrower mobile pack. */
     .homie-sprite[data-slot="0"], .homie-sprite[data-slot="1"], .homie-sprite[data-slot="2"] { left: calc(50% - 100px); }
     .homie-sprite[data-slot="3"], .homie-sprite[data-slot="4"], .homie-sprite[data-slot="5"] { left: calc(50% + 100px); }
+    .homie-sprite[data-slot="6"], .homie-sprite[data-slot="7"], .homie-sprite[data-slot="8"] { left: calc(50% - 160px); }
+    .homie-sprite[data-slot="9"], .homie-sprite[data-slot="10"], .homie-sprite[data-slot="11"] { left: calc(50% + 160px); }
     #sand-canvas { width: 100%; height: auto; aspect-ratio: 50 / 26; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
@@ -1601,7 +1611,7 @@ let CASE_SIZE = def("CASE_SIZE", 216);
 // ---- Staff --------------------------------------------------------------
 let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
 let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
-const HOMIE_MAX     = 6; // 3 slots each side of the pack
+const HOMIE_MAX     = 12; // two lanes per side of the pack, 3 tiers each
 // Per-rarity craft homies — sit on a single craft track and auto-craft a
 // new Set every CRAFT_HOMIE_TICK_MS until they expire after
 // CRAFT_HOMIE_DURATION_MS. No max — one per track per year is the natural
@@ -4289,8 +4299,8 @@ function renderHomieSprites() {
   const homies = (state.homies || []).filter(h => h.kind !== "craft");
   const bySlot = new Map(homies.map(h => [h.slot, h]));
   const canAfford = state.coins >= HOMIE_COST && (cur().boxesOwned || 0) >= 1;
-  // Always render 6 fixed slots; active ones show the working homie, empty
-  // ones are clickable hire buttons in the same position.
+  // Always render HOMIE_MAX fixed slots; active ones show the working
+  // homie, empty ones are clickable hire buttons in the same position.
   for (let slot = 0; slot < HOMIE_MAX; slot++) {
     const h = bySlot.get(slot);
     let el = area.querySelector(`.homie-sprite[data-slot="${slot}"]`);
@@ -4357,7 +4367,7 @@ function hireHomie(preferredSlot) {
   }
   // Take the clicked slot if it's free; otherwise fall back to the lowest
   // unused index so the button-click on the side panel still works. Only
-  // rip-homies count against the 6 pack-side slots.
+  // rip-homies count against the pack-side slots.
   const taken = new Set((state.homies || []).filter(h => h.kind !== "craft").map(h => h.slot));
   let slot = -1;
   if (Number.isFinite(preferredSlot) && preferredSlot >= 0 && preferredSlot < HOMIE_MAX && !taken.has(preferredSlot)) {

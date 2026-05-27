@@ -243,7 +243,7 @@ Three kinds of helper now: **rip homies** (auto-rip packs), **craft homies** (au
 
 - **Cost:** $20 + 1 sealed box (consumed from the active year's stash)
 - **Effect:** spawns an animated 🧢 sprite next to the pack opener with a live progress bar; auto-rips one pack every 3s from its personal 36-pack pool
-- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — six fixed slots flanking the pack)
+- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — twelve fixed slots flanking the pack in two lanes per side, three tiers each)
 - **Slot selection:** clicking an empty slot hires *that specific slot*, not the lowest free one
 - **Year binding:** homie remembers `setId` at hire; if you switch years mid-job, they keep ripping the original year silently in the background (no canvas spam, no SFX leakage)
 
