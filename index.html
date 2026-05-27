@@ -2169,7 +2169,7 @@ let PRINT_SHEETS = def("PRINT_SHEETS", {
   // trophy without making other foil tiers unattainable.
   foil:   { standard: 8, rare: 6, epic: 3, legendary: 2, mythic: 1 },
 });
-let PACK_COMMON_SLOTS = def("PACK_COMMON_SLOTS", 15);
+let PACK_COMMON_SLOTS = def("PACK_COMMON_SLOTS", 14);
 let PACK_RARE_SLOTS   = def("PACK_RARE_SLOTS", 1);
 // Probability a pack contains a foil (replaces one common slot). Tunes the
 // long-term foil drip without touching per-sheet mythic share.
@@ -2291,7 +2291,7 @@ function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
 //
 // Apex (completeSet / foilCompleteSet) sum their component Sets and add
 // COMPLETE_SET_PREMIUM on top of that raw component sum.
-let VALUE_MULTIPLIER     = def("VALUE_MULTIPLIER", 1.67);
+let VALUE_MULTIPLIER     = def("VALUE_MULTIPLIER", 0.04);
 let SET_BUNDLE_BONUS     = def("SET_BUNDLE_BONUS", 0);
 let COMPLETE_SET_PREMIUM = def("COMPLETE_SET_PREMIUM", 0.25);
 
