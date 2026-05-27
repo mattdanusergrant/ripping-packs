@@ -192,6 +192,53 @@
   }
   .homie-sprite.empty .homie-plus { line-height: 1; }
   .homie-sprite.empty .homie-meta { font-size: 0.5rem; letter-spacing: 1px; color: inherit; }
+
+  /* Idle-homies row — horizontal strip above the pack showing one 🧢 per
+     available pool token. Earned via first-craft milestones; click an empty
+     pack-side slot to deploy one (costs $20 + 1 box, refunds back here when
+     the homie's box runs out). */
+  #idle-homies {
+    display: flex; flex-direction: row;
+    align-items: center; justify-content: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.22);
+    border: 1px solid rgba(101,214,255,0.28);
+    box-shadow: 0 0 8px rgba(101,214,255,0.18) inset;
+    user-select: none;
+    transition: opacity 0.18s, border-color 0.18s;
+    min-height: 22px;
+  }
+  #idle-homies.empty {
+    opacity: 0.5;
+    border-color: rgba(255,255,255,0.12);
+    box-shadow: none;
+  }
+  #idle-homies .idle-label {
+    font-size: 0.55rem; letter-spacing: 2px;
+    color: #65d6ff; font-weight: bold;
+  }
+  #idle-homies.empty .idle-label { color: var(--muted); }
+  #idle-homies .idle-hats {
+    display: flex; flex-direction: row;
+    align-items: center; gap: 4px;
+    min-height: 18px;
+  }
+  #idle-homies .idle-hat {
+    font-size: 1.1rem; line-height: 1;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));
+    animation: idle-hat-bob 2.4s ease-in-out infinite;
+  }
+  /* Stagger the bob so a stack of hats doesn't move in lockstep. */
+  #idle-homies .idle-hat:nth-child(2n)   { animation-delay: 0.4s; }
+  #idle-homies .idle-hat:nth-child(3n)   { animation-delay: 0.8s; }
+  #idle-homies .idle-hat:nth-child(5n+1) { animation-delay: 1.1s; }
+  @keyframes idle-hat-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2px); }
+  }
+
   @keyframes homie-bob {
     /* Preserves the translate(-50%, -50%) base offset that centers the
        sprite on its (left, top) anchor — without these, the bob would
@@ -1352,6 +1399,10 @@
     </button>
   </div>
   <div id="pack-area">
+    <div id="idle-homies" title="Idle homies — one 🧢 per available pool token. Earned by crafting your first set of each rarity (foil + non-foil). Click an empty pack-side slot to deploy one.">
+      <span class="idle-label">IDLE</span>
+      <span class="idle-hats" id="idle-hats"></span>
+    </div>
     <div id="pack-wrap">
       <div class="pack" id="pack">
         <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
@@ -1612,6 +1663,17 @@ let CASE_SIZE = def("CASE_SIZE", 216);
 let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
 let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
 const HOMIE_MAX     = 12; // two lanes per side of the pack, 3 tiers each
+// homiePool ceiling: 1 base homie + 1 per craft milestone (5 non-foil + 5
+// foil = 10) + 1 reserved for the TBD "final homie" unlock. Caps at
+// HOMIE_MAX so renderHomieSprites' slot grid is always sufficient.
+function homiePoolMax() {
+  let n = 1; // base homie
+  RARITIES.forEach(r => {
+    if (state.craftMilestones && state.craftMilestones[r])     n++;
+    if (state.craftMilestonesFoil && state.craftMilestonesFoil[r]) n++;
+  });
+  return Math.min(HOMIE_MAX, n);
+}
 // Per-rarity craft homies — sit on a single craft track and auto-craft a
 // new Set every CRAFT_HOMIE_TICK_MS until they expire after
 // CRAFT_HOMIE_DURATION_MS. No max — one per track per year is the natural
@@ -1928,6 +1990,17 @@ const defaultState = () => ({
   // Gates the Vintage Packs shop + year picker visibility in renderAll
   // so the first session is just the core rip → sort → craft → list loop.
   firstSetCrafted: false,
+  // Lifetime first-craft milestones — flip true the first time the player
+  // (or a craft homie acting on their behalf) crafts a set of that rarity
+  // for the first time, in any year. Each flip grants +1 idle homie via
+  // homiePool. Decoupled from per-year setsCelebrated so switching years
+  // can't double-grant.
+  craftMilestones:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
+  craftMilestonesFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
+  // Idle-homie pool. Starts at 1 (the always-available base homie). Each
+  // craft milestone adds 1; deploying via hireHomie subtracts 1; a deployed
+  // homie refunds 1 when its box runs out. Capped at homiePoolMax().
+  homiePool: 1,
   // Manual rips (not homie-driven) — drives the type-to-rip unlock bar.
   // The typing UI is hidden behind a progress bar until manualRips
   // reaches TYPING_UNLOCK_RIPS (= 100). Counted only in ripOne(), so
@@ -2098,6 +2171,31 @@ function load() {
         SET_ITEM_KEYS.some(k => ((b.invById || {})[k] || {})[1] > 0)
       ) || Object.values(parsed.completeSetCrafts || {}).some(n => n > 0);
       parsed.firstSetCrafted = everCrafted;
+    }
+    // Backfill craft milestones + idle homie pool. For pre-milestone saves,
+    // grandfather any rarity the player has already completed in any year
+    // (setsCelebrated[*] / setsCelebratedFoil[*]) — losing earned homies
+    // to a schema change would feel awful. Sets pool = (1 base + unlocked
+    // milestones) minus currently-deployed rip-homies so refund accounting
+    // stays consistent.
+    if (!parsed.craftMilestones || typeof parsed.craftMilestones !== "object") {
+      parsed.craftMilestones     = { standard: false, rare: false, epic: false, legendary: false, mythic: false };
+      parsed.craftMilestonesFoil = { standard: false, rare: false, epic: false, legendary: false, mythic: false };
+      Object.values(parsed.sets || {}).forEach(b => {
+        RARITIES.forEach(r => {
+          if (b.setsCelebrated     && b.setsCelebrated[r])     parsed.craftMilestones[r] = true;
+          if (b.setsCelebratedFoil && b.setsCelebratedFoil[r]) parsed.craftMilestonesFoil[r] = true;
+        });
+      });
+    }
+    if (typeof parsed.homiePool !== "number") {
+      let cap = 1;
+      RARITIES.forEach(r => {
+        if (parsed.craftMilestones[r])     cap++;
+        if (parsed.craftMilestonesFoil[r]) cap++;
+      });
+      const deployedRip = (parsed.homies || []).filter(h => h.kind !== "craft").length;
+      parsed.homiePool = Math.max(0, cap - deployedRip);
     }
     // Backfill the typing-unlock counter. Older saves that pre-date the
     // gate get capped at the threshold so the typing UI doesn't re-lock
@@ -3057,6 +3155,16 @@ function craftSet(key, opts = {}) {
   // otherwise miss if a homie produced the first Set.
   const firstUnlock = !state.firstSetCrafted;
   state.firstSetCrafted = true;
+  // Lifetime first-craft milestone: grants a new idle homie. Fires from
+  // craft-homie ticks too (mirrors firstSetCrafted's silent-OK policy) —
+  // the homie is acting on the player's behalf, so the earned crew member
+  // still belongs to them.
+  const milestoneTrack = track.foil ? state.craftMilestonesFoil : state.craftMilestones;
+  const homieEarned = !!(milestoneTrack && !milestoneTrack[track.baseRarity]);
+  if (homieEarned) {
+    milestoneTrack[track.baseRarity] = true;
+    state.homiePool = Math.min(homiePoolMax(), (state.homiePool || 0) + 1);
+  }
   if (firstUnlock) {
     SFX.unlock();
     $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. 🔓 Vintage Packs shop + year picker unlocked!`;
@@ -3064,11 +3172,21 @@ function craftSet(key, opts = {}) {
   // Silent mode is used by the craft-homie tick: it batches the render +
   // save once at the end of the tick and suppresses the routine "Ready to
   // list" hint so a homie quietly working another year doesn't overwrite
-  // the player's active hint message.
-  if (opts.silent) return true;
+  // the player's active hint message. Milestone celebrations override the
+  // silence because earning a homie is a one-shot life event.
+  if (opts.silent) {
+    if (homieEarned) {
+      SFX.unlock();
+      $("hint").textContent = `🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted!`;
+    }
+    return true;
+  }
   renderAll(); save();
   SFX.craft();
-  if (!firstUnlock) {
+  if (homieEarned) {
+    SFX.unlock();
+    $("hint").textContent = `🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted! Click an empty pack slot to deploy.`;
+  } else if (!firstUnlock) {
     $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
   }
   return true;
@@ -4287,6 +4405,26 @@ function renderStaff() {
   }
 }
 
+function renderIdleHomies() {
+  // One 🧢 per available pool token. Reuses child elements when count
+  // doesn't change so the bob-stagger animation doesn't reset every
+  // render. The "empty" class greys the panel when the pool is dry —
+  // useful early-game when only the base homie has been deployed and the
+  // player hasn't earned any milestones yet.
+  const wrap = $("idle-hats");
+  const panel = $("idle-homies");
+  if (!wrap || !panel) return;
+  const n = Math.max(0, state.homiePool || 0);
+  while (wrap.childElementCount > n) wrap.removeChild(wrap.lastChild);
+  while (wrap.childElementCount < n) {
+    const hat = document.createElement("span");
+    hat.className = "idle-hat";
+    hat.textContent = "🧢";
+    wrap.appendChild(hat);
+  }
+  panel.classList.toggle("empty", n <= 0);
+}
+
 function renderHomieSprites() {
   // Render into #pack-wrap (a thin positioning container around the pack)
   // so the homie slots track the pack's actual box, not the looser
@@ -4298,7 +4436,8 @@ function renderHomieSprites() {
   // collapses into bySlot.get(undefined) and corrupts slot 0's sprite.
   const homies = (state.homies || []).filter(h => h.kind !== "craft");
   const bySlot = new Map(homies.map(h => [h.slot, h]));
-  const canAfford = state.coins >= HOMIE_COST && (cur().boxesOwned || 0) >= 1;
+  const hasIdle = (state.homiePool || 0) > 0;
+  const canAfford = hasIdle && state.coins >= HOMIE_COST && (cur().boxesOwned || 0) >= 1;
   // Always render HOMIE_MAX fixed slots; active ones show the working
   // homie, empty ones are clickable hire buttons in the same position.
   for (let slot = 0; slot < HOMIE_MAX; slot++) {
@@ -4330,10 +4469,12 @@ function renderHomieSprites() {
       delete el.dataset.uid;
       el.classList.toggle("disabled", !canAfford);
       el.title = canAfford
-        ? `Hire a homie — ${usd(HOMIE_COST)} + 1 box. They'll rip ${BOX_SIZE} packs.`
-        : (state.coins < HOMIE_COST
-            ? `Need ${usd(HOMIE_COST - state.coins)} more to hire`
-            : `Need a sealed box first`);
+        ? `Deploy an idle homie — ${usd(HOMIE_COST)} + 1 box. They'll rip ${BOX_SIZE} packs, then refund to IDLE.`
+        : (!hasIdle
+            ? `No idle homies — craft a fresh rarity/variant set to recruit more.`
+            : state.coins < HOMIE_COST
+              ? `Need ${usd(HOMIE_COST - state.coins)} more to deploy`
+              : `Need a sealed box first`);
     } else {
       el.dataset.uid = h.uid;
       const pct = Math.min(100, ((BOX_SIZE - h.packsRemaining) / BOX_SIZE) * 100);
@@ -4357,8 +4498,15 @@ function hireHomie(preferredSlot) {
     $("hint").textContent = `Max homies (${HOMIE_MAX}) already on the clock.`;
     return;
   }
+  // Idle pool gate — no idle 🧢, no hire. Either every earned homie is
+  // already deployed, or the player hasn't earned enough yet (each first
+  // craft of a rarity/variant grants one).
+  if ((state.homiePool || 0) <= 0) {
+    $("hint").textContent = `No idle homies — craft a fresh rarity/variant set to recruit more.`;
+    return;
+  }
   if (state.coins < HOMIE_COST) {
-    $("hint").textContent = `Need ${usd(HOMIE_COST - state.coins)} more to hire a homie.`;
+    $("hint").textContent = `Need ${usd(HOMIE_COST - state.coins)} more to deploy a homie.`;
     return;
   }
   if ((cur().boxesOwned || 0) < 1) {
@@ -4381,6 +4529,7 @@ function hireHomie(preferredSlot) {
   }
   state.coins -= HOMIE_COST;
   cur().boxesOwned -= 1;
+  state.homiePool = Math.max(0, (state.homiePool || 0) - 1);
   state.homieUidCounter = (state.homieUidCounter || 0) + 1;
   if (!Array.isArray(state.homies)) state.homies = [];
   // setId pins the homie to the year they were hired in — they keep ripping
@@ -4395,7 +4544,7 @@ function hireHomie(preferredSlot) {
     lastRipAt: 0,
   });
   renderAll(); save();
-  $("hint").textContent = `Hired a homie for Set ${hiredSetId} (${setYearLabel(hiredSetId)})! They'll rip ${BOX_SIZE} packs from your box.`;
+  $("hint").textContent = `Deployed a homie for Set ${hiredSetId} (${setYearLabel(hiredSetId)})! They'll rip ${BOX_SIZE} packs from your box, then return to IDLE.`;
 }
 
 function findCraftHomie(setId, craftRarity) {
@@ -4515,10 +4664,18 @@ function tickHomies() {
     }
   });
   const before = homies.length;
+  let ripRefunds = 0;
   state.homies = homies.filter(h => {
     if (h.kind === "craft") return now < h.expiresAt;
-    return h.packsRemaining > 0;
+    if (h.packsRemaining > 0) return true;
+    // Rip-homie finished their box — refund the pool token so the player
+    // can redeploy them. Craft homies don't draw from the pool.
+    ripRefunds++;
+    return false;
   });
+  if (ripRefunds > 0) {
+    state.homiePool = Math.min(homiePoolMax(), (state.homiePool || 0) + ripRefunds);
+  }
   const ended = before !== state.homies.length;
   // Same idea as tickSorters: only repaint when something actually happened.
   // The empty slots' affordance state is refreshed by the state-changing
@@ -4874,7 +5031,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
 
 // Pulse the upgrade-branch triggers (⬆ PAINT / ⬆ VINTAGE / ⬆ SLOTS) when
 // the player has CLOUT to spend on at least one node in that branch. Run

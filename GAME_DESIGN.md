@@ -239,13 +239,15 @@ Modal UI: three columns (one per branch), each node card shows its name, effect,
 
 Three kinds of helper now: **rip homies** (auto-rip packs), **craft homies** (auto-craft a rarity's Sets), and **sorters** (auto-process sand-pile grains). All three are *year-pinned* — they record the active set at hire/install time and only ever touch that year's bundle, even if the player switches active.
 
-### Rip Homie — temporary auto-ripper
+### Rip Homie — deployable auto-ripper
 
-- **Cost:** $20 + 1 sealed box (consumed from the active year's stash)
-- **Effect:** spawns an animated 🧢 sprite next to the pack opener with a live progress bar; auto-rips one pack every 3s from its personal 36-pack pool
-- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — twelve fixed slots flanking the pack in two lanes per side, three tiers each)
-- **Slot selection:** clicking an empty slot hires *that specific slot*, not the lowest free one
-- **Year binding:** homie remembers `setId` at hire; if you switch years mid-job, they keep ripping the original year silently in the background (no canvas spam, no SFX leakage)
+- **Recruitment:** earned via first-craft milestones — every player starts with **1 base homie** in the IDLE row, and the first time you (or a craft homie acting on your behalf) craft a set of each rarity/variant you gain **+1 idle homie**. 10 milestones total (5 non-foil std/rare/epic/legendary/mythic + 5 foil std/rare/epic/legendary/mythic), capping the pool at 11 of 12 today; the 12th "final homie" unlock is TBD. Milestones are lifetime (`state.craftMilestones` / `craftMilestonesFoil`), so switching years can't re-grant a homie you've already earned.
+- **IDLE row:** the cyan `#idle-homies` strip above the booster pack shows one 🧢 per available pool token (`state.homiePool`). Pool is greyed out when empty.
+- **Deploy cost:** $20 + 1 sealed box (consumed from the active year's stash) and 1 idle pool token. The IDLE 🧢 disappears; an active sprite appears in the clicked slot.
+- **Effect:** auto-rips one pack every 3s from a personal 36-pack pool until the box is empty (~108s total, faster with multiple homies — twelve fixed slots flanking the pack in two lanes per side, three tiers each).
+- **Refund:** when the box runs out, the active sprite vanishes and the pool token returns to IDLE for redeployment. Earned homies are permanent labor; you just keep feeding them boxes.
+- **Slot selection:** clicking an empty slot deploys into *that specific slot*, not the lowest free one.
+- **Year binding:** homie remembers `setId` at deploy; if you switch years mid-job, they keep ripping the original year silently in the background (no canvas spam, no SFX leakage).
 
 ### Craft Homie — temporary per-rarity auto-crafter (NEW)
 
