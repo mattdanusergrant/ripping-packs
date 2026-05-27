@@ -128,10 +128,11 @@
 
   #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-height: 0; position: relative; }
   /* Three-column grid so the booster pack stays horizontally centered
-     in the OPENING column (above the typing zone). Outer columns are
-     empty spacers — they absorb overflow from the rip-lane sprites,
-     which position absolutely relative to pack-wrap at calc(50% ± 130px)
-     and visually float into the side columns without crowding the pack. */
+     in the OPENING column (above the typing zone). Left column hosts
+     the IDLE-homies bay; right column is an empty spacer. Both columns
+     also absorb overflow from the rip-lane sprites, which position
+     absolutely relative to pack-wrap at calc(50% ± 130px) and visually
+     float into the side columns without crowding the pack. */
   #pack-row {
     display: grid;
     grid-template-columns: 1fr 200px 1fr;
@@ -230,21 +231,24 @@
     color: inherit; opacity: 0.85;
   }
 
-  /* Idle-homies row — horizontal strip above the pack showing one 🧢 per
-     available pool token. Lives as a flex item in #pack-area (not absolute)
-     so it can't collide with the rip-lane sprites at ±130px. */
+  /* Idle-homies column — vertical strip in the LEFT column of #pack-row,
+     mirroring the rip-lane sprites on the right side of the pack. One 🧢
+     per available pool token, label stacked above the hats. Self-justifies
+     to the right edge of the left column so it sits close to the pack. */
   #idle-homies {
-    display: flex; flex-direction: row;
-    align-items: center; justify-content: center;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
     gap: 6px;
-    padding: 4px 10px;
-    min-height: 22px;
+    padding: 6px 8px;
+    min-width: 44px;
     border-radius: 8px;
     background: rgba(0,0,0,0.22);
     border: 1px solid rgba(101,214,255,0.28);
     box-shadow: 0 0 8px rgba(101,214,255,0.18) inset;
     user-select: none; pointer-events: none;
     transition: opacity 0.18s, border-color 0.18s;
+    justify-self: end;
+    align-self: stretch;
   }
   #idle-homies.empty {
     opacity: 0.4;
@@ -257,7 +261,7 @@
   }
   #idle-homies.empty .idle-label { color: var(--muted); }
   #idle-homies .idle-hats {
-    display: flex; flex-direction: row;
+    display: flex; flex-direction: column;
     align-items: center; gap: 4px;
     min-height: 18px;
   }
@@ -275,8 +279,8 @@
     50%      { transform: translateY(-2px); }
   }
   @media (max-width: 900px) {
-    /* Tighter row on mobile. */
-    #idle-homies { padding: 3px 8px; gap: 4px; min-height: 18px; }
+    /* Tighter column on mobile. */
+    #idle-homies { padding: 4px 6px; gap: 4px; min-width: 36px; }
     #idle-homies .idle-hat { font-size: 1rem; }
   }
   @keyframes homie-bob {
@@ -1835,12 +1839,11 @@
     </button>
   </div>
   <div id="pack-area">
-    <div id="idle-homies" title="Idle homies — one 🧢 per available pool token. Grow the pool via CREW CLOUT nodes or by crafting your first set of each rarity/variant (10 milestones). Refunds when a working homie finishes.">
-      <span class="idle-label">IDLE</span>
-      <span class="idle-hats" id="idle-hats"></span>
-    </div>
     <div id="pack-row">
-      <div class="pack-row-spacer" aria-hidden="true"></div>
+      <div id="idle-homies" title="Idle homies — one 🧢 per available pool token. Grow the pool by crafting your first set of each rarity/variant (10 milestones). Refunds when a working homie finishes.">
+        <span class="idle-label">IDLE</span>
+        <span class="idle-hats" id="idle-hats"></span>
+      </div>
       <div id="pack-wrap">
         <div class="pack" id="pack">
           <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
@@ -2152,7 +2155,7 @@ let CASE_SIZE = def("CASE_SIZE", 216);
 // ---- Staff --------------------------------------------------------------
 let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
 let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
-const HOMIE_MAX     = 12; // 11 deployable seats (6 rip + 5 craft) + 1 spare in IDLE
+const HOMIE_MAX     = 10; // ceiling on the deployable pool — matches the 10 craft milestones
 // Per-rarity craft homies — sit on a single craft track and tick on a
 // unified cooldown (CRAFT_HOMIE_TICK_MS). On each tick a list-first
 // decision tree picks exactly ONE action: list a foil set, else list a
@@ -2168,9 +2171,9 @@ let CRAFT_HOMIE_DURATION_MS  = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
 // sits at. Player starts with 1 table; the other 5 are bought one at a
 // time for a flat TABLE_COST each. Tables persist forever once bought.
 // The shared homie pool is a token bank both rip and craft homies draw
-// from — base size HOMIE_POOL_BASE, grown by the CLOUT "crew" branch.
+// from — grown only by lifetime craft milestones (10 total).
 let TABLE_COST       = def("TABLE_COST", 100);
-let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 1);
+let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 0);
 // Sequential unlock order. Six rip slots — one lane per side of the
 // pack, three tiers each — alternating sides middle-out, then the five
 // craft-homie rarities low-to-high. The outer-lane slots (6-11) were
@@ -2218,10 +2221,9 @@ function craftMilestonesUnlocked() {
   return n;
 }
 function homiePoolMax() {
-  // Base + CREW CLOUT branch + lifetime craft milestones (1 base + up
-  // to 10 milestones = 11 today; the TBD "final homie" would add the
-  // 12th). HOMIE_MAX caps the visual slot grid, so the pool can never
-  // hand out more workers than there are seats.
+  // Lifetime craft milestones (one per non-foil/foil rarity = 10 total)
+  // are the sole growth path now — no starting homie, no CREW CLOUT
+  // branch. HOMIE_MAX caps the ceiling at 10 to match the milestones.
   const raw = HOMIE_POOL_BASE + (eff().homiePool || 0) + craftMilestonesUnlocked();
   return Math.min(HOMIE_MAX, raw);
 }
@@ -2312,12 +2314,6 @@ const UPGRADE_NODES = [
   { id: "vintage3", branch: "vintage", label: "Estate Sale",     desc: "+1 vintage shop slot",                  cost: 200, effect: { vintageSlots: 1 },                                  prereq: ["vintage2"] },
   { id: "vintage4", branch: "vintage", label: "Box Hunter",      desc: "Box weight +12, case weight +6",        cost: 350, effect: { vintageBoxWeightDelta: 12, vintageCaseWeightDelta: 6 }, prereq: ["vintage3"] },
   { id: "vintage5", branch: "vintage", label: "Time Traveler",   desc: "+1 vintage slot, refresh −60s",         cost: 600, effect: { vintageSlots: 1, vintageRefreshDelta: -60000 },     prereq: ["vintage4"] },
-  // CREW — pool growth. Each node bumps the shared homie pool max by 1
-  // and refunds the freshly-bought capacity immediately (purchaseNode
-  // grants the bump on purchase).
-  { id: "crew1", branch: "crew", label: "Apprentice",      desc: "+1 homie pool",  cost: 40,  effect: { homiePool: 1 } },
-  { id: "crew2", branch: "crew", label: "Crew Member",     desc: "+1 homie pool",  cost: 120, effect: { homiePool: 1 }, prereq: ["crew1"] },
-  { id: "crew3", branch: "crew", label: "Full-Time Staff", desc: "+1 homie pool",  cost: 350, effect: { homiePool: 1 }, prereq: ["crew2"] },
 ];
 const UPGRADE_BRANCHES = [
   { key: "paint",    label: "MARKING",  color: "#ff7eb3", subtracks: [
@@ -2327,7 +2323,6 @@ const UPGRADE_BRANCHES = [
   ] },
   { key: "listings", label: "LISTINGS", color: "#ffd84d" },
   { key: "vintage",  label: "VINTAGE",  color: "#d4a55e" },
-  { key: "crew",     label: "CREW",     color: "#65d6ff" },
 ];
 
 function unlockedNodeSet() {
@@ -2536,7 +2531,7 @@ const defaultState = () => ({
   // (6 rip + 5 craft = 11).
   tablesOwned: 0,
   // Shared homie token pool. Hiring any homie (rip or craft) consumes one;
-  // expiry refunds one. Max = HOMIE_POOL_BASE + crew CLOUT bonuses.
+  // expiry refunds one. Max = HOMIE_POOL_BASE (0) + craft milestones (0-10).
   homiePool: HOMIE_POOL_BASE,
   sorters: [],    // [{uid, level, input:{}, output:{}, lastSortAt, setId}]
   sorterUidCounter: 0,
@@ -2553,7 +2548,7 @@ const defaultState = () => ({
   // Lifetime first-craft milestones — flip true the first time the player
   // (or a craft homie acting on their behalf) crafts a Set of that rarity
   // / variant in any year. Each flip widens homiePoolMax by +1 (an extra
-  // IDLE 🧢 the player can deploy), independent of the CREW upgrade path.
+  // IDLE 🧢 the player can deploy); 10 of these are the only growth path.
   // Decoupled from per-year setsCelebrated so switching years can't
   // double-grant.
   craftMilestones:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
