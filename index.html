@@ -2876,7 +2876,8 @@ function load() {
     }
     if (!Array.isArray(parsed.available.slots)) parsed.available.slots = [];
     parsed.available.slots = parsed.available.slots.map(s => {
-      if (!s) return { cardId: null };
+      // null = pristine empty (never stocked); { cardId: null } = sold gap.
+      if (s === null || s === undefined) return null;
       if (s.cardId == null) return { cardId: null };
       // Strip any stale per-slot cooldown; conveyor doesn't use it.
       const { cooldownEndsAt, ...keep } = s;
@@ -3092,7 +3093,7 @@ let VINTAGE_TYPE_WEIGHTS = def("VINTAGE_TYPE_WEIGHTS", { pack: 80, box: 16, case
 // per-slot cooldown after purchase. Eligible tracks are the priced
 // rarities + every foil (excluding non-foil Standard / Rare, which are
 // trivial bulk and would just become an alternate cash sink).
-let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  10);
+let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  6);
 // The AVAILABLE market is a left-flowing conveyor: every
 // AVAILABLE_CONVEYOR_MS the leftmost slot is discarded, every other
 // slot shifts one position left, and a fresh offer enters at the
@@ -3229,10 +3230,11 @@ function syncAvailableSlotCount() {
     }
   }
   const want = availableSlotsEffective();
-  // Grow toward the current cap (e.g., a save from when the conveyor
-  // was 5 slots wide gets brand-new offers appended to fill out to 10).
+  // Grow toward the current cap with pristine-empty slots (null). The
+  // conveyor (advanceAvailableConveyor) fills them in from the right one
+  // tick at a time, so a fresh game starts blank and gradually loads up.
   while (state.available.slots.length < want) {
-    state.available.slots.push(rollAvailableOffer(sid));
+    state.available.slots.push(null);
   }
   // Shrink if the cap was lowered (design-panel retuning); drop
   // rightmost first so a slot that's about to evict on the left
@@ -4702,14 +4704,20 @@ function renderAvailable() {
            + `<div class="avail-price">${compactUsd(slot.askPrice)}</div>`
            + `</div>`;
     } else {
-      // Empty (bought) slot — visual gap that rides the conveyor until
-      // it shifts off the left edge. Dashed placeholder keeps the grid
-      // alignment consistent so cards don't jump to fill the hole.
+      // Two flavors of empty: null = pristine (never stocked — fresh game
+      // is all nulls and the conveyor fills them from the right); object
+      // with cardId==null = sold gap, rides the conveyor until it shifts
+      // off the left edge.
+      const isSold = !!slot;
+      const title = isSold
+        ? `Sold — this gap will shift off the conveyor in ${shiftLabel} or less.`
+        : `Waiting for stock — next offer arrives in ${shiftLabel}.`;
+      const label = isSold ? "SOLD" : "—";
       return `<div class="avail-cell">`
-           + `<div class="listing-card avail-empty-cell" title="Sold — this gap will shift off the conveyor in ${shiftLabel} or less.">`
+           + `<div class="listing-card avail-empty-cell" title="${title}">`
            + `<span class="lst-glyph avail-empty-glyph">—</span>`
            + `</div>`
-           + `<div class="avail-price avail-cd">SOLD</div>`
+           + `<div class="avail-price avail-cd">${label}</div>`
            + `</div>`;
     }
   });
