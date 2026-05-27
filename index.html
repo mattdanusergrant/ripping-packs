@@ -2002,10 +2002,12 @@ function def(key, fallback) {
 // grain detonates plus its 4 orthogonal neighbors, then non-standard grains
 // caught in the blast chain-explode (rare = RARE_BLAST_REACH-cell "+" arm in
 // each cardinal direction, foil = FOIL_BLAST_REACH-cell "+" arm).
-// Two sorting interaction prototypes:
+// Three sorting interaction prototypes:
 //   "hover_and_click" — dwell to mark grains, then click to detonate (legacy)
-//   "just_hover"      — hovering a grain immediately detonates it (no click)
-let SORT_MODE = def("SORT_MODE", "just_hover");
+//   "hover_and_move"  — moving cursor over a grain detonates it immediately
+//   "hover_and_pulse" — cursor stays put; a tick pulses and clears under it
+let SORT_MODE = def("SORT_MODE", "hover_and_pulse");
+let SORT_PULSE_MS = def("SORT_PULSE_MS", 250);
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
@@ -5404,13 +5406,17 @@ function updateMarkedCounter() {
   const cap = maxHighlightsEffective();
   el.textContent = `${markedGrains.size} / ${cap}`;
   el.classList.toggle("full", markedGrains.size >= cap);
-  // In just-hover mode, marking is bypassed entirely — hide the counter and
-  // adjust the hint text. Updating each draw is cheap and keeps the UI in
-  // sync if the design override is toggled at runtime.
-  const justHover = SORT_MODE === "just_hover";
-  el.style.display = justHover ? "none" : "";
+  // In the hover-only modes, marking is bypassed entirely — hide the counter
+  // and adjust the hint text. Cheap to do per-draw; keeps UI in sync if the
+  // design override is toggled at runtime.
+  const noMark = SORT_MODE === "hover_and_move" || SORT_MODE === "hover_and_pulse";
+  el.style.display = noMark ? "none" : "";
   const hint = $("sort-hint-text");
-  if (hint) hint.textContent = justHover ? "hover to sort" : "hover to mark · click to sort";
+  if (hint) {
+    if (SORT_MODE === "hover_and_move")  hint.textContent = "hover and move to sort";
+    else if (SORT_MODE === "hover_and_pulse") hint.textContent = "hover to sort (pulses)";
+    else hint.textContent = "hover to mark · click to sort";
+  }
 }
 function renderSandPile() {
   syncPileWithStock();
@@ -5482,8 +5488,10 @@ const DESIGN_FIELDS = [
   // Sorting
   { group: "Sorting",          key: "SORT_MODE",                       path: "SORT_MODE",                 label: "Sort interaction mode",        type: "select", options: [
       { value: "hover_and_click", label: "Hover and click" },
-      { value: "just_hover",      label: "Just hover" },
+      { value: "hover_and_move",  label: "Hover and move" },
+      { value: "hover_and_pulse", label: "Hover and pulse" },
     ] },
+  { group: "Sorting",          key: "SORT_PULSE_MS",                   path: "SORT_PULSE_MS",             label: "Pulse interval (ms, hover_and_pulse)", step: 50, min: 50, int: true },
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_DWELL_MS",                  path: "HOVER_DWELL_MS",            label: "Paint dwell time (ms)",        step: 10, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
@@ -5552,7 +5560,7 @@ function _liveDesignSnapshot() {
     BASELINE,
     SET_SIZES,
     HOVER_AUTORIP_MS,
-    SORT_MODE,
+    SORT_MODE, SORT_PULSE_MS,
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     RARE_BLAST_REACH, FOIL_BLAST_REACH,
     HOMIE_COST, HOMIE_PACK_MS,
@@ -7119,8 +7127,9 @@ $("sand-canvas").addEventListener("click", (e) => {
 });
 // Hover-paint: dwell over a grain for HOVER_DWELL_MS to add it to the marked
 // set. Fast sweeps cancel the dwell timer before it fires so nothing marks.
-// In SORT_MODE "just_hover", hovering a grain detonates it immediately —
-// no marking, no click — and the chainBusy guard rate-limits sweeps.
+// In SORT_MODE "hover_and_move", moving the cursor onto a grain detonates it
+// immediately (no marking, no click). The chainBusy guard rate-limits sweeps.
+// "hover_and_pulse" is handled by a separate setInterval (see SORT_PULSE_MS).
 $("sand-canvas").addEventListener("mousemove", (e) => {
   const canvas = $("sand-canvas");
   const rect = canvas.getBoundingClientRect();
@@ -7132,8 +7141,13 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
   const c = Math.floor(x / SAND_CELL_W);
   const r = Math.floor((h - y) / SAND_CELL_H) - SAND_BUFFER_ROWS;
   const k = cur().pile[c] && cur().pile[c][r];
-  if (SORT_MODE === "just_hover") {
+  if (SORT_MODE === "hover_and_move") {
     if (k && k !== "__") sortCards({ click: { x, y } });
+    drawSand();
+    return;
+  }
+  if (SORT_MODE === "hover_and_pulse") {
+    // Pulse mode ignores per-move triggers — let the interval do the work.
     drawSand();
     return;
   }
@@ -7255,6 +7269,19 @@ document.addEventListener("keydown", (e) => {
   }
 });
 setInterval(save, 5000);
+// Pulse-sort tick — when SORT_MODE is "hover_and_pulse", detonate whatever
+// live grain the cursor currently sits on. chainBusy and the grain-occupancy
+// check are the same guards used by the per-move handler.
+setInterval(() => {
+  if (SORT_MODE !== "hover_and_pulse") return;
+  if (chainBusy || !cursorPos) return;
+  const canvas = $("sand-canvas");
+  const h = canvas.clientHeight || 90;
+  const c = Math.floor(cursorPos.x / SAND_CELL_W);
+  const r = Math.floor((h - cursorPos.y) / SAND_CELL_H) - SAND_BUFFER_ROWS;
+  const k = cur().pile[c] && cur().pile[c][r];
+  if (k && k !== "__") sortCards({ click: { x: cursorPos.x, y: cursorPos.y } });
+}, SORT_PULSE_MS);
 setInterval(tickHomies, HOMIE_TICK_MS);
 setInterval(tickSorters, SORTER_TICK_MS);
 setInterval(resolveListings, LISTING_TICK_MS);
