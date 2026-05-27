@@ -106,6 +106,13 @@
     box-shadow: 0 0 8px rgba(179,93,255,0.6);
     animation: clout-pop 1.8s ease-in-out infinite;
   }
+  /* Sorting upgrades are cash-priced; tint the trigger green to match. */
+  .upgrade-trigger[data-sorting-branches] {
+    border-color: rgba(133,187,101,0.6);
+    color: var(--cash);
+  }
+  .upgrade-trigger[data-sorting-branches]:hover { background: rgba(133,187,101,0.15); }
+  .upgrade-trigger[data-sorting-branches].ready  { box-shadow: 0 0 8px rgba(133,187,101,0.6); }
 
   /* Each half scrolls as a unit when the viewport gets too short; the two
      halves still scroll independently of each other. */
