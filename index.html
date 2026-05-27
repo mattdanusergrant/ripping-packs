@@ -1709,7 +1709,13 @@
     padding: 4px 6px;
     font-family: inherit; font-size: 0.8rem;
   }
-  .design-row input:focus { outline: none; border-color: var(--gold); }
+  .design-row select {
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 4px;
+    padding: 4px 6px;
+    font-family: inherit; font-size: 0.8rem;
+  }
+  .design-row input:focus, .design-row select:focus { outline: none; border-color: var(--gold); }
   .design-modal-footer {
     display: flex; align-items: center; gap: 8px;
     padding: 10px 18px;
@@ -1895,7 +1901,7 @@
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
       <span class="sort-hint" id="sort-hint">
         <span id="marked-counter" class="marked-counter">0 / 10</span>
-        hover to mark · click to sort
+        <span id="sort-hint-text">hover to mark · click to sort</span>
       </span>
       <button class="upgrade-trigger" id="upgrade-paint" type="button" data-branch="paint">⬆ MARKING</button>
     </div>
@@ -1996,6 +2002,10 @@ function def(key, fallback) {
 // grain detonates plus its 4 orthogonal neighbors, then non-standard grains
 // caught in the blast chain-explode (rare = RARE_BLAST_REACH-cell "+" arm in
 // each cardinal direction, foil = FOIL_BLAST_REACH-cell "+" arm).
+// Two sorting interaction prototypes:
+//   "hover_and_click" — dwell to mark grains, then click to detonate (legacy)
+//   "just_hover"      — hovering a grain immediately detonates it (no click)
+let SORT_MODE = def("SORT_MODE", "hover_and_click");
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
@@ -5394,6 +5404,13 @@ function updateMarkedCounter() {
   const cap = maxHighlightsEffective();
   el.textContent = `${markedGrains.size} / ${cap}`;
   el.classList.toggle("full", markedGrains.size >= cap);
+  // In just-hover mode, marking is bypassed entirely — hide the counter and
+  // adjust the hint text. Updating each draw is cheap and keeps the UI in
+  // sync if the design override is toggled at runtime.
+  const justHover = SORT_MODE === "just_hover";
+  el.style.display = justHover ? "none" : "";
+  const hint = $("sort-hint-text");
+  if (hint) hint.textContent = justHover ? "hover to sort" : "hover to mark · click to sort";
 }
 function renderSandPile() {
   syncPileWithStock();
@@ -5463,6 +5480,10 @@ const DESIGN_FIELDS = [
   { group: "Ripping",          key: "HOVER_AUTORIP_MS",                path: "HOVER_AUTORIP_MS",          label: "Pack hover autorip interval (sec)", step: 0.1, min: 0.1, scale: 1000 },
 
   // Sorting
+  { group: "Sorting",          key: "SORT_MODE",                       path: "SORT_MODE",                 label: "Sort interaction mode",        type: "select", options: [
+      { value: "hover_and_click", label: "Hover and click" },
+      { value: "just_hover",      label: "Just hover" },
+    ] },
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_DWELL_MS",                  path: "HOVER_DWELL_MS",            label: "Paint dwell time (ms)",        step: 10, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
@@ -5531,6 +5552,7 @@ function _liveDesignSnapshot() {
     BASELINE,
     SET_SIZES,
     HOVER_AUTORIP_MS,
+    SORT_MODE,
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     RARE_BLAST_REACH, FOIL_BLAST_REACH,
     HOMIE_COST, HOMIE_PACK_MS,
@@ -5574,20 +5596,34 @@ function buildDesignForm() {
       const lbl = document.createElement("label");
       lbl.textContent = f.label;
       lbl.htmlFor = `design-input-${f.key}`;
-      const input = document.createElement("input");
-      input.type = "number";
+      let input;
+      if (f.type === "select") {
+        input = document.createElement("select");
+        (f.options || []).forEach(opt => {
+          const o = document.createElement("option");
+          o.value = opt.value;
+          o.textContent = opt.label;
+          input.appendChild(o);
+        });
+        input.dataset.type = "select";
+        const raw = _readCurrent(f.path);
+        if (raw != null) input.value = String(raw);
+      } else {
+        input = document.createElement("input");
+        input.type = "number";
+        if (f.scale) input.dataset.scale = f.scale;
+        if (f.step != null) input.step = f.step;
+        if (f.min  != null) input.min  = f.min;
+        if (f.max  != null) input.max  = f.max;
+        const raw = _readCurrent(f.path);
+        const shown = f.scale ? (raw / f.scale) : raw;
+        input.value = (typeof shown === "number" && isFinite(shown))
+          ? (f.int ? String(Math.round(shown)) : String(shown))
+          : "";
+      }
       input.id = `design-input-${f.key}`;
       input.dataset.key = f.key;
       input.dataset.path = f.path;
-      if (f.scale) input.dataset.scale = f.scale;
-      if (f.step != null) input.step = f.step;
-      if (f.min  != null) input.min  = f.min;
-      if (f.max  != null) input.max  = f.max;
-      const raw = _readCurrent(f.path);
-      const shown = f.scale ? (raw / f.scale) : raw;
-      input.value = (typeof shown === "number" && isFinite(shown))
-        ? (f.int ? String(Math.round(shown)) : String(shown))
-        : "";
       row.appendChild(lbl);
       row.appendChild(input);
       rows.appendChild(row);
@@ -5695,16 +5731,22 @@ function readFormOverrides() {
   // Build a sparse overrides object containing only values that differ
   // from their registered default.
   const overrides = {};
-  const inputs = document.querySelectorAll("#design-form input[type=number]");
+  const inputs = document.querySelectorAll("#design-form input[type=number], #design-form select");
   inputs.forEach(input => {
     const key   = input.dataset.key;
     const path  = input.dataset.path;
-    const scale = input.dataset.scale ? parseFloat(input.dataset.scale) : 1;
-    const raw   = input.value.trim();
-    if (raw === "") return;
-    const num = parseFloat(raw);
-    if (!isFinite(num)) return;
-    const value = num * scale;
+    let value;
+    if (input.dataset.type === "select") {
+      value = input.value;
+      if (value === "") return;
+    } else {
+      const scale = input.dataset.scale ? parseFloat(input.dataset.scale) : 1;
+      const raw   = input.value.trim();
+      if (raw === "") return;
+      const num = parseFloat(raw);
+      if (!isFinite(num)) return;
+      value = num * scale;
+    }
     // Compare against the default value (looking up via the key's path on defaults)
     const parts = path.split(".");
     const rootKey = parts[0];
@@ -7077,6 +7119,8 @@ $("sand-canvas").addEventListener("click", (e) => {
 });
 // Hover-paint: dwell over a grain for HOVER_DWELL_MS to add it to the marked
 // set. Fast sweeps cancel the dwell timer before it fires so nothing marks.
+// In SORT_MODE "just_hover", hovering a grain detonates it immediately —
+// no marking, no click — and the chainBusy guard rate-limits sweeps.
 $("sand-canvas").addEventListener("mousemove", (e) => {
   const canvas = $("sand-canvas");
   const rect = canvas.getBoundingClientRect();
@@ -7087,10 +7131,15 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
   const h = canvas.clientHeight || 90;
   const c = Math.floor(x / SAND_CELL_W);
   const r = Math.floor((h - y) / SAND_CELL_H) - SAND_BUFFER_ROWS;
+  const k = cur().pile[c] && cur().pile[c][r];
+  if (SORT_MODE === "just_hover") {
+    if (k && k !== "__") sortCards({ click: { x, y } });
+    drawSand();
+    return;
+  }
   // Cursor must be over a live grain (not off-pile, not a tombstone) to
   // start dwell. The actual *marked* set is computed from the radius when
   // the timer fires, so the cursor center grain is the anchor.
-  const k = cur().pile[c] && cur().pile[c][r];
   if (!k || k === "__") {
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
     hoverCell = null;
