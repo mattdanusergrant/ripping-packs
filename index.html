@@ -2140,17 +2140,38 @@ let SORT_MODE = def("SORT_MODE", "hover_and_pulse");
 let SORT_PULSE_MS = def("SORT_PULSE_MS", 250);
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
-// Per-slot foil roll. Each card in the pack independently rolls foil after
-// step 1's rare+ upgrade resolves.
-let PACK_FOIL_CHANCE      = def("PACK_FOIL_CHANCE", 0.02);
-// Per-slot tier-upgrade roll, chained: while a roll succeeds, the card's
-// rarity bumps one tier (standard → rare → epic → legendary → mythic).
-// At mythic, the chain stops. Cascading is what makes a god pack possible.
-let PACK_UPGRADE_CHANCE   = def("PACK_UPGRADE_CHANCE", 0.05);
-// The rare+ slot (placed at a random position in step 1) draws from these.
-let RARE_PLUS_WEIGHTS     = def("RARE_PLUS_WEIGHTS", {
-  rare: 0.85, epic: 0.10, legendary: 0.04, mythic: 0.01,
+// ---- Print sheets --------------------------------------------------------
+// Pack rolls are driven by physical print-sheet composition. A real factory
+// prints cards on uncut sheets where each card has a fixed print run; pulling
+// a card is just sampling a slot on a sheet uniformly. The per-card print
+// run IS the drop rate — no separate weight tables to keep in sync.
+//
+// Three sheets:
+//   common  — standards only
+//   rare    — rare / epic / legendary / mythic, weighted by per-card print
+//             run. Modeled after Magic's "rare slot" (rares + mythics share
+//             one sheet, with mythics printed at a much lower count).
+//   foil    — every rarity, weighted independently so foil mythics can be
+//             tuned without affecting non-foil mythic rates.
+//
+// A pack pulls PACK_COMMON_SLOTS commons + PACK_RARE_SLOTS rares; with
+// probability FOIL_PER_PACK one of the COMMON slots is replaced by a
+// foil-sheet pull (matches the real-world "foil replaces a common" pattern).
+let PRINT_SHEETS = def("PRINT_SHEETS", {
+  // 18 standards × 7 prints each = 126-slot common sheet.
+  common: { standard: 7 },
+  // 9 rares × 8 + 3 epics × 4 + 3 legs × 3 + 3 mythics × 2 = 99 slots.
+  // Mythic share = 6/99 ≈ 6.1% of rare-slot pulls.
+  rare:   { rare: 8, epic: 4, legendary: 3, mythic: 2 },
+  // Foil sheet: separate mythic share so foils stay attainable. Total slots:
+  // 18×4 + 9×3 + 3×2 + 3×2 + 3×2 = 117. Mythic share = 6/117 ≈ 5.1%.
+  foil:   { standard: 4, rare: 3, epic: 2, legendary: 2, mythic: 2 },
 });
+let PACK_COMMON_SLOTS = def("PACK_COMMON_SLOTS", 9);
+let PACK_RARE_SLOTS   = def("PACK_RARE_SLOTS", 1);
+// Probability a pack contains a foil (replaces one common slot). Tunes the
+// long-term foil drip without touching per-sheet mythic share.
+let FOIL_PER_PACK     = def("FOIL_PER_PACK", 0.5);
 
 // ---- Set / identity -----------------------------------------------------
 // Composite card IDs bake in GAME, SET, and CARD numbers so additional games
@@ -3321,33 +3342,46 @@ function rollWeighted(weights, fallback) {
   }
   return fallback;
 }
-function rollRarePlus() { return rollWeighted(RARE_PLUS_WEIGHTS, "rare"); }
 function randomCardId(rarity) {
   const size = SET_SIZES[rarity] || 1;
   return Math.floor(Math.random() * size) + 1;
 }
 
-function rollPack() {
-  // Step 1: 10 standards, one random slot upgrades into a rare+ card.
-  const cards = [];
-  for (let i = 0; i < 10; i++) {
-    cards.push({ rarity: "standard", foil: false, id: 0 });
+// Sample a rarity from one of the PRINT_SHEETS. Each entry contributes
+// SET_SIZES[r] × prints slots; sampling is uniform across total slots, so
+// every (rarity, card-id) combination prints at exactly its run count.
+function rollSheet(sheetKey) {
+  const sheet = PRINT_SHEETS[sheetKey] || {};
+  let total = 0;
+  for (const r in sheet) total += (SET_SIZES[r] || 0) * (sheet[r] || 0);
+  if (total <= 0) return "standard";
+  let pick = Math.random() * total;
+  for (const r in sheet) {
+    const w = (SET_SIZES[r] || 0) * (sheet[r] || 0);
+    if (w <= 0) continue;
+    pick -= w;
+    if (pick < 0) return r;
   }
-  const rarePlusSlot = Math.floor(Math.random() * 10);
-  cards[rarePlusSlot].rarity = rollRarePlus();
+  return "standard";
+}
 
-  // Step 2: per-slot, independent foil and chained tier-upgrade rolls. The
-  // upgrade chain keeps rolling while it succeeds, so a standard slot can —
-  // in absurdly rare circumstances — climb all the way to mythic.
-  cards.forEach(c => {
-    if (Math.random() < PACK_FOIL_CHANCE) c.foil = true;
-    while (Math.random() < PACK_UPGRADE_CHANCE) {
-      const idx = RARITIES.indexOf(c.rarity);
-      if (idx < 0 || idx >= RARITIES.length - 1) break; // mythic caps the chain
-      c.rarity = RARITIES[idx + 1];
-    }
-    c.id = randomCardId(c.rarity); // ID is re-rolled against the final rarity
-  });
+function rollPack() {
+  const cards = [];
+  for (let i = 0; i < PACK_COMMON_SLOTS; i++) {
+    const r = rollSheet("common");
+    cards.push({ rarity: r, foil: false, id: randomCardId(r) });
+  }
+  for (let i = 0; i < PACK_RARE_SLOTS; i++) {
+    const r = rollSheet("rare");
+    cards.push({ rarity: r, foil: false, id: randomCardId(r) });
+  }
+  // Foil slot replaces a random COMMON slot (matches real-world packs where
+  // the rare slot is preserved and the foil supplants a common).
+  if (PACK_COMMON_SLOTS > 0 && Math.random() < FOIL_PER_PACK) {
+    const slot = Math.floor(Math.random() * PACK_COMMON_SLOTS);
+    const r = rollSheet("foil");
+    cards[slot] = { rarity: r, foil: true, id: randomCardId(r) };
+  }
   return cards;
 }
 // Set to true around off-screen rips (e.g. a homie working a different
@@ -5787,12 +5821,21 @@ const DESIGN_FIELDS = [
   { group: "Economy",          key: "CASE_SIZE",                       path: "CASE_SIZE",                 label: "Case pack count",              step: 1,    min: 1, int: true },
 
   // Pack rolls
-  { group: "Pack rolls",       key: "PACK_FOIL_CHANCE",                path: "PACK_FOIL_CHANCE",          label: "Foil chance / slot",           step: 0.005, min: 0, max: 1 },
-  { group: "Pack rolls",       key: "PACK_UPGRADE_CHANCE",             path: "PACK_UPGRADE_CHANCE",       label: "Tier upgrade chance / slot",   step: 0.005, min: 0, max: 1 },
-  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.rare",          path: "RARE_PLUS_WEIGHTS.rare",        label: "Rare+ slot: rare",        step: 0.01,  min: 0 },
-  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.epic",          path: "RARE_PLUS_WEIGHTS.epic",        label: "Rare+ slot: epic",        step: 0.01,  min: 0 },
-  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.legendary",     path: "RARE_PLUS_WEIGHTS.legendary",   label: "Rare+ slot: legendary",   step: 0.005, min: 0 },
-  { group: "Pack rolls",       key: "RARE_PLUS_WEIGHTS.mythic",        path: "RARE_PLUS_WEIGHTS.mythic",      label: "Rare+ slot: mythic",      step: 0.005, min: 0 },
+  { group: "Pack rolls",       key: "PACK_COMMON_SLOTS",               path: "PACK_COMMON_SLOTS",         label: "Common slots / pack",          step: 1, min: 0, int: true },
+  { group: "Pack rolls",       key: "PACK_RARE_SLOTS",                 path: "PACK_RARE_SLOTS",           label: "Rare slots / pack",            step: 1, min: 0, int: true },
+  { group: "Pack rolls",       key: "FOIL_PER_PACK",                   path: "FOIL_PER_PACK",             label: "Foil per pack (probability)",  step: 0.05, min: 0, max: 1 },
+  // Print-sheet runs — per-card print counts. Drop rates = (set size × prints)
+  // share of the sheet. The common sheet only carries standards.
+  { group: "Print sheet: common", key: "PRINT_SHEETS.common.standard",      path: "PRINT_SHEETS.common.standard",      label: "Standard prints / card",  step: 1, min: 0, int: true },
+  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.rare",            path: "PRINT_SHEETS.rare.rare",            label: "Rare prints / card",      step: 1, min: 0, int: true },
+  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.epic",            path: "PRINT_SHEETS.rare.epic",            label: "Epic prints / card",      step: 1, min: 0, int: true },
+  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.legendary",       path: "PRINT_SHEETS.rare.legendary",       label: "Legendary prints / card", step: 1, min: 0, int: true },
+  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.mythic",          path: "PRINT_SHEETS.rare.mythic",          label: "Mythic prints / card",    step: 1, min: 0, int: true },
+  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.standard",        path: "PRINT_SHEETS.foil.standard",        label: "Standard prints / card",  step: 1, min: 0, int: true },
+  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.rare",            path: "PRINT_SHEETS.foil.rare",            label: "Rare prints / card",      step: 1, min: 0, int: true },
+  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.epic",            path: "PRINT_SHEETS.foil.epic",            label: "Epic prints / card",      step: 1, min: 0, int: true },
+  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.legendary",       path: "PRINT_SHEETS.foil.legendary",       label: "Legendary prints / card", step: 1, min: 0, int: true },
+  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.mythic",          path: "PRINT_SHEETS.foil.mythic",          label: "Mythic prints / card",    step: 1, min: 0, int: true },
 
   // Market baselines — every Set is explicit since singles don't list.
   // Numbers reflect the long-horizon cash value of completing that rarity.
@@ -5896,7 +5939,7 @@ function _resolvePath(root, path) {
 function _liveDesignSnapshot() {
   return {
     PACK_COST, BOX_COST, CASE_COST, BOX_SIZE, CASE_SIZE,
-    PACK_FOIL_CHANCE, PACK_UPGRADE_CHANCE, RARE_PLUS_WEIGHTS,
+    PRINT_SHEETS, PACK_COMMON_SLOTS, PACK_RARE_SLOTS, FOIL_PER_PACK,
     BASELINE,
     SET_SIZES,
     HOVER_AUTORIP_MS,
