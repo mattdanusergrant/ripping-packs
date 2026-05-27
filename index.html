@@ -2948,10 +2948,14 @@ let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  10);
 // rides along the conveyor until it shifts off on its own.
 let AVAILABLE_CONVEYOR_MS = def("AVAILABLE_CONVEYOR_MS", 2 * 60 * 1000); // 2 min
 let AVAILABLE_PRICE_RATIO = def("AVAILABLE_PRICE_RATIO", 1.25);          // +25% premium
-// Standard / Rare (and their foils) are excluded: bulk-style commons
-// aren't what the AVAILABLE market is for — its job is targeted singles
-// of the cards a collector actually hunts for.
+// Standard (and its foil) is excluded: bulk-style commons aren't what
+// the AVAILABLE market is for — its job is targeted singles of the
+// cards a collector actually hunts for. Non-foil Rare is excluded for
+// the same reason (it's bulk-pile fodder), but FOIL Rare is in: it
+// routes through the priced market track (mk: "foilRare") and a
+// dealer-priced single is a real chase, not bulk.
 const AVAILABLE_RARITIES = [
+  { rarity: "rare",      foil: true  },
   { rarity: "epic",      foil: false },
   { rarity: "legendary", foil: false },
   { rarity: "mythic",    foil: false },
