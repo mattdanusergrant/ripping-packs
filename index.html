@@ -131,9 +131,6 @@
      "top: 25/50/75%" map to vertical thirds of the pack itself, not of a
      fluid pack-area. */
   #pack-wrap { position: relative; }
-  /* Six fixed slots: 0-2 stacked to the left of the pack, 3-5 to the right.
-     Slot 0 / 3 are at the top, 2 / 5 at the bottom. Sprite is centered on
-     `left` via translateX so the offset reads symmetrically. */
   .homie-sprite {
     position: absolute;
     display: flex; flex-direction: column; align-items: center;
@@ -143,12 +140,25 @@
     z-index: 5;
     transform: translate(-50%, -50%);
   }
-  .homie-sprite[data-slot="0"] { left: calc(50% - 130px); top: 22%; }
-  .homie-sprite[data-slot="1"] { left: calc(50% - 130px); top: 50%; }
-  .homie-sprite[data-slot="2"] { left: calc(50% - 130px); top: 78%; }
-  .homie-sprite[data-slot="3"] { left: calc(50% + 130px); top: 22%; }
-  .homie-sprite[data-slot="4"] { left: calc(50% + 130px); top: 50%; }
-  .homie-sprite[data-slot="5"] { left: calc(50% + 130px); top: 78%; }
+  /* Twelve fixed slots in two lanes per side, three vertical tiers each:
+       inner lane (0-2 left, 3-5 right) hugs the pack;
+       outer lane (6-8 left, 9-11 right) sits one sprite-width further out.
+     Slots 0/3/6/9 are top, 2/5/8/11 are bottom. Sprite is centered on
+     `left` via translateX so the offsets read symmetrically. The
+     SLOT_UNLOCK_ORDER table controls which of these are reachable as
+     the player buys tables. */
+  .homie-sprite[data-slot="0"]  { left: calc(50% - 130px); top: 22%; }
+  .homie-sprite[data-slot="1"]  { left: calc(50% - 130px); top: 50%; }
+  .homie-sprite[data-slot="2"]  { left: calc(50% - 130px); top: 78%; }
+  .homie-sprite[data-slot="3"]  { left: calc(50% + 130px); top: 22%; }
+  .homie-sprite[data-slot="4"]  { left: calc(50% + 130px); top: 50%; }
+  .homie-sprite[data-slot="5"]  { left: calc(50% + 130px); top: 78%; }
+  .homie-sprite[data-slot="6"]  { left: calc(50% - 200px); top: 22%; }
+  .homie-sprite[data-slot="7"]  { left: calc(50% - 200px); top: 50%; }
+  .homie-sprite[data-slot="8"]  { left: calc(50% - 200px); top: 78%; }
+  .homie-sprite[data-slot="9"]  { left: calc(50% + 200px); top: 22%; }
+  .homie-sprite[data-slot="10"] { left: calc(50% + 200px); top: 50%; }
+  .homie-sprite[data-slot="11"] { left: calc(50% + 200px); top: 78%; }
   .homie-sprite .homie-emoji { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
   .homie-sprite .homie-set {
     background: rgba(255,216,77,0.22); color: #ffd84d;
@@ -219,18 +229,16 @@
     color: inherit; opacity: 0.85;
   }
 
-  /* Idle-homies window — sits at the left edge of #pack-area showing one
-     🧢 per available pool token. Anchored absolute so it doesn't push
-     pack-wrap off-center (the table sprites depend on a centered wrap). */
+  /* Idle-homies row — horizontal strip above the pack showing one 🧢 per
+     available pool token. Lives as a flex item in #pack-area (not absolute)
+     so it can't collide with the outer-lane sprites at ±200px. */
   #idle-homies {
-    position: absolute;
-    left: 6px; top: 50%;
-    transform: translateY(-50%);
-    width: 52px;
-    display: flex; flex-direction: column;
-    align-items: center; gap: 6px;
-    padding: 8px 4px;
-    border-radius: 10px;
+    display: flex; flex-direction: row;
+    align-items: center; justify-content: center;
+    gap: 6px;
+    padding: 4px 10px;
+    min-height: 22px;
+    border-radius: 8px;
     background: rgba(0,0,0,0.22);
     border: 1px solid rgba(101,214,255,0.28);
     box-shadow: 0 0 8px rgba(101,214,255,0.18) inset;
@@ -248,12 +256,12 @@
   }
   #idle-homies.empty .idle-label { color: var(--muted); }
   #idle-homies .idle-hats {
-    display: flex; flex-direction: column;
-    align-items: center; gap: 2px;
+    display: flex; flex-direction: row;
+    align-items: center; gap: 4px;
     min-height: 18px;
   }
   #idle-homies .idle-hat {
-    font-size: 1.25rem; line-height: 1;
+    font-size: 1.1rem; line-height: 1;
     filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55));
     animation: idle-hat-bob 2.4s ease-in-out infinite;
   }
@@ -266,8 +274,8 @@
     50%      { transform: translateY(-2px); }
   }
   @media (max-width: 900px) {
-    /* Smaller on mobile to clear the narrower pack column. */
-    #idle-homies { width: 40px; padding: 6px 3px; gap: 4px; }
+    /* Tighter row on mobile. */
+    #idle-homies { padding: 3px 8px; gap: 4px; min-height: 18px; }
     #idle-homies .idle-hat { font-size: 1rem; }
   }
   @keyframes homie-bob {
@@ -1571,6 +1579,8 @@
     /* Tighter homie offset for the narrower mobile pack. */
     .homie-sprite[data-slot="0"], .homie-sprite[data-slot="1"], .homie-sprite[data-slot="2"] { left: calc(50% - 100px); }
     .homie-sprite[data-slot="3"], .homie-sprite[data-slot="4"], .homie-sprite[data-slot="5"] { left: calc(50% + 100px); }
+    .homie-sprite[data-slot="6"], .homie-sprite[data-slot="7"], .homie-sprite[data-slot="8"] { left: calc(50% - 160px); }
+    .homie-sprite[data-slot="9"], .homie-sprite[data-slot="10"], .homie-sprite[data-slot="11"] { left: calc(50% + 160px); }
     #sand-canvas { width: 100%; height: auto; aspect-ratio: 50 / 26; }
     .buy-btn { padding: 6px 4px; }
     .buy-btn .lbl { font-size: 0.85rem; }
@@ -1685,9 +1695,9 @@
     </button>
   </div>
   <div id="pack-area">
-    <div id="idle-homies" title="Idle homies — one 🧢 per available pool token. Refunds when a working homie finishes.">
+    <div id="idle-homies" title="Idle homies — one 🧢 per available pool token. Grow the pool via CREW CLOUT nodes or by crafting your first set of each rarity/variant (10 milestones). Refunds when a working homie finishes.">
       <span class="idle-label">IDLE</span>
-      <div class="idle-hats" id="idle-hats"></div>
+      <span class="idle-hats" id="idle-hats"></span>
     </div>
     <div id="pack-wrap">
       <div class="pack" id="pack">
@@ -1997,7 +2007,7 @@ let CASE_SIZE = def("CASE_SIZE", 216);
 // ---- Staff --------------------------------------------------------------
 let HOMIE_COST      = def("HOMIE_COST", 20);  // cash cost on top of 1 box
 let HOMIE_PACK_MS   = def("HOMIE_PACK_MS", 3000); // ms between auto-rips
-const HOMIE_MAX     = 6; // 3 slots each side of the pack
+const HOMIE_MAX     = 12; // two lanes per side of the pack, three tiers each
 // Per-rarity craft homies — sit on a single craft track and tick on a
 // unified cooldown (CRAFT_HOMIE_TICK_MS). On each tick a list-first
 // decision tree picks exactly ONE action: list a foil set, else list a
@@ -2018,9 +2028,11 @@ let TABLE_COST       = def("TABLE_COST", 100);
 let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 1);
 // Sequential unlock order for ALL homie slots, rip + craft alike. The
 // player starts with zero tables; buying a table at the current "next"
-// slot unlocks the slot — and reveals the next one as purchaseable. The
-// six rip slots come first (center-out for a balanced silhouette), then
-// the five craft-homie rarities low-to-high.
+// slot unlocks the slot — and reveals the next one as purchaseable.
+// Order escalates: inner-lane rip slots (center-out) → five craft-homie
+// rarities low-to-high → outer-lane rip slots (center-out, mirroring the
+// inner-lane pattern). The outer lane lands at the end as an endgame
+// scale-up after the player has fully automated the inner pipeline.
 const SLOT_UNLOCK_ORDER = [
   { kind: "rip",   slot: 1 },
   { kind: "rip",   slot: 4 },
@@ -2033,6 +2045,12 @@ const SLOT_UNLOCK_ORDER = [
   { kind: "craft", rarity: "epic" },
   { kind: "craft", rarity: "legendary" },
   { kind: "craft", rarity: "mythic" },
+  { kind: "rip",   slot: 7 },
+  { kind: "rip",   slot: 10 },
+  { kind: "rip",   slot: 6 },
+  { kind: "rip",   slot: 9 },
+  { kind: "rip",   slot: 8 },
+  { kind: "rip",   slot: 11 },
 ];
 function tablesOwnedCount() {
   return Math.max(0, Math.min(SLOT_UNLOCK_ORDER.length, state.tablesOwned || 0));
@@ -2054,7 +2072,22 @@ function hasCraftTable(rarity) {
   return ownedTableEntries().some(e => e.kind === "craft" && e.rarity === rarity);
 }
 function tableCost() { return TABLE_COST; }
-function homiePoolMax() { return HOMIE_POOL_BASE + (eff().homiePool || 0); }
+function craftMilestonesUnlocked() {
+  let n = 0;
+  RARITIES.forEach(r => {
+    if (state.craftMilestones && state.craftMilestones[r])         n++;
+    if (state.craftMilestonesFoil && state.craftMilestonesFoil[r]) n++;
+  });
+  return n;
+}
+function homiePoolMax() {
+  // Base + CREW CLOUT branch + lifetime craft milestones (1 base + up
+  // to 10 milestones = 11 today; the TBD "final homie" would add the
+  // 12th). HOMIE_MAX caps the visual slot grid, so the pool can never
+  // hand out more workers than there are seats.
+  const raw = HOMIE_POOL_BASE + (eff().homiePool || 0) + craftMilestonesUnlocked();
+  return Math.min(HOMIE_MAX, raw);
+}
 // Manual rips required to unlock the type-to-rip mini-game. First session
 // shows just a horizontal progress bar; once filled, the typing UI takes
 // over the same slot in #typing-zone.
@@ -2384,6 +2417,14 @@ const defaultState = () => ({
   // Gates the Vintage Packs shop + year picker visibility in renderAll
   // so the first session is just the core rip → sort → craft → list loop.
   firstSetCrafted: false,
+  // Lifetime first-craft milestones — flip true the first time the player
+  // (or a craft homie acting on their behalf) crafts a Set of that rarity
+  // / variant in any year. Each flip widens homiePoolMax by +1 (an extra
+  // IDLE 🧢 the player can deploy), independent of the CREW upgrade path.
+  // Decoupled from per-year setsCelebrated so switching years can't
+  // double-grant.
+  craftMilestones:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
+  craftMilestonesFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
   // Manual rips (not homie-driven) — drives the type-to-rip unlock bar.
   // The typing UI is hidden behind a progress bar until manualRips
   // reaches TYPING_UNLOCK_RIPS (= 100). Counted only in ripOne(), so
@@ -2586,14 +2627,33 @@ function load() {
       if (need) minTables = Math.max(minTables, i + 1);
     }
     parsed.tablesOwned = Math.min(SLOT_UNLOCK_ORDER.length, minTables);
+    // Backfill craft milestones. For pre-milestone saves, grandfather
+    // any rarity the player has already completed in any year (uses
+    // setsCelebrated / setsCelebratedFoil as proxy evidence) — losing
+    // earned labor to a schema change would feel awful. New saves get
+    // all-false defaults from defaultState().
+    if (!parsed.craftMilestones || typeof parsed.craftMilestones !== "object") {
+      parsed.craftMilestones     = { standard: false, rare: false, epic: false, legendary: false, mythic: false };
+      parsed.craftMilestonesFoil = { standard: false, rare: false, epic: false, legendary: false, mythic: false };
+      Object.values(parsed.sets || {}).forEach(b => {
+        RARITIES.forEach(r => {
+          if (b.setsCelebrated     && b.setsCelebrated[r])     parsed.craftMilestones[r] = true;
+          if (b.setsCelebratedFoil && b.setsCelebratedFoil[r]) parsed.craftMilestonesFoil[r] = true;
+        });
+      });
+    }
+    const milestoneBonus = RARITIES.reduce((n, r) => {
+      return n + (parsed.craftMilestones[r] ? 1 : 0) + (parsed.craftMilestonesFoil[r] ? 1 : 0);
+    }, 0);
     if (typeof parsed.homiePool !== "number") {
-      // Pool max at load time = base + crew nodes already owned. Subtract
-      // currently-deployed homies to get the remaining tokens.
+      // Pool max at load time = base + crew nodes already owned + lifetime
+      // craft milestones unlocked. Subtract currently-deployed homies to
+      // get the remaining tokens.
       const crewBonus = (parsed.unlockedNodes || []).reduce((n, id) => {
         const node = UPGRADE_NODES.find(x => x.id === id);
         return n + ((node && node.effect && node.effect.homiePool) || 0);
       }, 0);
-      const max = HOMIE_POOL_BASE + crewBonus;
+      const max = Math.min(HOMIE_MAX, HOMIE_POOL_BASE + crewBonus + milestoneBonus);
       const deployed = Array.isArray(parsed.homies) ? parsed.homies.length : 0;
       parsed.homiePool = Math.max(0, max - deployed);
     } else {
@@ -2603,7 +2663,8 @@ function load() {
         const node = UPGRADE_NODES.find(x => x.id === id);
         return n + ((node && node.effect && node.effect.homiePool) || 0);
       }, 0);
-      parsed.homiePool = Math.max(0, Math.min(parsed.homiePool, HOMIE_POOL_BASE + crewBonus));
+      const max = Math.min(HOMIE_MAX, HOMIE_POOL_BASE + crewBonus + milestoneBonus);
+      parsed.homiePool = Math.max(0, Math.min(parsed.homiePool, max));
     }
     // Backfill the typing-unlock counter. Older saves that pre-date the
     // gate get capped at the threshold so the typing UI doesn't re-lock
@@ -3715,14 +3776,38 @@ function craftSet(key, opts = {}) {
   else            cur().stock[track.baseRarity]     = Math.max(0, (cur().stock[track.baseRarity]     || 0) - size);
   if (!cur().invById[track.itemKey]) cur().invById[track.itemKey] = {};
   cur().invById[track.itemKey][1] = (cur().invById[track.itemKey][1] || 0) + 1;
+  // Lifetime first-craft milestone: widens homiePoolMax by +1 and
+  // immediately drops a fresh IDLE 🧢 into the pool. Fires from craft-homie
+  // ticks too — the homie is acting on the player's behalf, so the earned
+  // crew member still belongs to them. Idempotent: re-crafting the same
+  // rarity/variant won't re-grant.
+  const milestoneTrack = track.foil ? state.craftMilestonesFoil : state.craftMilestones;
+  const homieEarned = !!(milestoneTrack && !milestoneTrack[track.baseRarity]);
+  if (homieEarned) {
+    milestoneTrack[track.baseRarity] = true;
+    state.homiePool = Math.min(homiePoolMax(), (state.homiePool || 0) + 1);
+  }
   // Silent mode is used by the craft-homie tick: it batches the render +
   // save once at the end of the tick and suppresses the routine "Ready to
   // list" hint so a homie quietly working another year doesn't overwrite
-  // the player's active hint message.
-  if (opts.silent) return true;
+  // the player's active hint message. Milestone celebrations override the
+  // silence — earning a homie is a one-shot life event the player
+  // shouldn't miss just because a homie produced the craft.
+  if (opts.silent) {
+    if (homieEarned) {
+      SFX.unlock();
+      $("hint").textContent = `🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted!`;
+    }
+    return true;
+  }
   renderAll(); save();
   SFX.craft();
-  $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
+  if (homieEarned) {
+    SFX.unlock();
+    $("hint").textContent = `🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted! Hire from any open table to deploy.`;
+  } else {
+    $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
+  }
   return true;
 }
 

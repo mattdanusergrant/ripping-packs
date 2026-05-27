@@ -253,11 +253,14 @@ Three kinds of helper: **rip homies** (auto-rip packs), **craft homies** (auto-c
 Both rip and craft homies draw from a **shared token pool** (`state.homiePool`, capped at `homiePoolMax()`):
 
 - **Base pool size** = `HOMIE_POOL_BASE` (default **1** — fresh saves start with a single homie). Hiring any homie consumes one token; expiry refunds one token back to the pool.
-- **Pool growth** is the CLOUT **CREW** branch (see §8b table): three nodes (Apprentice → Crew Member → Full-Time Staff) at 40 / 120 / 350 CLOUT, each +1 pool. Purchasing a node immediately refunds the new headroom into the current pool.
+- **Pool growth** has two independent paths:
+  - The CLOUT **CREW** branch (see §8b table): three nodes (Apprentice → Crew Member → Full-Time Staff) at 40 / 120 / 350 CLOUT, each +1 pool. Purchasing a node immediately refunds the new headroom into the current pool.
+  - **First-craft milestones** — lifetime flags (`state.craftMilestones` / `craftMilestonesFoil`) flip true the first time the player (or a craft homie acting on their behalf) crafts a Set of each rarity in each variant. 5 non-foil + 5 foil = 10 milestones, each +1 pool, immediately deposited as an IDLE 🧢. Decoupled from per-year `setsCelebrated` so switching years can't double-grant. Pre-milestone saves are backfilled from `setsCelebrated` / `setsCelebratedFoil` across all years so no earned labor is lost.
+- **Cap:** `homiePoolMax()` = `HOMIE_POOL_BASE + crew + milestones`, clamped to `HOMIE_MAX` (12). Today that's 1 base + 3 CREW + 10 milestones = 14 raw → clamped to 12; the 12th slot is the "final homie" whose unlock condition is TBD.
 - A header **HOMIES** chip (cyan, between CLOUT and the sound toggle) shows `available / max`. Greys out when empty.
 - An **IDLE** window in the left gutter of the booster-pack area renders one bobbing 🧢 emoji per available pool token (not just a number) so the player can see their bench at a glance. Stack staggers its bob via `:nth-child` animation delays.
 
-Every homie slot — both the 6 rip-homie sprites flanking the booster pack AND the 5 craft-homie slots on the rarity rows — is a **table** the homie sits at. Tables unlock **sequentially** along a single 11-step path: the 6 rip slots first (center-out order `1, 4, 0, 3, 2, 5`), then the 5 craft-homie rarities low-to-high (`standard → rare → epic → legendary → mythic`).
+Every homie slot — the 12 rip-homie sprites flanking the booster pack (two lanes per side, three vertical tiers each) AND the 5 craft-homie slots on the rarity rows — is a **table** the homie sits at. Tables unlock **sequentially** along a single 17-step path: the 6 inner-lane rip slots first (center-out order `1, 4, 0, 3, 2, 5`), then the 5 craft-homie rarities low-to-high (`standard → rare → epic → legendary → mythic`), then the 6 outer-lane rip slots in the mirroring pattern (`7, 10, 6, 9, 8, 11`) as an endgame scale-up.
 
 Players start with **zero tables bought**. The very first slot — rip slot 1 (left-middle of the pack) — renders as a `🪑 BUY TABLE · $100` chip; every later slot is hidden. Buying the current next-in-line table costs a flat `TABLE_COST` (default **$100**, tunable) and **reveals the next slot** as the new purchaseable chip. The newly-revealed slot still needs its own table buy before it can be hired into — visibility and functionality are separate steps. Tables persist forever once bought.
 
@@ -269,7 +272,7 @@ For rip slots, locked-but-not-next-in-line renders nothing at all. For craft slo
 
 - **Cost:** $20 + 1 sealed box (consumed from the active year's stash) + 1 homie token from the shared pool
 - **Effect:** spawns an animated 🧢 sprite at the clicked table with a live progress bar; auto-rips one pack every 3s from its personal 36-pack pool
-- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — up to 6 tables, but capped by available pool tokens)
+- **Lifetime:** until the box is empty (~108s total, faster with multiple homies — up to 12 tables once the player has bought through the outer lane, but always capped by available pool tokens)
 - **Slot selection:** clicking an empty table hires *that specific table*, not the lowest free one
 - **Year binding:** homie remembers `setId` at hire; if you switch years mid-job, they keep ripping the original year silently in the background (no canvas spam, no SFX leakage)
 
