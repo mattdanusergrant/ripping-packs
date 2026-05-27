@@ -2128,10 +2128,14 @@ function def(key, fallback) {
 // grain detonates plus its 4 orthogonal neighbors, then non-standard grains
 // caught in the blast chain-explode (rare = RARE_BLAST_REACH-cell "+" arm in
 // each cardinal direction, foil = FOIL_BLAST_REACH-cell "+" arm).
-// Three sorting interaction prototypes:
-//   "hover_and_click" — dwell to mark grains, then click to detonate (legacy)
-//   "hover_and_move"  — moving cursor over a grain detonates it immediately
+// Four sorting interaction prototypes:
+//   "hover_and_click" — dwell to mark grains, then click to detonate
+//   "hover_and_move"  — moving cursor over a grain detonates it
 //   "hover_and_pulse" — cursor stays put; a tick pulses and clears under it
+//   "click_and_chain" — single click → only the nearest grain dies, but
+//                       rare/foil hits propagate full chain reactions
+// Chain propagation is *only* enabled in click_and_chain; the hover modes
+// just sort the targeted grain(s) flatly.
 let SORT_MODE = def("SORT_MODE", "hover_and_pulse");
 let SORT_PULSE_MS = def("SORT_PULSE_MS", 250);
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
@@ -2625,17 +2629,19 @@ function sortClickRadiusEffective() {
   if (SORT_MODE === "hover_and_move") base += (eff().moveSweepRadius || 0);
   return base;
 }
+// Chain reach now only matters in click_and_chain mode (the hover modes
+// no longer chain). Existing move/pulse "blast" upgrades all feed the
+// same global value — the upgrade trees haven't been re-themed yet, so
+// everything still stacks regardless of which tree the player invested in.
 function rareBlastEffective() {
-  let base = RARE_BLAST_REACH;
-  if (SORT_MODE === "hover_and_move")  base += (eff().moveRareBoost  || 0);
-  if (SORT_MODE === "hover_and_pulse") base += (eff().pulseRareBoost || 0);
-  return Math.max(0, base);
+  return Math.max(0, RARE_BLAST_REACH
+    + (eff().moveRareBoost  || 0)
+    + (eff().pulseRareBoost || 0));
 }
 function foilBlastEffective() {
-  let base = FOIL_BLAST_REACH;
-  if (SORT_MODE === "hover_and_move")  base += (eff().moveFoilBoost  || 0);
-  if (SORT_MODE === "hover_and_pulse") base += (eff().pulseFoilBoost || 0);
-  return Math.max(0, base);
+  return Math.max(0, FOIL_BLAST_REACH
+    + (eff().moveFoilBoost  || 0)
+    + (eff().pulseFoilBoost || 0));
 }
 function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
 function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
@@ -2756,7 +2762,7 @@ function setDebugMode(on) {
 // Debug helper: cycle SORT_MODE in-place (no reload). Persists the choice
 // through the design-override channel so it survives reloads and matches
 // what the GAME DESIGN dropdown would have done.
-const _SORT_MODE_CYCLE = ["hover_and_click", "hover_and_move", "hover_and_pulse"];
+const _SORT_MODE_CYCLE = ["hover_and_click", "hover_and_move", "hover_and_pulse", "click_and_chain"];
 function cycleSortMode() {
   const i = _SORT_MODE_CYCLE.indexOf(SORT_MODE);
   const next = _SORT_MODE_CYCLE[(i + 1) % _SORT_MODE_CYCLE.length];
@@ -5391,12 +5397,17 @@ function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
 }
 
 // Wave-based chain detonation seeded from the player's click.
-// Wave 0:  destroy the seed + apply the click AoE (4 orthos around it).
+// Wave 0:  destroy the seed (+ optional click AoE).
 // Wave N+: every non-standard cell destroyed in the previous wave detonates
-//          with its own key's "+" arm — rare reaches 4 cells in each
-//          cardinal direction, foil reaches 8.
-// Standards in any blast are consumed but don't propagate.
-function runChainCrit(startCol, startRow, onDone) {
+//          with its own key's "+" arm — rare reaches rareBlastEffective(),
+//          foil reaches foilBlastEffective().
+// `opts`:
+//   propagate    (default true)  — false: stop after wave 0 (no chain)
+//   applyClickAoe (default true) — false: skip the 4-ortho click AoE
+function runChainCrit(startCol, startRow, onDone, opts) {
+  const o = opts || {};
+  const propagate    = o.propagate !== false;
+  const applyClickAoe = o.applyClickAoe !== false;
   const seedKey = cur().pile[startCol] && cur().pile[startCol][startRow];
   if (!seedKey || seedKey === "__") { onDone(0); return; }
   if ((cur().unsorted[seedKey] || 0) <= 0) { onDone(0); return; }
@@ -5404,23 +5415,18 @@ function runChainCrit(startCol, startRow, onDone) {
   const finish = (n) => { chainBusy = false; onDone(n); };
   const refs = { total: 0 };
   let detonators = [];
-  // Wave 0 — destroy seed + click AoE around it.
   cur().pile[startCol][startRow] = "__";
   spawnCritPop(startCol, startRow, seedKey);
   sortOneOfKey(seedKey);
   refs.total += 1;
-  if (seedKey !== "standard") detonators.push({ col: startCol, row: startRow, key: seedKey });
-  applyBlast(startCol, startRow, CLICK_AOE_OFFSETS, detonators, refs);
+  if (propagate && seedKey !== "standard") detonators.push({ col: startCol, row: startRow, key: seedKey });
+  if (applyClickAoe) applyBlast(startCol, startRow, CLICK_AOE_OFFSETS, detonators, refs);
   startSandAnim();
-  // Mid-chain re-renders intentionally skip renderVaultGrid: rebuilding
-  // every collection cell every 90ms is wasted DOM work. The flash
-  // registry (TTL-based, with animation-delay resume on rebuild) is
-  // already safe across rebuilds, but the chain still bulks them at
-  // the terminal renderAll() callback for cheap throughput.
   renderHeader();
   renderVault();
   renderSandPile();
 
+  if (!propagate || detonators.length === 0) { finish(refs.total); return; }
   function step() {
     if (detonators.length === 0) { finish(refs.total); return; }
     const next = [];
@@ -5479,9 +5485,11 @@ function settlePileAfterChain() {
 }
 
 // Detonate a set of pre-marked cells. Wave 0 destroys every marked cell
-// simultaneously; any non-standard among them queues for wave 1 chain.
-// No click AoE applied around the marks — the player picked the exact set.
-function runChainCritFromMarks(seedCells, onDone) {
+// simultaneously; if `opts.propagate` (default true), any non-standard
+// among them queues for wave 1 chain. No click AoE around marks — the
+// player picked the exact set.
+function runChainCritFromMarks(seedCells, onDone, opts) {
+  const propagate = !opts || opts.propagate !== false;
   const refs = { total: 0 };
   const detonators = [];
   seedCells.forEach(({ col, row }) => {
@@ -5492,15 +5500,14 @@ function runChainCritFromMarks(seedCells, onDone) {
     spawnCritPop(col, row, k);
     sortOneOfKey(k);
     refs.total += 1;
-    if (k !== "standard") detonators.push({ col, row, key: k });
+    if (propagate && k !== "standard") detonators.push({ col, row, key: k });
   });
   if (refs.total === 0) { onDone(0); return; }
   chainBusy = true;
   const finish = (n) => { chainBusy = false; onDone(n); };
   startSandAnim();
-  // Mid-chain: skip renderVaultGrid (see runChainCrit comment) — would
-  // restart the .flash animations on every wave.
   renderHeader(); renderVault(); renderSandPile();
+  if (!propagate || detonators.length === 0) { finish(refs.total); return; }
   let queue = detonators;
   function step() {
     if (queue.length === 0) { finish(refs.total); return; }
@@ -5521,8 +5528,8 @@ function sortCards(opts) {
   if (!opts || !opts.click) return;
   SFX.sort();
 
-  // Paint mode: if grains are marked, detonate them all together (no click
-  // AoE) and skip the single-seed find. The click position is irrelevant.
+  // Marked-grain detonation (hover_and_click). No chain in any non-chain
+  // mode — only click_and_chain propagates blasts.
   if (markedGrains.size > 0) {
     const seeds = Array.from(markedGrains).map(k => {
       const [c, r] = k.split(",").map(Number);
@@ -5532,19 +5539,24 @@ function sortCards(opts) {
     runChainCritFromMarks(seeds, (total) => {
       settlePileAfterChain();
       renderAll(); save();
-      if (total > 5) logActivity(`✨ CHAIN! Sorted ${total} cards from ${seeds.length} marks.`, "success");
-    });
+    }, { propagate: false });
     return;
   }
 
-  // Single-click fallback: nearest-grain seed + click AoE (current behavior).
+  // Single-click path. Behavior is per-mode:
+  //   click_and_chain : seed only (no AoE) + full chain propagation —
+  //                     payoff comes from clicking near rares/foils.
+  //   any other mode  : seed only, no AoE, no chain (just one card sorted).
   const seed = findClickedGrain(opts.click.x, opts.click.y);
   if (!seed) return;
+  const chainOpts = SORT_MODE === "click_and_chain"
+    ? { propagate: true,  applyClickAoe: false }
+    : { propagate: false, applyClickAoe: false };
   runChainCrit(seed.col, seed.row, (total) => {
     settlePileAfterChain();
     renderAll(); save();
     if (total > 5) logActivity(`✨ CHAIN! Sorted ${total} cards.`, "success");
-  });
+  }, chainOpts);
 }
 
 
@@ -5630,9 +5642,9 @@ function drawSand() {
   // Cursor indicator — radius reflects the active mode's area of effect so
   // upgrades visibly grow the ring:
   //   click  : marking hover-radius
-  //   move   : click search radius (the per-move detonation reaches this far)
-  //   pulse  : pulse radius once unlocked; otherwise falls back to the click
-  //            search radius (the "no-upgrade" pulse uses findClickedGrain)
+  //   move   : click search radius (per-move detonation reaches this far)
+  //   pulse  : pulse radius once unlocked; otherwise the click search radius
+  //   chain  : click search radius — clicks find the nearest grain inside it
   if (cursorPos) {
     const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
     let radiusCells = 0;
@@ -5646,6 +5658,9 @@ function drawSand() {
       const pr = pulseRadiusEffective();
       radiusCells = pr > 0 ? pr : sortClickRadiusEffective();
       color = "rgba(184,255,90,0.7)";
+    } else if (SORT_MODE === "click_and_chain") {
+      radiusCells = sortClickRadiusEffective();
+      color = "rgba(255,120,90,0.7)";
     }
     if (radiusCells > 0) {
       const pxR = radiusCells * unit;
@@ -5712,16 +5727,15 @@ function updateMarkedCounter() {
   const cap = maxHighlightsEffective();
   el.textContent = `${markedGrains.size} / ${cap}`;
   el.classList.toggle("full", markedGrains.size >= cap);
-  // In the hover-only modes, marking is bypassed entirely — hide the counter
-  // and adjust the hint text. Cheap to do per-draw; keeps UI in sync if the
-  // design override is toggled at runtime.
-  const noMark = SORT_MODE === "hover_and_move" || SORT_MODE === "hover_and_pulse";
+  // Only hover_and_click uses the marked-grain counter.
+  const noMark = SORT_MODE !== "hover_and_click";
   el.style.display = noMark ? "none" : "";
   const hint = $("sort-hint-text");
   if (hint) {
-    if (SORT_MODE === "hover_and_move")  hint.textContent = "hover and move to sort";
+    if (SORT_MODE === "hover_and_move")       hint.textContent = "hover and move to sort";
     else if (SORT_MODE === "hover_and_pulse") hint.textContent = "hover to sort (pulses)";
-    else hint.textContent = "hover to mark · click to sort";
+    else if (SORT_MODE === "click_and_chain") hint.textContent = "click to chain";
+    else                                       hint.textContent = "hover to mark · click to sort";
   }
 }
 function renderSandPile() {
@@ -5796,6 +5810,7 @@ const DESIGN_FIELDS = [
       { value: "hover_and_click", label: "Hover and click" },
       { value: "hover_and_move",  label: "Hover and move" },
       { value: "hover_and_pulse", label: "Hover and pulse" },
+      { value: "click_and_chain", label: "Click and chain" },
     ] },
   { group: "Sorting",          key: "SORT_PULSE_MS",                   path: "SORT_PULSE_MS",             label: "Pulse interval (ms, hover_and_pulse)", step: 50, min: 50, int: true },
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
@@ -7511,9 +7526,16 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
     drawSand();
     return;
   }
-  // Cursor must be over a live grain (not off-pile, not a tombstone) to
-  // start dwell. The actual *marked* set is computed from the radius when
-  // the timer fires, so the cursor center grain is the anchor.
+  if (SORT_MODE === "click_and_chain") {
+    // Click-and-chain ignores hover entirely — the only sort trigger is
+    // the canvas click handler.
+    drawSand();
+    return;
+  }
+  // Hover-and-click only past this point. Cursor must be over a live grain
+  // (not off-pile, not a tombstone) to start dwell. The actual *marked*
+  // set is computed from the radius when the timer fires, so the cursor
+  // center grain is the anchor.
   if (!k || k === "__") {
     if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
     hoverCell = null;
@@ -7661,8 +7683,7 @@ setInterval(() => {
     runChainCritFromMarks(cells, (total) => {
       settlePileAfterChain();
       renderAll(); save();
-      if (total > 5) logActivity(`✨ Pulse cleared ${total} cards.`, "success");
-    });
+    }, { propagate: false });
     return;
   }
   // Default (no radius upgrades): defer to the click path so the cursor's
