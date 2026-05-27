@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Rip booster packs, sort the spill, craft Sets, sell on a live market. 30 yearly vintage sets to chase.">
+<meta name="description" content="Rip booster packs, sort the spill, craft Sets, sell on a live market.">
 <meta property="og:title" content="Keep Ripping Packs">
-<meta property="og:description" content="Rip booster packs, sort the spill, craft Sets, sell on a live market. 30 yearly vintage sets to chase.">
+<meta property="og:description" content="Rip booster packs, sort the spill, craft Sets, sell on a live market.">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#1a1530">
 <title>Keep Ripping Packs</title>
@@ -247,7 +247,7 @@
     box-shadow: 0 0 8px rgba(101,214,255,0.18) inset;
     user-select: none; pointer-events: none;
     transition: opacity 0.18s, border-color 0.18s;
-    justify-self: end;
+    justify-self: start;
     align-self: stretch;
   }
   #idle-homies.empty {
@@ -311,11 +311,16 @@
     font-weight: bold; line-height: 1;
   }
   /* Pre-unlock state: a slim progress bar in place of the typing UI. Fills
-     1% per manual rip; revealed when state.manualRips ≥ TYPING_UNLOCK_RIPS. */
+     2% per manual rip; revealed when state.manualRips ≥ TYPING_UNLOCK_RIPS.
+     Opacity is set inline from JS (0→1 across the fill) so the bar fades
+     in alongside the player's progress; transition smooths each tick. */
   .rip-progress {
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     width: 220px;
+    opacity: 0;
+    transition: opacity 0.35s ease-out;
   }
+  .rip-progress.celebrating { opacity: 1; }
   /* display: flex above outranks the user-agent [hidden] rule, so without
      this the bar stays visible after bar.hidden = true. */
   .rip-progress[hidden] { display: none; }
@@ -1473,12 +1478,37 @@
     opacity: 0.85;
   }
   .set-craft-btn:disabled, .set-list-btn:disabled, .set-vault-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .set-owned-badge {
-    display: inline-block; margin-left: 4px;
-    background: rgba(0,0,0,0.45); color: var(--gold);
-    border-radius: 6px; padding: 0 4px;
-    font-size: 0.55rem;
+  /* Dedicated supply chip at the head of each .set-actions row. Replaces
+     the old ×N badge that used to overlay the CRAFT button. Reads as a
+     mini stat block: SUPPLY / count stacked tightly. Goes muted at 0. */
+  .set-supply {
+    display: inline-flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 1px;
+    min-width: 48px; padding: 2px 8px;
+    background: rgba(0,0,0,0.35); color: var(--gold);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    font-family: inherit; white-space: nowrap;
   }
+  .set-supply .set-supply-label {
+    font-size: 0.5rem; letter-spacing: 1.2px; color: var(--muted);
+    text-transform: uppercase; line-height: 1;
+  }
+  .set-supply .set-supply-count {
+    font-size: 0.95rem; font-weight: bold; line-height: 1;
+  }
+  .set-supply.empty .set-supply-count { color: var(--muted); }
+  /* Tag appended to a craft button while the rarity/variant's first-craft
+     homie milestone is still available. Disappears once earned. */
+  .craft-homie-chip {
+    margin-left: 6px; padding: 0 4px;
+    background: rgba(101,214,255,0.16);
+    color: #65d6ff;
+    border-radius: 4px;
+    font-size: 0.58rem; letter-spacing: 0.4px;
+    white-space: nowrap;
+  }
+  .set-craft-btn:disabled .craft-homie-chip { opacity: 0.7; }
   @keyframes set-pulse {
     0%, 100% { box-shadow: 0 0 8px rgba(245,197,66,0.35); }
     50%      { box-shadow: 0 0 14px rgba(245,197,66,0.7); }
@@ -1817,8 +1847,6 @@
 
 <section id="shop">
   <h2 id="shop-title">OPENING</h2>
-  <div id="active-set-label" class="active-set-label"></div>
-  <select id="year-picker" class="year-select" aria-label="Active set"></select>
   <div class="buy-buttons">
     <button class="buy-btn" id="buy-pack">
       <div class="lbl">PACK</div>
@@ -1846,7 +1874,7 @@
       </div>
       <div id="pack-wrap">
         <div class="pack" id="pack">
-          <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
+          <div class="label"><span id="pack-set-label">Set 1</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
           <div class="pack-cta" id="pack-cta">CLICK TO RIP</div>
         </div>
       </div>
@@ -1878,13 +1906,6 @@
 
 <section id="vault">
   <h2>MARKETPLACE</h2>
-  <div id="vintage-shop">
-    <div class="vintage-header">
-      <h3>VINTAGE PACKS</h3>
-      <button class="upgrade-trigger" data-upgrade-branch="vintage" type="button">⬆ VINTAGE</button>
-    </div>
-    <div class="vintage-slots" id="vintage-slots"></div>
-  </div>
   <div id="requests-panel"></div>
   <div class="marketplace-split">
     <div id="available-panel"></div>
@@ -2230,7 +2251,7 @@ function homiePoolMax() {
 // Manual rips required to unlock the type-to-rip mini-game. First session
 // shows just a horizontal progress bar; once filled, the typing UI takes
 // over the same slot in #typing-zone.
-let TYPING_UNLOCK_RIPS = def("TYPING_UNLOCK_RIPS", 100);
+let TYPING_UNLOCK_RIPS = def("TYPING_UNLOCK_RIPS", 50);
 const HOMIE_TICK_MS = 250;
 
 let SORTER_COST          = def("SORTER_COST", 1000);
@@ -2306,14 +2327,6 @@ const UPGRADE_NODES = [
   { id: "list4",  branch: "listings", label: "Online Empire",    desc: "+3 listing slots",    cost: 200, effect: { listingSlots: 3 },      prereq: ["list3"] },
   // SORTERS — all sorter upgrades now cost CASH (per-sorter level-ups via
   // the sorter card's ⬆ button). No CLOUT-bought sorter nodes.
-  // VINTAGE — everything in the branch upgrades the Vintage Packs shop on
-  // the right-hand column: more slots, faster restock, better odds of a
-  // box or case turning up.
-  { id: "vintage1", branch: "vintage", label: "Curator's Pick",  desc: "+1 vintage shop slot",                  cost: 50,  effect: { vintageSlots: 1 } },
-  { id: "vintage2", branch: "vintage", label: "Faster Restock",  desc: "Slot refresh −60s",                     cost: 100, effect: { vintageRefreshDelta: -60000 },                       prereq: ["vintage1"] },
-  { id: "vintage3", branch: "vintage", label: "Estate Sale",     desc: "+1 vintage shop slot",                  cost: 200, effect: { vintageSlots: 1 },                                  prereq: ["vintage2"] },
-  { id: "vintage4", branch: "vintage", label: "Box Hunter",      desc: "Box weight +12, case weight +6",        cost: 350, effect: { vintageBoxWeightDelta: 12, vintageCaseWeightDelta: 6 }, prereq: ["vintage3"] },
-  { id: "vintage5", branch: "vintage", label: "Time Traveler",   desc: "+1 vintage slot, refresh −60s",         cost: 600, effect: { vintageSlots: 1, vintageRefreshDelta: -60000 },     prereq: ["vintage4"] },
 ];
 const UPGRADE_BRANCHES = [
   { key: "paint",    label: "MARKING",  color: "#ff7eb3", subtracks: [
@@ -2322,7 +2335,6 @@ const UPGRADE_BRANCHES = [
     { key: "speed",  label: "MARKING SPEED" },
   ] },
   { key: "listings", label: "LISTINGS", color: "#ffd84d" },
-  { key: "vintage",  label: "VINTAGE",  color: "#d4a55e" },
 ];
 
 function unlockedNodeSet() {
@@ -2515,7 +2527,7 @@ const SAVE_KEY = "cryptid_almanac_save_v5"; // bumped: per-set state buckets
 // Set numbering follows the lore — one set per year, 2001 → 2030. Set 30 is
 // the current year and the only set live in Phase 1. Future phases unlock
 // older years via the vintage shop.
-const CURRENT_SET_ID = 30;
+const CURRENT_SET_ID = 1;
 const defaultState = () => ({
   coins: 50,
   packsOpened: 0,
@@ -2731,6 +2743,31 @@ function load() {
     const parsed = JSON.parse(raw);
     // v5 schema check: top-level coins + per-set buckets under state.sets.
     if (typeof parsed.coins !== "number" || !parsed.sets || typeof parsed.sets !== "object") return null;
+    // Single-set collapse: older saves had set IDs 1-30. Coalesce the most
+    // populated bucket into the new Set 1 so player progress carries
+    // forward, drop the rest, and pin activeSetId / homie.setId / sorter.setId
+    // / listing.setId to the single surviving set.
+    const setKeys = Object.keys(parsed.sets).map(Number).filter(Number.isFinite);
+    const otherKeys = setKeys.filter(k => k !== CURRENT_SET_ID);
+    if (otherKeys.length > 0) {
+      const score = (b) => {
+        if (!b) return -1;
+        const supply = (b.supply || 0) + (b.unopened || 0);
+        const ownedCount = Object.values(b.invById || {}).reduce((n, m) => n + Object.values(m).reduce((a, v) => a + v, 0), 0);
+        return supply + ownedCount * 10;
+      };
+      const primary = otherKeys.concat(setKeys.includes(CURRENT_SET_ID) ? [CURRENT_SET_ID] : [])
+        .sort((a, b) => score(parsed.sets[b]) - score(parsed.sets[a]))[0];
+      if (primary !== CURRENT_SET_ID) {
+        parsed.sets[CURRENT_SET_ID] = parsed.sets[primary];
+      }
+      Object.keys(parsed.sets).map(Number).forEach(k => {
+        if (k !== CURRENT_SET_ID) delete parsed.sets[k];
+      });
+    }
+    parsed.activeSetId = CURRENT_SET_ID;
+    if (Array.isArray(parsed.homies)) parsed.homies.forEach(h => { h.setId = CURRENT_SET_ID; });
+    if (Array.isArray(parsed.sorters)) parsed.sorters.forEach(s => { s.setId = CURRENT_SET_ID; });
     // Sanity backfills for top-level cross-set fields.
     if (typeof parsed.activeSetId !== "number") parsed.activeSetId = CURRENT_SET_ID;
     if (typeof parsed.clout !== "number") parsed.clout = 0;
@@ -3525,13 +3562,13 @@ function yearSwitchBlockReason() {
   }
   return null;
 }
-function setYearLabel(setId) { return 2000 + setId; }
+function setYearLabel(setId) { return `Set ${setId}`; }
 // Visual age tier — drives sepia tint on listings, vault grid, year chips
 // and the pack itself. "" = current era, "midcentury" = sets 10–19,
 // "vintage" = sets 01–09.
 function patinaTierFor(setId) {
-  if (setId <= 9)  return "vintage";
-  if (setId <= 19) return "midcentury";
+  // Single-set build: no vintage / midcentury era treatment — every set is
+  // current-era. Kept as a function so future multi-set work can revive it.
   return "";
 }
 function patinaClassFor(setId) {
@@ -3708,7 +3745,7 @@ function renderYearPicker() {
   const sel = $("year-picker");
   const label = $("active-set-label");
   if (!sel || !label) return;
-  const activeLabel = `The ${setYearLabel(state.activeSetId)} Set`;
+  const activeLabel = setYearLabel(state.activeSetId);
   // Pre-unlock: a static label shows the current year. Post-unlock: the
   // dropdown takes over with the same text as the selected option. The
   // explicit display toggle is intentional — relying on the `hidden`
@@ -3751,7 +3788,7 @@ function renderHeader() {
   $("packs-opened").textContent = state.packsOpened;
   $("foils-pulled").textContent = totalFoilsOpened();
   const activeSet = state.activeSetId;
-  const setLabel = `The ${setYearLabel(activeSet)} Set`;
+  const setLabel = setYearLabel(activeSet);
   $("pack-set-label").textContent = setLabel;
   // Patina tier applied to the pack + vault grid so older years carry a
   // visible sepia treatment. We only mutate the active set's surfaces —
@@ -3921,10 +3958,20 @@ function setActionsBlock(key) {
 
   const craftCls = "set-craft-btn" + (track.foil ? " foil" : "");
   const listCls  = "set-list-btn"  + (track.foil ? " foil" : "");
-  const setsBadge = setsOwned > 0 ? ` <span class="set-owned-badge">×${setsOwned}</span>` : "";
+  // Lifetime first-craft milestone for this rarity/variant grants a homie
+  // 🧢 the first time. Once earned the chip disappears so the button is
+  // back to a routine craft action.
+  const milestoneTrack = track.foil ? state.craftMilestonesFoil : state.craftMilestones;
+  const homieAvailable = !(milestoneTrack && milestoneTrack[track.baseRarity]);
+  const homieChip = homieAvailable
+    ? ` <span class="craft-homie-chip" title="First craft of this rarity earns +1 homie 🧢">+1 🧢</span>`
+    : "";
+  const supplyCls = "set-supply" + (setsOwned > 0 ? "" : " empty");
+  const supplyTitle = `Supply on hand — ${setsOwned} ${setName} SET${setsOwned === 1 ? "" : "s"} ready to list`;
   return `
     <div class="set-actions">
-      <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"} title="${setName} SET — ${uniqueOwned}/${size} unique held${setsOwned > 0 ? ` · ${setsOwned} crafted` : ""}">${craftLabel}${setsBadge}</button>
+      <span class="${supplyCls}" title="${supplyTitle}"><span class="set-supply-label">SUPPLY</span><span class="set-supply-count">${setsOwned}</span></span>
+      <button class="${craftCls}" data-craft="${key}" ${ready ? "" : "disabled"} title="${setName} SET — ${uniqueOwned}/${size} unique held${setsOwned > 0 ? ` · ${setsOwned} crafted` : ""}">${craftLabel}${homieChip}</button>
       <button class="${listCls}"  data-list-set="${key}"  ${canList ? "" : "disabled"} title="List a ${setName} SET — current market ${usd(setPrice)}">${listLabel}</button>
     </div>`;
 }
@@ -3961,17 +4008,19 @@ function renderVault() {
     const vaultTitle = alreadyVaulted
       ? `Already vaulted a Set ${state.activeSetId} ${def.label} — CLOUT is a one-time reward per variant. List extras for cash.`
       : `Stash a Set ${state.activeSetId} ${def.label} — earns ${scaledClout} CLOUT (one-time per year + foil status)`;
-    const ownedBadge = owned > 0 ? ` <span class="set-owned-badge">×${owned}</span>` : "";
     const rowGlyph = def.foil ? "✨" : "★";
     const rowName  = def.foil ? "COMPLETE FOIL" : "COMPLETE";
     const foilCls  = def.foil ? " foil" : "";
+    const supplyCls = "set-supply" + (owned > 0 ? "" : " empty");
+    const supplyTitle = `Supply on hand — ${owned} ${def.label}${owned === 1 ? "" : "s"}`;
     const row = document.createElement("div");
     row.className = "stock-row complete-set" + foilCls;
     row.innerHTML = `
       <div class="rarity-name">${rowGlyph} ${rowName}</div>
       <div class="counts">
         <div class="set-actions">
-          <button class="set-craft-btn complete${foilCls}" data-craft-complete="${key}" ${ready ? "" : "disabled"} title="Crafts a ${def.label} — consumes 1 of each: ${def.ingredients.join(", ")} (${have}/${need} ready)">${craftLabel}${ownedBadge}</button>
+          <span class="${supplyCls}" title="${supplyTitle}"><span class="set-supply-label">SUPPLY</span><span class="set-supply-count">${owned}</span></span>
+          <button class="set-craft-btn complete${foilCls}" data-craft-complete="${key}" ${ready ? "" : "disabled"} title="Crafts a ${def.label} — consumes 1 of each: ${def.ingredients.join(", ")} (${have}/${need} ready)">${craftLabel}</button>
           <button class="set-list-btn complete${foilCls}" data-list-complete="${key}" ${canList ? "" : "disabled"} title="List a ${def.label} — current market ${usd(price)}">${listLabel}</button>
           <button class="set-vault-btn complete${foilCls}${alreadyVaulted ? " redeemed" : ""}" data-vault-complete="${key}" ${canVault ? "" : "disabled"} title="${vaultTitle}">${vaultLabel}</button>
         </div>
@@ -4148,7 +4197,7 @@ function renderVaultGrid() {
   const title = document.createElement("div");
   title.className = "vault-grid-title";
   const sid = state.activeSetId;
-  title.textContent = `COLLECTION · THE ${setYearLabel(sid)} SET`;
+  title.textContent = `COLLECTION · ${setYearLabel(sid).toUpperCase()}`;
   wrap.appendChild(title);
 
   // Mythic / Legendary / Epic / Rare share one horizontal strip — the small
@@ -4346,9 +4395,9 @@ function craftCompleteSet(key) {
   SFX.craft();
   if (firstUnlock) {
     SFX.unlock();
-    logActivity(`Crafted The ${setYearLabel(state.activeSetId)} ${def.label}! 🔓 Vintage Packs shop + year picker unlocked!`, "unlock");
+    logActivity(`Crafted your first ${def.label}! Vault it for +${vaultVal} CLOUT.`, "unlock");
   } else {
-    logActivity(`Crafted The ${setYearLabel(state.activeSetId)} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`);
+    logActivity(`Crafted a ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`);
   }
 }
 
@@ -6751,6 +6800,9 @@ function renderRipUnlock() {
   const fillEl  = bar.querySelector(".rip-progress-fill");
   if (labelEl) labelEl.textContent = typingCelebrating ? "UNLOCKED!" : `KEEP RIPPING · ${pct}%`;
   if (fillEl)  fillEl.style.width  = pct + "%";
+  // Fade in alongside fill: invisible on the first click, opaque by 100%.
+  // .celebrating overrides via CSS so the UNLOCKED! flash stays fully lit.
+  bar.style.opacity = typingCelebrating ? "" : (pct / 100).toFixed(3);
 }
 // Confetti-style burst centred on the progress bar — visual exclamation
 // point on the typing unlock. Reuses the existing .particle class so the
@@ -6985,16 +7037,24 @@ function syncYearPickerSelection() {
   const sel = $("year-picker");
   if (sel) sel.value = String(state.activeSetId);
 }
-$("year-picker").addEventListener("change", (e) => {
-  const sid = parseInt(e.target.value, 10);
-  if (Number.isFinite(sid)) switchToSet(sid);
-});
-$("vintage-slots").addEventListener("click", (e) => {
-  const tile = e.target.closest(".vintage-pack");
-  if (!tile || tile.disabled) return;
-  const idx = parseInt(tile.dataset.vintageSlot, 10);
-  if (Number.isFinite(idx)) buyVintagePack(idx);
-});
+// Year picker and vintage shop DOM are removed in the single-set build —
+// listeners only attach if the elements exist so the page boots cleanly.
+const _yearPickerEl = $("year-picker");
+if (_yearPickerEl) {
+  _yearPickerEl.addEventListener("change", (e) => {
+    const sid = parseInt(e.target.value, 10);
+    if (Number.isFinite(sid)) switchToSet(sid);
+  });
+}
+const _vintageSlotsEl = $("vintage-slots");
+if (_vintageSlotsEl) {
+  _vintageSlotsEl.addEventListener("click", (e) => {
+    const tile = e.target.closest(".vintage-pack");
+    if (!tile || tile.disabled) return;
+    const idx = parseInt(tile.dataset.vintageSlot, 10);
+    if (Number.isFinite(idx)) buyVintagePack(idx);
+  });
+}
 // Collection cells are display-only now — listing is exclusively done via
 // the Set-craft pipeline. No click handler on #vault-grid.
 $("listings-panel").addEventListener("click", (e) => {
