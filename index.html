@@ -3361,15 +3361,7 @@ function craftHomieSlotHtml(rarity) {
          + `<span class="homie-bar"><span style="width:${pct}%"></span></span>`
          + `</div>`;
   }
-  const foilKey = "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1);
-  // Nothing to craft if neither track can be completed right now AND the
-  // player has never completed a full set of either variant in this year.
-  // setsCelebrated is permanent once flipped, so once you've ever finished
-  // a Standard collection the standard homie stays hireable even after
-  // crafting consumes the cards.
-  const everCompletable = !!(cur().setsCelebrated[rarity] || cur().setsCelebratedFoil[rarity]);
-  const craftableNow    = canCraftSet(rarity) || canCraftSet(foilKey);
-  const nothingToCraft  = !everCompletable && !craftableNow;
+  const nothingToCraft  = !craftHomieHasWork(rarity);
   const unaffordable    = state.coins < CRAFT_HOMIE_COST;
   const cls = "craft-homie-slot empty" + (unaffordable || nothingToCraft ? " disabled" : "");
   const title = nothingToCraft
@@ -5347,6 +5339,28 @@ function findCraftHomie(setId, craftRarity) {
 // non-foil track) for 8 minutes. Each tick the homie tries to craft the
 // FOIL Set first; if foil isn't ready, falls back to the non-foil Set. No
 // box required (they're crafting, not ripping); one per (rarity × year).
+// Does the active year's bundle hold any work a craft homie of this
+// rarity could pick up? Mirrors the homie tick's list-first decision tree:
+//   1. an already-crafted foil/non-foil Set sitting in invById waiting to
+//      list (covers the case where the player crafted then sold singles,
+//      or completed the collection via marketplace buys which doesn't
+//      flip the setsCelebrated flag);
+//   2. a craftable foil or non-foil set queued up right now;
+//   3. the player has ever completed this rarity's collection in this
+//      year (`setsCelebrated` is sticky once flipped — the homie stays a
+//      valid long-term automation even between bursts of activity).
+// Used by both the craft-slot render (for the disabled state + tooltip)
+// and the hireCraftHomie gate, so they can't drift.
+function craftHomieHasWork(rarity) {
+  if (cur().setsCelebrated[rarity] || cur().setsCelebratedFoil[rarity]) return true;
+  const foilKey = "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1);
+  if (canCraftSet(rarity) || canCraftSet(foilKey)) return true;
+  const ik  = setItemKey(rarity);
+  const fik = setItemKey(foilKey);
+  return ((cur().invById[ik]  || {})[1] || 0) > 0
+      || ((cur().invById[fik] || {})[1] || 0) > 0;
+}
+
 function hireCraftHomie(craftRarity) {
   if (!RARITIES.includes(craftRarity)) return;
   if (!hasCraftTable(craftRarity)) {
@@ -5360,14 +5374,9 @@ function hireCraftHomie(craftRarity) {
     $("hint").textContent = `Already have a craft homie on ${RARITY_LABELS[craftRarity]} for The ${setYearLabel(setId)} Set.`;
     return;
   }
-  // Refuse if there's nothing for the homie to craft — the player must
-  // have ever completed the foil or non-foil collection of this rarity in
-  // the active year, OR currently have a craftable set queued up.
-  const foilKey = "foil" + craftRarity.charAt(0).toUpperCase() + craftRarity.slice(1);
-  const everCompletable = !!(cur().setsCelebrated[craftRarity] || cur().setsCelebratedFoil[craftRarity]);
-  if (!everCompletable && !canCraftSet(craftRarity) && !canCraftSet(foilKey)) {
+  if (!craftHomieHasWork(craftRarity)) {
     SFX.error();
-    $("hint").textContent = `No ${RARITY_LABELS[craftRarity]} sets to craft yet — collect a full ${RARITY_LABELS[craftRarity]} set first.`;
+    $("hint").textContent = `No ${RARITY_LABELS[craftRarity]} sets to craft or list yet — collect a full ${RARITY_LABELS[craftRarity]} set first.`;
     return;
   }
   if (state.coins < CRAFT_HOMIE_COST) {
