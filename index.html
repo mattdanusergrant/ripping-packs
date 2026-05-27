@@ -2543,6 +2543,17 @@ const UPGRADE_BRANCHES = [
 ];
 // Branches grouped under the SORTING UPGRADES button (the canvas trigger).
 const SORTING_BRANCHES = ["sort_click", "sort_move", "sort_pulse"];
+// Maps the active SORT_MODE to the branch shown by the "⬆ SORTING UPGRADES"
+// trigger. click_and_chain has no dedicated branch yet (its chain reach
+// benefits from the move/pulse blast upgrades), so it returns null and the
+// modal renders an "upgrades coming soon" placeholder.
+const SORT_MODE_TO_BRANCH = {
+  hover_and_click: "sort_click",
+  hover_and_move:  "sort_move",
+  hover_and_pulse: "sort_pulse",
+  click_and_chain: null,
+};
+function activeSortingBranch() { return SORT_MODE_TO_BRANCH[SORT_MODE] || null; }
 
 function unlockedNodeSet() {
   return new Set(Array.isArray(state.unlockedNodes) ? state.unlockedNodes : []);
@@ -2771,6 +2782,14 @@ function cycleSortMode() {
   try { localStorage.setItem(DESIGN_KEY, JSON.stringify(_designOverrides)); } catch (_) {}
   clearMarkedGrains();
   drawSand();
+  paintUpgradeTriggers();
+  // If the sorting upgrades modal is open, retarget it to the new mode.
+  const modal = document.getElementById("upgrades-modal");
+  if (modal && !modal.hidden && typeof _openUpgradesBranch === "string"
+      && (SORTING_BRANCHES.includes(_openUpgradesBranch) || _openUpgradesBranch === "__sorting_none__")) {
+    _openUpgradesBranch = activeSortingBranch() || "__sorting_none__";
+    renderUpgrades();
+  }
   logActivity(`Debug: SORT_MODE → ${next}`, "info");
 }
 
@@ -6023,15 +6042,17 @@ function renderUpgrades() {
     balanceEl.style.borderColor = currency === "cash" ? "rgba(133,187,101,0.6)" : "";
     balanceEl.style.background = currency === "cash" ? "rgba(133,187,101,0.12)" : "";
   }
-  // Title: prefer an explicit group name when SORTING_BRANCHES is open.
+  // Title — when the sorting trigger opened the modal, label it as
+  // "SORTING UPGRADES · <mode>" so the player sees which mode-tree they're
+  // looking at.
   const titleEl = $("upgrades-title");
+  const isSortingTrigger = typeof _openUpgradesBranch === "string"
+    && (SORTING_BRANCHES.includes(_openUpgradesBranch) || _openUpgradesBranch === "__sorting_none__");
   if (titleEl) {
-    const isSortingGroup = Array.isArray(_openUpgradesBranch)
-      && SORTING_BRANCHES.every(k => _openUpgradesBranch.includes(k))
-      && _openUpgradesBranch.length === SORTING_BRANCHES.length;
-    if (isSortingGroup) {
-      titleEl.textContent = "SORTING UPGRADES";
-      titleEl.style.color = "var(--clout)";
+    if (isSortingTrigger) {
+      const modeLabel = (UPGRADE_BRANCHES.find(b => b.key === activeSortingBranch()) || {}).label || "CLICK AND CHAIN";
+      titleEl.textContent = `SORTING UPGRADES · ${modeLabel}`;
+      titleEl.style.color = (branches[0] && branches[0].color) || "var(--cash)";
     } else if (branches.length === 1) {
       titleEl.textContent = `${branches[0].label} UPGRADES`;
       titleEl.style.color = branches[0].color;
@@ -6041,6 +6062,24 @@ function renderUpgrades() {
     }
   }
   body.innerHTML = "";
+
+  // Placeholder for click_and_chain (no dedicated branch yet).
+  if (_openUpgradesBranch === "__sorting_none__") {
+    body.classList.remove("stacked");
+    body.classList.add("single");
+    body.style.gridTemplateColumns = "minmax(260px, 360px)";
+    const placeholder = document.createElement("div");
+    placeholder.className = "upgrade-branch";
+    placeholder.style.color = "var(--muted)";
+    placeholder.innerHTML = `
+      <div class="upgrade-branch-label">CLICK AND CHAIN</div>
+      <div class="upgrade-node" style="border-style:dashed;opacity:0.7;cursor:default">
+        <span class="un-label">No mode-specific upgrades yet</span>
+        <span class="un-desc">Existing chain-reach upgrades from other modes still benefit your chains.</span>
+      </div>`;
+    body.appendChild(placeholder);
+    return;
+  }
 
   // Build one section per branch. Single-branch view drops the section
   // header (the modal title already names it). Multi-branch view stacks
@@ -6906,7 +6945,8 @@ function initActivityLog() { renderActivityLog(); }
 function paintUpgradeTriggers() {
   document.querySelectorAll(".upgrade-trigger").forEach(btn => {
     if (btn.hasAttribute("data-sorting-branches")) {
-      btn.classList.toggle("ready", SORTING_BRANCHES.some(branchHasAvailableNode));
+      const active = activeSortingBranch();
+      btn.classList.toggle("ready", !!(active && branchHasAvailableNode(active)));
       return;
     }
     const branch = btn.dataset.upgradeBranch || btn.dataset.branch;
@@ -7643,7 +7683,9 @@ $("upgrades-body").addEventListener("click", (e) => {
 document.addEventListener("click", (e) => {
   const sortingTrig = e.target.closest("[data-sorting-branches]");
   if (sortingTrig) {
-    openUpgradesPanel(SORTING_BRANCHES.slice());
+    // Show only the branch matching the active SORT_MODE. Falls through to
+    // the single-branch view; click_and_chain (no branch) gets a placeholder.
+    openUpgradesPanel(activeSortingBranch() || "__sorting_none__");
     return;
   }
   const trig = e.target.closest("[data-branch], [data-upgrade-branch]");
