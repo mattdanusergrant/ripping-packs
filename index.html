@@ -5515,18 +5515,24 @@ function drawSand() {
       ctx.stroke();
     });
   }
-  // Cursor indicator — sized by mode:
-  //   click  : the next dwell's hover-radius (marks within this ring)
-  //   pulse  : the pulse-radius (grains within this ring detonate per tick)
-  //   move   : suppressed (the per-move click search uses ortho radius)
+  // Cursor indicator — radius reflects the active mode's area of effect so
+  // upgrades visibly grow the ring:
+  //   click  : marking hover-radius
+  //   move   : click search radius (the per-move detonation reaches this far)
+  //   pulse  : pulse radius once unlocked; otherwise falls back to the click
+  //            search radius (the "no-upgrade" pulse uses findClickedGrain)
   if (cursorPos) {
     const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
     let radiusCells = 0;
     let color = "rgba(255,255,255,0.55)";
     if (SORT_MODE === "hover_and_click") {
       radiusCells = hoverRadiusEffective();
+    } else if (SORT_MODE === "hover_and_move") {
+      radiusCells = sortClickRadiusEffective();
+      color = "rgba(90,168,255,0.65)";
     } else if (SORT_MODE === "hover_and_pulse") {
-      radiusCells = pulseRadiusEffective();
+      const pr = pulseRadiusEffective();
+      radiusCells = pr > 0 ? pr : sortClickRadiusEffective();
       color = "rgba(184,255,90,0.7)";
     }
     if (radiusCells > 0) {
