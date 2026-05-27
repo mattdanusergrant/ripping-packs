@@ -2524,15 +2524,14 @@ function celebrateCashGain(amount) {
 // market) lives under state.sets[setId]; top-level state holds cross-set
 // fields (cash, CLOUT, upgrade nodes, listings, homies, sorters).
 const SAVE_KEY = "cryptid_almanac_save_v5"; // bumped: per-set state buckets
-// Set numbering follows the lore — one set per year, 2001 → 2030. Set 30 is
-// the current year and the only set live in Phase 1. Future phases unlock
-// older years via the vintage shop.
+// Single-set build: only Set 1 ships today. The per-set state machinery
+// (sets[], activeSetId, etc.) is kept intact so future multi-set work can
+// slot back in without a rewrite — but only one bucket exists at runtime.
 const CURRENT_SET_ID = 1;
 const defaultState = () => ({
   coins: 50,
   packsOpened: 0,
-  // Per-set state buckets. Phase 1: only setId 30 exists by default; older
-  // sets are materialized lazily as the vintage shop comes online.
+  // Per-set state buckets — Set 1 only for now.
   activeSetId: CURRENT_SET_ID,
   sets: { [CURRENT_SET_ID]: blankSetState({ starterBox: true }) },
   homies: [],     // [{uid, startAt, packsRemaining, lastRipAt, setId}]
@@ -2550,28 +2549,27 @@ const defaultState = () => ({
   clout: 0,              // CLOUT balance — spent on upgrade nodes
   cloutSpent: 0,         // lifetime CLOUT spent
   unlockedNodes: [],     // ids of purchased upgrade nodes
-  // Lifetime non-foil Complete Set crafts per setId — kept as a stat
-  // (used by the vault summary, not the unlock gate anymore).
+  // Lifetime non-foil Complete Set crafts per setId — stat only, used by
+  // the vault summary. Kept as a {setId: count} map for forward-compat.
   completeSetCrafts: {},
-  // Flipped true the first time the player crafts any per-rarity Set.
-  // Gates the Vintage Packs shop + year picker visibility in renderAll
-  // so the first session is just the core rip → sort → craft → list loop.
+  // Flipped true the first time the player crafts any Complete Set.
+  // Currently used only to drive the first-craft celebration message;
+  // the vintage shop / year picker it used to gate are gone.
   firstSetCrafted: false,
   // Lifetime first-craft milestones — flip true the first time the player
   // (or a craft homie acting on their behalf) crafts a Set of that rarity
-  // / variant in any year. Each flip widens homiePoolMax by +1 (an extra
-  // IDLE 🧢 the player can deploy); 10 of these are the only growth path.
-  // Decoupled from per-year setsCelebrated so switching years can't
-  // double-grant.
+  // / variant. Each flip widens homiePoolMax by +1 (an extra IDLE 🧢 the
+  // player can deploy); 10 of these are the only growth path.
   craftMilestones:     { standard: false, rare: false, epic: false, legendary: false, mythic: false },
   craftMilestonesFoil: { standard: false, rare: false, epic: false, legendary: false, mythic: false },
   // Manual rips (not homie-driven) — drives the type-to-rip unlock bar.
   // The typing UI is hidden behind a progress bar until manualRips
-  // reaches TYPING_UNLOCK_RIPS (= 100). Counted only in ripOne(), so
-  // homie auto-rips don't shortcut the unlock.
+  // reaches TYPING_UNLOCK_RIPS (= 50, +2% per click). Counted only in
+  // ripOne(), so homie auto-rips don't shortcut the unlock.
   manualRips: 0,
-  // Which years have been unlocked in the year picker. A year unlocks the
-  // moment you buy a booster pack of it (via the vintage shop).
+  // Legacy field — used by the removed year-picker to mark which past
+  // years had been unlocked via the vintage shop. Kept in defaultState
+  // so the save schema stays stable for future multi-set work.
   yearUnlocked: {},
   listings: [],          // [{uid, setId, rarity, cardId, foil, askPrice, resolveAt, willResolve}]
   listingsUidCounter: 0,
@@ -2774,10 +2772,9 @@ function load() {
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
-    // Recompute the vintage-unlock gate flag from complete-set evidence
-    // only — per-rarity Set crafts no longer unlock the Vintage system.
-    // Runs unconditionally so legacy saves that were unlocked by the older
-    // per-rarity rule get corrected on next load.
+    // Recompute firstSetCrafted from complete-set evidence. Vintage
+    // system is gone, but the flag still gates the first-craft
+    // celebration message so we keep it accurate.
     const everCompleteCrafted =
       Object.values(parsed.sets || {}).some(b => {
         const inv  = b.invById || {};
@@ -2840,24 +2837,26 @@ function load() {
       return n + (parsed.craftMilestones[r] ? 1 : 0) + (parsed.craftMilestonesFoil[r] ? 1 : 0);
     }, 0);
     if (typeof parsed.homiePool !== "number") {
-      // Pool max at load time = base + crew nodes already owned + lifetime
-      // craft milestones unlocked. Subtract currently-deployed homies to
-      // get the remaining tokens.
-      const crewBonus = (parsed.unlockedNodes || []).reduce((n, id) => {
+      // Pool max at load time = base + any node-granted homie bonus +
+      // lifetime craft milestones. Subtract currently-deployed homies to
+      // get the remaining tokens. The CREW branch is gone, so the node
+      // contribution is 0 in this build — the reducer stays as a hook for
+      // any future node that grants a homie bonus.
+      const nodeHomieBonus = (parsed.unlockedNodes || []).reduce((n, id) => {
         const node = UPGRADE_NODES.find(x => x.id === id);
         return n + ((node && node.effect && node.effect.homiePool) || 0);
       }, 0);
-      const max = Math.min(HOMIE_MAX, HOMIE_POOL_BASE + crewBonus + milestoneBonus);
+      const max = Math.min(HOMIE_MAX, HOMIE_POOL_BASE + nodeHomieBonus + milestoneBonus);
       const deployed = Array.isArray(parsed.homies) ? parsed.homies.length : 0;
       parsed.homiePool = Math.max(0, max - deployed);
     } else {
-      // Clamp existing pool to the current max — protects against
-      // HOMIE_POOL_BASE being tuned down (or someone editing the save).
-      const crewBonus = (parsed.unlockedNodes || []).reduce((n, id) => {
+      // Clamp existing pool to the current max — protects against tuning
+      // changes (e.g. HOMIE_POOL_BASE dropping) or hand-edited saves.
+      const nodeHomieBonus = (parsed.unlockedNodes || []).reduce((n, id) => {
         const node = UPGRADE_NODES.find(x => x.id === id);
         return n + ((node && node.effect && node.effect.homiePool) || 0);
       }, 0);
-      const max = Math.min(HOMIE_MAX, HOMIE_POOL_BASE + crewBonus + milestoneBonus);
+      const max = Math.min(HOMIE_MAX, HOMIE_POOL_BASE + nodeHomieBonus + milestoneBonus);
       parsed.homiePool = Math.max(0, Math.min(parsed.homiePool, max));
     }
     // Backfill the typing-unlock counter. Older saves that pre-date the
@@ -3528,14 +3527,11 @@ function vintageSlotCost(slot) {
 const VINTAGE_TYPE_GLYPH = { pack: "🎴", box: "📦", case: "🗃️" };
 const VINTAGE_TYPE_LABEL = { pack: "PACK", box: "BOX",  case: "CASE" };
 
-// A year is available in the picker once you've ever bought a booster pack
-// of that year (via the vintage shop). Set 30 is always unlocked — it's
-// the current year and the anchor. completeSetCrafts is no longer the
-// gate; it stays as a stat for crafting history.
+// Single-set build: only CURRENT_SET_ID is ever valid. Kept as a function
+// so the call sites (e.g. legacy market-request validation) stay correct
+// if multi-set returns.
 function isSetUnlocked(setId) {
-  if (setId === CURRENT_SET_ID) return true;
-  if (setId < 1 || setId > CURRENT_SET_ID) return false;
-  return !!(state.yearUnlocked && state.yearUnlocked[setId]);
+  return setId === CURRENT_SET_ID;
 }
 
 // Block year switching only when there's pending work *on the current
@@ -3564,11 +3560,9 @@ function yearSwitchBlockReason() {
 }
 function setYearLabel(setId) { return `Set ${setId}`; }
 // Visual age tier — drives sepia tint on listings, vault grid, year chips
-// and the pack itself. "" = current era, "midcentury" = sets 10–19,
-// "vintage" = sets 01–09.
+// and the pack itself. Single-set build returns "" for every set; the
+// hook stays so future multi-set work can revive the era treatment.
 function patinaTierFor(setId) {
-  // Single-set build: no vintage / midcentury era treatment — every set is
-  // current-era. Kept as a function so future multi-set work can revive it.
   return "";
 }
 function patinaClassFor(setId) {
@@ -3826,8 +3820,8 @@ function renderHeader() {
       if (((b.vaultedSets || {}).completeSet     || 0) > 0) claimed += 1;
       if (((b.vaultedSets || {}).foilCompleteSet || 0) > 0) claimed += 1;
     });
-    const totalVariants = CURRENT_SET_ID * 2; // non-foil + foil per year
-    chip.title = `CLOUT — earned by vaulting Complete Sets. ${claimed} / ${totalVariants} variants claimed across all years.`;
+    const totalVariants = CURRENT_SET_ID * 2; // non-foil + foil per set
+    chip.title = `CLOUT — earned by vaulting Complete Sets. ${claimed} / ${totalVariants} variants claimed.`;
     if (_lastCloutBalance != null && bal > _lastCloutBalance) {
       chip.classList.remove("bump"); void chip.offsetWidth; chip.classList.add("bump");
     }
@@ -3836,18 +3830,9 @@ function renderHeader() {
   $("cost-pack").textContent = usd(packCost());
   $("cost-box").textContent  = usd(boxCost());
   $("cost-case").textContent = usd(caseCost());
-  // The regular buy buttons only sell current-year stock. Vintage years are
-  // exclusively serviced by the Vintage Packs shop (above the Marketplace).
-  const isVintageYear = activeSet !== CURRENT_SET_ID;
-  const vintageTip = isVintageYear
-    ? `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} to buy current-year stock.`
-    : "";
-  $("buy-pack").disabled = isVintageYear || state.coins < packCost();
-  $("buy-box").disabled  = isVintageYear || state.coins < boxCost();
-  $("buy-case").disabled = isVintageYear || state.coins < caseCost();
-  $("buy-pack").title = vintageTip;
-  $("buy-box").title  = vintageTip;
-  $("buy-case").title = vintageTip;
+  $("buy-pack").disabled = state.coins < packCost();
+  $("buy-box").disabled  = state.coins < boxCost();
+  $("buy-case").disabled = state.coins < caseCost();
   const pack = $("pack");
   if (!canRip()) pack.classList.add("disabled");
   else pack.classList.remove("disabled");
@@ -3992,11 +3977,10 @@ function renderVault() {
     const price = marketPriceFor(state.activeSetId, key, 1);
     const slotsFull = listingSlotsFull();
     const canList  = owned > 0 && !slotsFull;
-    // CLOUT is a once-per-(year, foil-variant) reward — the system pushes
-    // you to vault one of each Complete Set across all 30 years (60 total
-    // claims max ever) rather than grind a single easy year for infinite
-    // CLOUT. Subsequent crafts of the same variant can still be listed for
-    // cash, just not re-vaulted.
+    // CLOUT is a once-per-foil-variant reward — vault one non-foil and
+    // one foil Complete Set per set (2 claims in this single-set build)
+    // rather than re-grinding. Subsequent crafts of the same variant can
+    // still be listed for cash, just not re-vaulted.
     const alreadyVaulted = ((cur().vaultedSets || {})[key] || 0) > 0;
     const canVault = owned > 0 && !alreadyVaulted;
     const craftLabel = ready ? `CRAFT ${def.label}` : `${def.label} ${have}/${need}`;
@@ -4006,8 +3990,8 @@ function renderVault() {
       ? `VAULTED ✓`
       : (owned === 0 ? "—" : `VAULT · +${scaledClout}`);
     const vaultTitle = alreadyVaulted
-      ? `Already vaulted a Set ${state.activeSetId} ${def.label} — CLOUT is a one-time reward per variant. List extras for cash.`
-      : `Stash a Set ${state.activeSetId} ${def.label} — earns ${scaledClout} CLOUT (one-time per year + foil status)`;
+      ? `Already vaulted a ${def.label} — CLOUT is a one-time reward per variant. List extras for cash.`
+      : `Stash a ${def.label} — earns ${scaledClout} CLOUT (one-time per foil variant)`;
     const rowGlyph = def.foil ? "✨" : "★";
     const rowName  = def.foil ? "COMPLETE FOIL" : "COMPLETE";
     const foilCls  = def.foil ? " foil" : "";
@@ -4386,8 +4370,9 @@ function craftCompleteSet(key) {
     if (!state.foilCompleteSetCrafts) state.foilCompleteSetCrafts = {};
     state.foilCompleteSetCrafts[state.activeSetId] = (state.foilCompleteSetCrafts[state.activeSetId] || 0) + 1;
   }
-  // First-ever Complete Set craft unlocks the Vintage system (year picker
-  // + vintage shop). Fires once across the player's lifetime.
+  // First-ever Complete Set craft drives the once-per-lifetime celebration
+  // log. Used to also unlock the vintage system; that's gone, the flag
+  // stays so the milestone message still fires exactly once.
   const firstUnlock = !state.firstSetCrafted;
   state.firstSetCrafted = true;
   renderAll(); save();
@@ -4409,7 +4394,7 @@ function vaultCompleteSet(key) {
   // is refused outright — list extras for cash via the marketplace.
   if (((cur().vaultedSets || {})[key] || 0) > 0) {
     SFX.error();
-    logActivity(`The ${setYearLabel(setId)} ${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`, "error");
+    logActivity(`${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`, "error");
     return;
   }
   const inv = cur().invById[key];
@@ -4422,8 +4407,7 @@ function vaultCompleteSet(key) {
   state.clout = (state.clout || 0) + award;
   SFX.vault();
   renderAll(); save();
-  const tag = setId === CURRENT_SET_ID ? "" : ` (×${cloutScaleFor(setId).toFixed(2)} vintage bonus)`;
-  logActivity(`Vaulted The ${setYearLabel(setId)} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}). 🔒 Variant claimed.`);
+  logActivity(`Vaulted ${def.label}. +${award} CLOUT (balance: ${state.clout}). 🔒 Variant claimed.`);
 }
 
 function listCompleteSet(key) {
@@ -4672,10 +4656,9 @@ function renderRequests() {
     const wrongYear  = req.setId !== state.activeSetId;
     const summary = requestSummary(req);
     const kindLabel = requestKindLabel(req.kind);
-    const title = `${kindLabel} wants ${summary} (The ${setYearLabel(req.setId)} Set)\n`
+    const title = `${kindLabel} wants ${summary}\n`
                 + `Payout: ${usd(req.payout)} + ${req.clout} CLOUT\n`
-                + (wrongYear ? `Switch year to fulfill.` :
-                    (canFulfill ? `Click to fulfill` : `Don't have it yet.`));
+                + (canFulfill ? `Click to fulfill` : `Don't have it yet.`);
     const cls = "request-cell kind-" + req.kind + (canFulfill ? "" : " disabled");
     // Player requests get the rarity color band; the others get a flat
     // accent driven by .kind-X CSS so the player can tell buyer types
@@ -4723,12 +4706,10 @@ function renderAvailable() {
       const color = RARITY_COLOURS[slot.rarity];
       const cls = "listing-card available-offer" + (slot.foil ? " foil" : "") + patinaCls;
       const idLabel = cardFullId(slot.rarity, slot.cardId, GAME_ID, setId);
-      const yearTag = `The ${setYearLabel(setId)} Set`;
       const unaffordable = state.coins < slot.askPrice;
-      const wrongYear = setId !== state.activeSetId;
-      const disabledCls = (unaffordable || wrongYear) ? " unaffordable" : "";
-      const title = `${yearTag} · ${(slot.foil ? "Foil " : "") + RARITY_LABELS[slot.rarity]} ${idLabel} · ${usd(slot.askPrice)}\n`
-                  + (wrongYear ? "Switch year to buy." : "Click to buy");
+      const disabledCls = unaffordable ? " unaffordable" : "";
+      const title = `${(slot.foil ? "Foil " : "") + RARITY_LABELS[slot.rarity]} ${idLabel} · ${usd(slot.askPrice)}\n`
+                  + "Click to buy";
       // Tile holds the per-card glyph only; price sits beneath as a
       // separate label so the symbol is the visual anchor and the
       // number doesn't compete for space inside a 30px square.
@@ -4789,17 +4770,13 @@ function renderListings() {
     <div class="listings-grid">`;
   listings.forEach(l => {
     const lSetId = l.setId != null ? l.setId : CURRENT_SET_ID;
-    const patinaCls = patinaClassFor(lSetId);   // "" | " vintage" | " midcentury"
-    const setChip = `<span class="lst-set">S${lSetId}</span>`;
-    const yearTag = `The ${setYearLabel(lSetId)} Set`;
     if (isCompleteSetKey(l.rarity)) {
       const def = completeSetDef(l.rarity);
       const color = def.foil ? "#ff7eb3" : "#ffd84d";
-      const cls = "listing-card set complete" + (def.foil ? " foil" : "") + patinaCls;
+      const cls = "listing-card set complete" + (def.foil ? " foil" : "");
       const glyph = def.foil ? "✨" : "★";
       const idLabel = def.foil ? "COMP FOIL" : "COMPLETE";
-      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${def.label} · ${usd(l.askPrice)}\nClick to cancel">`
-            + setChip
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${def.label} · ${usd(l.askPrice)}\nClick to cancel">`
             + `<span class="lst-glyph">${glyph}</span>`
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
@@ -4808,10 +4785,9 @@ function renderListings() {
     } else if (isSetListing(l)) {
       const meta = setItemMeta(l.rarity);
       const color = RARITY_COLOURS[meta.baseRarity];
-      const cls = "listing-card set" + (meta.foil ? " foil" : "") + patinaCls;
+      const cls = "listing-card set" + (meta.foil ? " foil" : "");
       const glyph = meta.foil ? "✨" : RARITY_GLYPHS[meta.baseRarity];
-      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${(meta.foil ? "FOIL " : "") + RARITY_LABELS[meta.baseRarity]} SET · ${usd(l.askPrice)}\nClick to cancel">`
-            + setChip
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${(meta.foil ? "FOIL " : "") + RARITY_LABELS[meta.baseRarity]} SET · ${usd(l.askPrice)}\nClick to cancel">`
             + `<span class="lst-glyph">${glyph}</span>`
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
@@ -4820,15 +4796,14 @@ function renderListings() {
     } else {
       const idLabel = l.cardId != null ? cardFullId(l.rarity, l.cardId, GAME_ID, lSetId) : RARITY_LABELS[l.rarity].slice(0,1);
       const color = RARITY_COLOURS[l.rarity];
-      const cls = "listing-card" + (l.foil ? " foil" : "") + patinaCls;
+      const cls = "listing-card" + (l.foil ? " foil" : "");
       // Single-card listings show the per-card glyph in place of the
       // rarity glyph — the listing tile is the primary surface where a
       // player needs to identify which specific card they posted.
       const glyphHtml = l.cardId != null
         ? cardGlyphHtml(l.rarity, l.cardId, !!l.foil, "lg")
         : `<span class="lst-glyph">${RARITY_GLYPHS[l.rarity]}</span>`;
-      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${yearTag} · ${(l.foil ? "Foil " : "") + RARITY_LABELS[l.rarity]} ${idLabel} · ${usd(l.askPrice)}\nClick to cancel">`
-            + setChip
+      html += `<button type="button" class="${cls}" data-uid="${l.uid}" style="--cell-color:${color}" title="${(l.foil ? "Foil " : "") + RARITY_LABELS[l.rarity]} ${idLabel} · ${usd(l.askPrice)}\nClick to cancel">`
             + glyphHtml
             + `<span class="lst-price">${compactUsd(l.askPrice)}</span>`
             + `<span class="lst-cd">${listingCountdownLabel(l)}</span>`
@@ -5926,7 +5901,7 @@ function buyTable() {
 function hireHomie(preferredSlot) {
   if ((state.homiePool || 0) <= 0) {
     SFX.error();
-    logActivity(`No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`, "error");
+    logActivity(`No homies in the pool — craft your first Set of each rarity/variant to earn one, or wait for an active homie to finish.`, "error");
     return;
   }
   if ((state.homies || []).filter(h => h.kind !== "craft").length >= HOMIE_MAX) {
@@ -5979,7 +5954,7 @@ function hireHomie(preferredSlot) {
     lastRipAt: 0,
   });
   renderAll(); save();
-  logActivity(`Hired a homie for The ${setYearLabel(hiredSetId)} Set! They'll rip ${BOX_SIZE} packs from your box.`);
+  logActivity(`Hired a homie! They'll rip ${BOX_SIZE} packs from your box.`);
 }
 
 function findCraftHomie(setId, craftRarity) {
@@ -6024,7 +5999,7 @@ function hireCraftHomie(craftRarity) {
   const setId = state.activeSetId;
   if (findCraftHomie(setId, craftRarity)) {
     SFX.error();
-    logActivity(`Already have a craft homie on ${RARITY_LABELS[craftRarity]} for The ${setYearLabel(setId)} Set.`, "error");
+    logActivity(`Already have a craft homie on ${RARITY_LABELS[craftRarity]}.`, "error");
     return;
   }
   if (!craftHomieHasWork(craftRarity)) {
@@ -6039,7 +6014,7 @@ function hireCraftHomie(craftRarity) {
   }
   if ((state.homiePool || 0) <= 0) {
     SFX.error();
-    logActivity(`No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`, "error");
+    logActivity(`No homies in the pool — craft your first Set of each rarity/variant to earn one, or wait for an active homie to finish.`, "error");
     return;
   }
   state.coins -= CRAFT_HOMIE_COST;
@@ -6059,7 +6034,7 @@ function hireCraftHomie(craftRarity) {
   SFX.buy();
   renderAll(); save();
   const mins = Math.round(CRAFT_HOMIE_DURATION_MS / 60000);
-  logActivity(`Hired a ${RARITY_LABELS[craftRarity]} craft homie for The ${setYearLabel(setId)} Set — auto-crafts foil + non-foil for ${mins} min.`);
+  logActivity(`Hired a ${RARITY_LABELS[craftRarity]} craft homie — auto-crafts foil + non-foil for ${mins} min.`);
 }
 
 function homieRipPack(homie) {
@@ -6178,7 +6153,7 @@ function buySorter() {
     lastSortAt: 0,
   });
   renderAll(); save();
-  logActivity(`Sorter installed for The ${setYearLabel(installSetId)} Set. Click LOAD to scoop the pile's bottom row.`);
+  logActivity(`Sorter installed. Click LOAD to scoop the pile's bottom row.`);
 }
 
 function upgradeSorterSpeed(uid) {
@@ -6511,11 +6486,6 @@ function paintUpgradeTriggers() {
 
 // ---- Actions -------------------------------------------------------------
 function buyPacks(qty, totalCost, label) {
-  if (state.activeSetId !== CURRENT_SET_ID) {
-    SFX.error();
-    logActivity(`Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`, "error");
-    return;
-  }
   if (state.coins < totalCost) {
     SFX.error();
     logActivity(`Need ${usd(totalCost - state.coins)} more.`, "error");
@@ -6527,11 +6497,6 @@ function buyPacks(qty, totalCost, label) {
   renderAll(); save();
 }
 function buyBoxes(qty, totalCost, label) {
-  if (state.activeSetId !== CURRENT_SET_ID) {
-    SFX.error();
-    logActivity(`Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`, "error");
-    return;
-  }
   if (state.coins < totalCost) {
     SFX.error();
     logActivity(`Need ${usd(totalCost - state.coins)} more.`, "error");
