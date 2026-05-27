@@ -1592,6 +1592,22 @@
   }
   /* Single-branch view (per-feature modal) gets one centered column. */
   .upgrades-body.single { grid-template-columns: minmax(260px, 360px); justify-content: center; }
+  /* Stacked view: multiple branches as vertically-stacked sections. */
+  .upgrades-body.stacked { display: block; }
+  .upgrade-section { margin-bottom: 22px; }
+  .upgrade-section:last-child { margin-bottom: 0; }
+  .upgrade-section-label {
+    margin: 0 0 8px;
+    font-size: 0.85rem;
+    letter-spacing: 3px;
+    text-align: left;
+    border-bottom: 1px solid currentColor;
+    padding-bottom: 4px;
+  }
+  .upgrade-section-grid {
+    display: grid;
+    gap: 14px;
+  }
   .upgrade-branch {
     display: flex; flex-direction: column; gap: 8px;
     min-width: 0;
@@ -1616,6 +1632,14 @@
   .upgrade-node .un-label   { font-weight: bold; font-size: 0.82rem; letter-spacing: 0.5px; color: var(--ink); }
   .upgrade-node .un-desc    { font-size: 0.7rem; color: var(--muted); }
   .upgrade-node .un-cost    { font-size: 0.72rem; font-weight: bold; color: var(--clout); margin-top: 2px; }
+  .upgrade-node.cash .un-cost                { color: var(--cash); }
+  .upgrade-node.cash.available               { border-color: var(--cash); box-shadow: 0 0 10px rgba(133,187,101,0.45); animation: upgr-pulse-cash 1.6s ease-in-out infinite; }
+  .upgrade-node.cash.unaffordable            { border-color: rgba(133,187,101,0.25); }
+  .upgrade-node.cash.unaffordable .un-cost   { color: rgba(133,187,101,0.75); }
+  @keyframes upgr-pulse-cash {
+    0%, 100% { box-shadow: 0 0 6px rgba(133,187,101,0.35); }
+    50%      { box-shadow: 0 0 14px rgba(133,187,101,0.8); }
+  }
   .upgrade-node.owned       { background: rgba(245,197,66,0.10); border-color: var(--gold); }
   .upgrade-node.owned .un-cost { color: var(--gold); }
   .upgrade-node.owned .un-cost::before { content: "✓ UNLOCKED"; }
@@ -1808,7 +1832,7 @@
   <div class="upgrades-panel" role="dialog" aria-modal="true" aria-labelledby="upgrades-title">
     <div class="upgrades-header">
       <h2 id="upgrades-title">UPGRADES</h2>
-      <span class="upgrades-balance">💎 <b id="upgrades-balance">0</b> CLOUT</span>
+      <span class="upgrades-balance" id="upgrades-balance">💎 <b>0</b> CLOUT</span>
       <button class="upgrades-close" id="upgrades-close" aria-label="Close">×</button>
     </div>
     <div class="upgrades-body" id="upgrades-body"></div>
@@ -1903,7 +1927,7 @@
         <span id="marked-counter" class="marked-counter">0 / 10</span>
         <span id="sort-hint-text">hover to mark · click to sort</span>
       </span>
-      <button class="upgrade-trigger" id="upgrade-paint" type="button" data-branch="paint">⬆ MARKING</button>
+      <button class="upgrade-trigger" id="upgrade-sorting" type="button" data-sorting-branches>⬆ SORTING UPGRADES</button>
     </div>
     <canvas id="sand-canvas"></canvas>
     <div id="activity-log" aria-label="Activity log"></div>
@@ -2321,17 +2345,70 @@ let FOIL_COMPLETE_SET_CLOUT = def("FOIL_COMPLETE_SET_CLOUT", 500);
 // available from the start; deeper nodes only become available once the
 // previous in the same chain is unlocked.
 const UPGRADE_NODES = [
-  // PAINT — three subtracks: max marks, cursor radius, paint speed.
-  { id: "paint_marks1",  branch: "paint", subtrack: "marks",  label: "Steadier Hand", desc: "+5 marks",           cost: 8,   effect: { maxHighlights: 5 } },
-  { id: "paint_marks2",  branch: "paint", subtrack: "marks",  label: "Wider Sweep",   desc: "+5 marks",           cost: 25,  effect: { maxHighlights: 5 },     prereq: ["paint_marks1"] },
-  { id: "paint_marks3",  branch: "paint", subtrack: "marks",  label: "Pile Mastery",  desc: "+10 marks",          cost: 80,  effect: { maxHighlights: 10 },    prereq: ["paint_marks2"] },
-  { id: "paint_marks4",  branch: "paint", subtrack: "marks",  label: "Steady Aim",    desc: "+20 marks",          cost: 250, effect: { maxHighlights: 20 },    prereq: ["paint_marks3"] },
-  { id: "paint_radius1", branch: "paint", subtrack: "radius", label: "Bigger Brush",  desc: "Cursor +0.3 radius", cost: 100, effect: { hoverRadius: 0.3 } },
-  { id: "paint_radius2", branch: "paint", subtrack: "radius", label: "Massive Brush", desc: "Cursor +0.5 radius", cost: 300, effect: { hoverRadius: 0.5 },     prereq: ["paint_radius1"] },
-  { id: "paint_radius3", branch: "paint", subtrack: "radius", label: "Mop Brush",     desc: "Cursor +1.0 radius", cost: 700, effect: { hoverRadius: 1.0 },     prereq: ["paint_radius2"] },
-  { id: "paint_speed1",  branch: "paint", subtrack: "speed",  label: "Quick Eye",     desc: "Dwell -5ms",         cost: 40,  effect: { hoverDwellDelta: -5 } },
-  { id: "paint_speed2",  branch: "paint", subtrack: "speed",  label: "Snap Focus",    desc: "Dwell -10ms",        cost: 120, effect: { hoverDwellDelta: -10 }, prereq: ["paint_speed1"] },
-  { id: "paint_speed3",  branch: "paint", subtrack: "speed",  label: "Reflexes",      desc: "Dwell -15ms",        cost: 350, effect: { hoverDwellDelta: -15 }, prereq: ["paint_speed2"] },
+  // SORTING UPGRADES — three branches matching the SORT_MODE prototypes.
+  // All cost cash; many small, escalating nodes per subtrack to make sorting
+  // a meaningful sink for cash and the core power-fantasy loop.
+
+  // ----- CLICK (hover_and_click) -----
+  { id: "paint_marks1",  branch: "sort_click", subtrack: "marks",  currency: "cash", label: "Steadier Hand",  desc: "+5 marks",           cost: 10,    effect: { maxHighlights: 5 } },
+  { id: "paint_marks2",  branch: "sort_click", subtrack: "marks",  currency: "cash", label: "Wider Sweep",    desc: "+5 marks",           cost: 40,    effect: { maxHighlights: 5 },     prereq: ["paint_marks1"] },
+  { id: "paint_marks3",  branch: "sort_click", subtrack: "marks",  currency: "cash", label: "Pile Mastery",   desc: "+10 marks",          cost: 150,   effect: { maxHighlights: 10 },    prereq: ["paint_marks2"] },
+  { id: "paint_marks4",  branch: "sort_click", subtrack: "marks",  currency: "cash", label: "Steady Aim",     desc: "+20 marks",          cost: 500,   effect: { maxHighlights: 20 },    prereq: ["paint_marks3"] },
+  { id: "click_marks5",  branch: "sort_click", subtrack: "marks",  currency: "cash", label: "Calligrapher",   desc: "+40 marks",          cost: 1500,  effect: { maxHighlights: 40 },    prereq: ["paint_marks4"] },
+  { id: "click_marks6",  branch: "sort_click", subtrack: "marks",  currency: "cash", label: "Ledger Master",  desc: "+80 marks",          cost: 5000,  effect: { maxHighlights: 80 },    prereq: ["click_marks5"] },
+  { id: "paint_radius1", branch: "sort_click", subtrack: "radius", currency: "cash", label: "Bigger Brush",   desc: "Cursor +0.2 radius", cost: 25,    effect: { hoverRadius: 0.2 } },
+  { id: "paint_radius2", branch: "sort_click", subtrack: "radius", currency: "cash", label: "Massive Brush",  desc: "Cursor +0.2 radius", cost: 100,   effect: { hoverRadius: 0.2 },     prereq: ["paint_radius1"] },
+  { id: "paint_radius3", branch: "sort_click", subtrack: "radius", currency: "cash", label: "Mop Brush",      desc: "Cursor +0.3 radius", cost: 400,   effect: { hoverRadius: 0.3 },     prereq: ["paint_radius2"] },
+  { id: "click_radius4", branch: "sort_click", subtrack: "radius", currency: "cash", label: "Roller Brush",   desc: "Cursor +0.4 radius", cost: 1500,  effect: { hoverRadius: 0.4 },     prereq: ["paint_radius3"] },
+  { id: "click_radius5", branch: "sort_click", subtrack: "radius", currency: "cash", label: "Floor Sweeper",  desc: "Cursor +0.6 radius", cost: 5000,  effect: { hoverRadius: 0.6 },     prereq: ["click_radius4"] },
+  { id: "click_radius6", branch: "sort_click", subtrack: "radius", currency: "cash", label: "Industrial Mop", desc: "Cursor +1.0 radius", cost: 15000, effect: { hoverRadius: 1.0 },     prereq: ["click_radius5"] },
+  { id: "paint_speed1",  branch: "sort_click", subtrack: "speed",  currency: "cash", label: "Quick Eye",      desc: "Dwell -5ms",         cost: 30,    effect: { hoverDwellDelta: -5 } },
+  { id: "paint_speed2",  branch: "sort_click", subtrack: "speed",  currency: "cash", label: "Snap Focus",     desc: "Dwell -5ms",         cost: 120,   effect: { hoverDwellDelta: -5 },  prereq: ["paint_speed1"] },
+  { id: "paint_speed3",  branch: "sort_click", subtrack: "speed",  currency: "cash", label: "Reflexes",       desc: "Dwell -5ms",         cost: 500,   effect: { hoverDwellDelta: -5 },  prereq: ["paint_speed2"] },
+  { id: "click_speed4",  branch: "sort_click", subtrack: "speed",  currency: "cash", label: "Twitch Hands",   desc: "Dwell -5ms",         cost: 2000,  effect: { hoverDwellDelta: -5 },  prereq: ["paint_speed3"] },
+  { id: "click_speed5",  branch: "sort_click", subtrack: "speed",  currency: "cash", label: "Lightning Mark", desc: "Dwell -5ms",         cost: 7500,  effect: { hoverDwellDelta: -5 },  prereq: ["click_speed4"] },
+  { id: "click_speed6",  branch: "sort_click", subtrack: "speed",  currency: "cash", label: "Instant Mark",   desc: "Dwell -5ms",         cost: 25000, effect: { hoverDwellDelta: -5 },  prereq: ["click_speed5"] },
+
+  // ----- MOVE (hover_and_move) -----
+  { id: "move_reach1",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Steady Hand",      desc: "Sweep +1 cell",          cost: 30,    effect: { moveSweepRadius: 1 } },
+  { id: "move_reach2",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Wider Stride",     desc: "Sweep +1 cell",          cost: 120,   effect: { moveSweepRadius: 1 }, prereq: ["move_reach1"] },
+  { id: "move_reach3",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Long Reach",       desc: "Sweep +1 cell",          cost: 500,   effect: { moveSweepRadius: 1 }, prereq: ["move_reach2"] },
+  { id: "move_reach4",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Broom Arm",        desc: "Sweep +1 cell",          cost: 2000,  effect: { moveSweepRadius: 1 }, prereq: ["move_reach3"] },
+  { id: "move_reach5",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Telescoping Arm",  desc: "Sweep +2 cells",         cost: 7500,  effect: { moveSweepRadius: 2 }, prereq: ["move_reach4"] },
+  { id: "move_reach6",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Gravity Well",     desc: "Sweep +3 cells",         cost: 25000, effect: { moveSweepRadius: 3 }, prereq: ["move_reach5"] },
+  { id: "move_rare1",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Sharp Rares",      desc: "Rare blast +1 (move)",   cost: 50,    effect: { moveRareBoost: 1 } },
+  { id: "move_rare2",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Crackling Rares",  desc: "Rare blast +1 (move)",   cost: 200,   effect: { moveRareBoost: 1 }, prereq: ["move_rare1"] },
+  { id: "move_rare3",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Loud Rares",       desc: "Rare blast +1 (move)",   cost: 800,   effect: { moveRareBoost: 1 }, prereq: ["move_rare2"] },
+  { id: "move_rare4",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Booming Rares",    desc: "Rare blast +1 (move)",   cost: 3000,  effect: { moveRareBoost: 1 }, prereq: ["move_rare3"] },
+  { id: "move_rare5",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Thundering Rares", desc: "Rare blast +2 (move)",   cost: 12000, effect: { moveRareBoost: 2 }, prereq: ["move_rare4"] },
+  { id: "move_rare6",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Detonating Rares", desc: "Rare blast +3 (move)",   cost: 40000, effect: { moveRareBoost: 3 }, prereq: ["move_rare5"] },
+  { id: "move_foil1",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Bright Foils",     desc: "Foil blast +1 (move)",   cost: 60,    effect: { moveFoilBoost: 1 } },
+  { id: "move_foil2",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Shining Foils",    desc: "Foil blast +1 (move)",   cost: 300,   effect: { moveFoilBoost: 1 }, prereq: ["move_foil1"] },
+  { id: "move_foil3",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Searing Foils",    desc: "Foil blast +1 (move)",   cost: 1500,  effect: { moveFoilBoost: 1 }, prereq: ["move_foil2"] },
+  { id: "move_foil4",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Blinding Foils",   desc: "Foil blast +1 (move)",   cost: 6000,  effect: { moveFoilBoost: 1 }, prereq: ["move_foil3"] },
+  { id: "move_foil5",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Supernova Foils",  desc: "Foil blast +2 (move)",   cost: 25000, effect: { moveFoilBoost: 2 }, prereq: ["move_foil4"] },
+  { id: "move_foil6",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Cosmic Foils",     desc: "Foil blast +3 (move)",   cost: 75000, effect: { moveFoilBoost: 3 }, prereq: ["move_foil5"] },
+
+  // ----- PULSE (hover_and_pulse) -----
+  { id: "pulse_rate1",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Quickened Pulse",  desc: "Pulse -25ms",            cost: 20,    effect: { sortPulseMsDelta: -25 } },
+  { id: "pulse_rate2",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Brisk Pulse",      desc: "Pulse -25ms",            cost: 80,    effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate1"] },
+  { id: "pulse_rate3",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Fast Pulse",       desc: "Pulse -25ms",            cost: 300,   effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate2"] },
+  { id: "pulse_rate4",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Racing Pulse",     desc: "Pulse -25ms",            cost: 1000,  effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate3"] },
+  { id: "pulse_rate5",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Hummingbird",      desc: "Pulse -25ms",            cost: 4000,  effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate4"] },
+  { id: "pulse_rate6",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Strobe Pulse",     desc: "Pulse -25ms",            cost: 15000, effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate5"] },
+  { id: "pulse_radius1", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Splash Pulse",     desc: "Pulse radius +0.3",      cost: 50,    effect: { pulseRadius: 0.3 } },
+  { id: "pulse_radius2", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Wider Wave",       desc: "Pulse radius +0.3",      cost: 200,   effect: { pulseRadius: 0.3 }, prereq: ["pulse_radius1"] },
+  { id: "pulse_radius3", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Ring Pulse",       desc: "Pulse radius +0.4",      cost: 800,   effect: { pulseRadius: 0.4 }, prereq: ["pulse_radius2"] },
+  { id: "pulse_radius4", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Wave Front",       desc: "Pulse radius +0.5",      cost: 3000,  effect: { pulseRadius: 0.5 }, prereq: ["pulse_radius3"] },
+  { id: "pulse_radius5", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Shock Wave",       desc: "Pulse radius +0.7",      cost: 12000, effect: { pulseRadius: 0.7 }, prereq: ["pulse_radius4"] },
+  { id: "pulse_radius6", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Tidal Pulse",      desc: "Pulse radius +1.0",      cost: 40000, effect: { pulseRadius: 1.0 }, prereq: ["pulse_radius5"] },
+  { id: "pulse_power1",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hot Pulse",        desc: "Rare blast +1 (pulse)",  cost: 80,    effect: { pulseRareBoost: 1 } },
+  { id: "pulse_power2",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hotter Pulse",     desc: "Foil blast +1 (pulse)",  cost: 350,   effect: { pulseFoilBoost: 1 }, prereq: ["pulse_power1"] },
+  { id: "pulse_power3",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Searing Pulse",    desc: "Rare blast +1 (pulse)",  cost: 1500,  effect: { pulseRareBoost: 1 }, prereq: ["pulse_power2"] },
+  { id: "pulse_power4",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Magma Pulse",      desc: "Foil blast +1 (pulse)",  cost: 6000,  effect: { pulseFoilBoost: 1 }, prereq: ["pulse_power3"] },
+  { id: "pulse_power5",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Plasma Pulse",     desc: "Rare/Foil blast +1",     cost: 25000, effect: { pulseRareBoost: 1, pulseFoilBoost: 1 }, prereq: ["pulse_power4"] },
+  { id: "pulse_power6",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Fusion Pulse",     desc: "Rare/Foil blast +2",     cost: 80000, effect: { pulseRareBoost: 2, pulseFoilBoost: 2 }, prereq: ["pulse_power5"] },
+
   // LISTINGS — marketplace slot expansion.
   { id: "list1",  branch: "listings", label: "Side Hustle",      desc: "+1 listing slot",     cost: 5,   effect: { listingSlots: 1 } },
   { id: "list2",  branch: "listings", label: "Shop Front",       desc: "+1 listing slot",     cost: 20,  effect: { listingSlots: 1 },      prereq: ["list1"] },
@@ -2341,13 +2418,25 @@ const UPGRADE_NODES = [
   // the sorter card's ⬆ button). No CLOUT-bought sorter nodes.
 ];
 const UPGRADE_BRANCHES = [
-  { key: "paint",    label: "MARKING",  color: "#ff7eb3", subtracks: [
-    { key: "marks",  label: "MAX MARKS" },
-    { key: "radius", label: "CURSOR RADIUS" },
-    { key: "speed",  label: "MARKING SPEED" },
+  { key: "sort_click", label: "HOVER AND CLICK",  color: "#ff7eb3", subtracks: [
+    { key: "marks",    label: "MAX MARKS" },
+    { key: "radius",   label: "CURSOR RADIUS" },
+    { key: "speed",    label: "MARKING SPEED" },
   ] },
-  { key: "listings", label: "LISTINGS", color: "#ffd84d" },
+  { key: "sort_move",  label: "HOVER AND MOVE",   color: "#5aa8ff", subtracks: [
+    { key: "reach",    label: "SWEEP REACH" },
+    { key: "rare",     label: "MOVE RARE BLAST" },
+    { key: "foil",     label: "MOVE FOIL BLAST" },
+  ] },
+  { key: "sort_pulse", label: "HOVER AND PULSE",  color: "#b8ff5a", subtracks: [
+    { key: "rate",     label: "PULSE RATE" },
+    { key: "radius",   label: "PULSE RADIUS" },
+    { key: "power",    label: "PULSE POWER" },
+  ] },
+  { key: "listings",   label: "LISTINGS",         color: "#ffd84d" },
 ];
+// Branches grouped under the SORTING UPGRADES button (the canvas trigger).
+const SORTING_BRANCHES = ["sort_click", "sort_move", "sort_pulse"];
 
 function unlockedNodeSet() {
   return new Set(Array.isArray(state.unlockedNodes) ? state.unlockedNodes : []);
@@ -2363,13 +2452,20 @@ function unlockedNodeEffects() {
   });
   return out;
 }
+function nodeCurrency(node) { return node && node.currency === "cash" ? "cash" : "clout"; }
+function nodeBalance(node) {
+  return nodeCurrency(node) === "cash" ? (state.coins || 0) : (state.clout || 0);
+}
+function nodeCostText(node) {
+  return nodeCurrency(node) === "cash" ? usd(node.cost) : (node.cost + " CLOUT");
+}
 function nodeStatus(node) {
   if (!node) return "missing";
   const set = unlockedNodeSet();
   if (set.has(node.id)) return "owned";
   const prereqMet = (node.prereq || []).every(p => set.has(p));
   if (!prereqMet) return "locked";
-  if ((state.clout || 0) < node.cost) return "unaffordable";
+  if (nodeBalance(node) < node.cost) return "unaffordable";
   return "available";
 }
 // Does the player have a node in this branch they can afford to buy
@@ -2384,11 +2480,18 @@ function purchaseNode(id) {
   if (st === "owned") return;
   if (st === "locked") { logActivity("Prereqs not unlocked yet."); return; }
   if (st === "unaffordable") {
-    logActivity(`Need ${node.cost - (state.clout || 0)} more CLOUT.`);
+    const short = node.cost - nodeBalance(node);
+    logActivity(nodeCurrency(node) === "cash"
+      ? `Need ${usd(short)} more.`
+      : `Need ${short} more CLOUT.`);
     return;
   }
-  state.clout -= node.cost;
-  state.cloutSpent = (state.cloutSpent || 0) + node.cost;
+  if (nodeCurrency(node) === "cash") {
+    state.coins = Math.round((state.coins - node.cost) * 100) / 100;
+  } else {
+    state.clout -= node.cost;
+    state.cloutSpent = (state.cloutSpent || 0) + node.cost;
+  }
   if (!Array.isArray(state.unlockedNodes)) state.unlockedNodes = [];
   state.unlockedNodes.push(node.id);
   // Upgrades may grant more vintage slots — materialize them immediately.
@@ -2410,6 +2513,28 @@ function sorterMaxEffective()         { return SORTER_MAX          + (eff().sort
 function maxHighlightsEffective()     { return MAX_HIGHLIGHTS      + (eff().maxHighlights        || 0); }
 function hoverRadiusEffective()       { return HOVER_RADIUS_CELLS  + (eff().hoverRadius          || 0); }
 function hoverDwellMsEffective()      { return Math.max(5, HOVER_DWELL_MS + (eff().hoverDwellDelta || 0)); }
+// Sort-mode-specific getters. SORT_MODE switches which set of upgrades
+// applies — keeps each tree feeling like a distinct progression even though
+// the underlying blast / radius numbers are shared knobs.
+function sortPulseMsEffective()       { return Math.max(50, SORT_PULSE_MS + (eff().sortPulseMsDelta || 0)); }
+function pulseRadiusEffective()       { return Math.max(0,  (eff().pulseRadius || 0)); }
+function sortClickRadiusEffective() {
+  let base = SORT_CLICK_RADIUS_CELLS;
+  if (SORT_MODE === "hover_and_move") base += (eff().moveSweepRadius || 0);
+  return base;
+}
+function rareBlastEffective() {
+  let base = RARE_BLAST_REACH;
+  if (SORT_MODE === "hover_and_move")  base += (eff().moveRareBoost  || 0);
+  if (SORT_MODE === "hover_and_pulse") base += (eff().pulseRareBoost || 0);
+  return Math.max(0, base);
+}
+function foilBlastEffective() {
+  let base = FOIL_BLAST_REACH;
+  if (SORT_MODE === "hover_and_move")  base += (eff().moveFoilBoost  || 0);
+  if (SORT_MODE === "hover_and_pulse") base += (eff().pulseFoilBoost || 0);
+  return Math.max(0, base);
+}
 function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
 function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
 function listingCooldownMaxEffective(){ return Math.max(listingCooldownMinEffective(), LISTING_COOLDOWN_MAX + (eff().listingCooldownDelta || 0)); }
@@ -4904,13 +5029,15 @@ function clearMarkedGrains() {
   hoverCell = null;
   drawSand();
 }
-// Cells live (non-tombstone, non-empty) within HOVER_RADIUS_CELLS of (px, py).
-function cellsWithinRadius(px, py) {
+// Cells live (non-tombstone, non-empty) within `radiusCells` of (px, py).
+// Default radius = hoverRadiusEffective (marking-mode cursor). Pulse-mode
+// passes its own radius so the two upgrade tracks stay independent.
+function cellsWithinRadius(px, py, radiusCells) {
   const canvas = $("sand-canvas");
   if (!canvas) return [];
   const h = canvas.clientHeight || 90;
   const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
-  const radius = hoverRadiusEffective();
+  const radius = (radiusCells != null) ? radiusCells : hoverRadiusEffective();
   const pxR  = radius * unit;
   const cx = Math.floor(px / SAND_CELL_W);
   // Canvas row 0 is the click buffer (no grain settles there); shift to
@@ -5023,7 +5150,7 @@ function findClickedGrain(clickX, clickY) {
   // maps to a negative pile-row; the radius search still finds the bottom
   // grain in the column from there.
   const cy = Math.floor((h - clickY) / SAND_CELL_H) - SAND_BUFFER_ROWS;
-  const radius = SORT_CLICK_RADIUS_CELLS;
+  const radius = sortClickRadiusEffective();
   let bestCol = -1, bestRow = -1, bestDist = Infinity;
   for (let dc = -radius; dc <= radius; dc++) {
     const c = cx + dc;
@@ -5079,7 +5206,7 @@ function explosionOffsetsForKey(key) {
   // Foils throw a longer "+" — typically long enough to chain across most
   // piles. Rares throw a shorter one. Both follow a clean ray shape (no
   // diagonals). Reaches are tunable via the Game Design panel.
-  return bulkIsFoil(key) ? armOffsets(FOIL_BLAST_REACH) : armOffsets(RARE_BLAST_REACH);
+  return bulkIsFoil(key) ? armOffsets(foilBlastEffective()) : armOffsets(rareBlastEffective());
 }
 
 function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
@@ -5338,17 +5465,28 @@ function drawSand() {
       ctx.stroke();
     });
   }
-  // Cursor indicator — shows the area the next dwell will mark. Tracks the
-  // mouse while hovering the canvas; HOVER_RADIUS_CELLS sets the size and
-  // is upgrade-friendly for later progression unlocks.
+  // Cursor indicator — sized by mode:
+  //   click  : the next dwell's hover-radius (marks within this ring)
+  //   pulse  : the pulse-radius (grains within this ring detonate per tick)
+  //   move   : suppressed (the per-move click search uses ortho radius)
   if (cursorPos) {
     const unit = Math.min(SAND_CELL_W, SAND_CELL_H);
-    const pxR = hoverRadiusEffective() * unit;
-    ctx.strokeStyle = "rgba(255,255,255,0.55)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cursorPos.x, cursorPos.y, pxR, 0, Math.PI * 2);
-    ctx.stroke();
+    let radiusCells = 0;
+    let color = "rgba(255,255,255,0.55)";
+    if (SORT_MODE === "hover_and_click") {
+      radiusCells = hoverRadiusEffective();
+    } else if (SORT_MODE === "hover_and_pulse") {
+      radiusCells = pulseRadiusEffective();
+      color = "rgba(184,255,90,0.7)";
+    }
+    if (radiusCells > 0) {
+      const pxR = radiusCells * unit;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cursorPos.x, cursorPos.y, pxR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 }
 
@@ -5649,6 +5787,9 @@ function closeDesignPanel() {
   $("design-modal").hidden = true;
 }
 
+// Tracks which branch(es) the upgrades modal is filtered to. Accepts a
+// string (single branch), an array (multi-branch group like SORTING), or
+// null (the legacy "all branches" view that nothing wires up anymore).
 let _openUpgradesBranch = null;
 function openUpgradesPanel(branchKey) {
   _openUpgradesBranch = branchKey || null;
@@ -5658,6 +5799,14 @@ function openUpgradesPanel(branchKey) {
 function closeUpgradesPanel() {
   $("upgrades-modal").hidden = true;
   _openUpgradesBranch = null;
+}
+function _resolveOpenBranches() {
+  if (!_openUpgradesBranch) return UPGRADE_BRANCHES;
+  if (Array.isArray(_openUpgradesBranch)) {
+    const set = new Set(_openUpgradesBranch);
+    return UPGRADE_BRANCHES.filter(b => set.has(b.key));
+  }
+  return UPGRADE_BRANCHES.filter(b => b.key === _openUpgradesBranch);
 }
 
 function openSortersModal() {
@@ -5671,67 +5820,106 @@ function closeSortersModal() {
 function renderUpgrades() {
   const body = $("upgrades-body");
   if (!body) return;
+  const branches = _resolveOpenBranches();
+  // Currency for the balance pill follows the *first* branch in view.
+  // Mixed-currency modals (none today) would show only the first; that's
+  // fine since all SORTING_BRANCHES are cash and LISTINGS is clout.
+  const probeNode = (() => {
+    for (const b of branches) {
+      const n = UPGRADE_NODES.find(x => x.branch === b.key);
+      if (n) return n;
+    }
+    return null;
+  })();
+  const currency = probeNode ? nodeCurrency(probeNode) : "clout";
   const balanceEl = $("upgrades-balance");
-  if (balanceEl) balanceEl.textContent = (state.clout || 0).toLocaleString();
-  // Title reflects which branch is open (or "UPGRADES" if all).
+  if (balanceEl) {
+    balanceEl.innerHTML = currency === "cash"
+      ? `💵 <b style="color:var(--cash)">${usd(state.coins || 0)}</b>`
+      : `💎 <b>${(state.clout || 0).toLocaleString()}</b> CLOUT`;
+    balanceEl.style.borderColor = currency === "cash" ? "rgba(133,187,101,0.6)" : "";
+    balanceEl.style.background = currency === "cash" ? "rgba(133,187,101,0.12)" : "";
+  }
+  // Title: prefer an explicit group name when SORTING_BRANCHES is open.
   const titleEl = $("upgrades-title");
   if (titleEl) {
-    const branch = _openUpgradesBranch ? UPGRADE_BRANCHES.find(b => b.key === _openUpgradesBranch) : null;
-    titleEl.textContent = branch ? `${branch.label} UPGRADES` : "UPGRADES";
-    titleEl.style.color = branch ? branch.color : "var(--clout)";
+    const isSortingGroup = Array.isArray(_openUpgradesBranch)
+      && SORTING_BRANCHES.every(k => _openUpgradesBranch.includes(k))
+      && _openUpgradesBranch.length === SORTING_BRANCHES.length;
+    if (isSortingGroup) {
+      titleEl.textContent = "SORTING UPGRADES";
+      titleEl.style.color = "var(--clout)";
+    } else if (branches.length === 1) {
+      titleEl.textContent = `${branches[0].label} UPGRADES`;
+      titleEl.style.color = branches[0].color;
+    } else {
+      titleEl.textContent = "UPGRADES";
+      titleEl.style.color = "var(--clout)";
+    }
   }
   body.innerHTML = "";
-  const branches = _openUpgradesBranch
-    ? UPGRADE_BRANCHES.filter(b => b.key === _openUpgradesBranch)
-    : UPGRADE_BRANCHES;
 
-  // Build a flat list of (label, color, nodes[]) columns. Branches with a
-  // `subtracks` field get one column per subtrack; flat branches get one
-  // column for the whole branch.
-  const columns = [];
+  // Build one section per branch. Single-branch view drops the section
+  // header (the modal title already names it). Multi-branch view stacks
+  // sections vertically and labels each.
+  const stackMode = branches.length > 1;
+  body.classList.toggle("stacked", stackMode);
+  body.classList.toggle("single", !stackMode && (!branches[0] || !Array.isArray(branches[0].subtracks)));
+  if (stackMode) {
+    body.style.gridTemplateColumns = "1fr"; // sections own their own inner grid
+  }
   branches.forEach(branch => {
-    if (Array.isArray(branch.subtracks) && branch.subtracks.length > 0) {
-      branch.subtracks.forEach(st => {
-        columns.push({
-          label: st.label,
-          color: branch.color,
-          nodes: UPGRADE_NODES.filter(n => n.branch === branch.key && n.subtrack === st.key),
-        });
-      });
+    const subtracks = Array.isArray(branch.subtracks) && branch.subtracks.length > 0
+      ? branch.subtracks
+      : [{ key: null, label: branch.label }];
+
+    let sectionRoot = body;
+    if (stackMode) {
+      const section = document.createElement("section");
+      section.className = "upgrade-section";
+      const sh = document.createElement("h3");
+      sh.className = "upgrade-section-label";
+      sh.style.color = branch.color;
+      sh.textContent = branch.label;
+      section.appendChild(sh);
+      const grid = document.createElement("div");
+      grid.className = "upgrade-section-grid";
+      grid.style.gridTemplateColumns = `repeat(${subtracks.length}, 1fr)`;
+      section.appendChild(grid);
+      body.appendChild(section);
+      sectionRoot = grid;
     } else {
-      columns.push({
-        label: branch.label,
-        color: branch.color,
-        nodes: UPGRADE_NODES.filter(n => n.branch === branch.key),
-      });
+      // Single-branch: classic flat layout; let the outer .upgrades-body grid
+      // handle column count.
+      body.style.gridTemplateColumns = subtracks.length === 1
+        ? "minmax(260px, 360px)"
+        : `repeat(${subtracks.length}, 1fr)`;
     }
-  });
-  // single = exactly one column (a flat single-branch view); when paint is
-  // open we get three columns so we want the wider layout.
-  body.classList.toggle("single", columns.length === 1);
-  body.style.gridTemplateColumns = columns.length === 1
-    ? "minmax(260px, 360px)"
-    : `repeat(${columns.length}, 1fr)`;
-  columns.forEach(({ label, color, nodes }) => {
-    const col = document.createElement("div");
-    col.className = "upgrade-branch";
-    col.style.color = color;
-    const labelEl = document.createElement("div");
-    labelEl.className = "upgrade-branch-label";
-    labelEl.textContent = label;
-    col.appendChild(labelEl);
-    nodes.forEach(node => {
-      const status = nodeStatus(node);
-      const card = document.createElement("div");
-      card.className = "upgrade-node " + status;
-      card.dataset.nodeId = node.id;
-      card.innerHTML = `
-        <span class="un-label">${node.label}</span>
-        <span class="un-desc">${node.desc}</span>
-        <span class="un-cost"><span class="un-cost-text">${node.cost} CLOUT</span></span>`;
-      col.appendChild(card);
+
+    subtracks.forEach(st => {
+      const nodes = st.key
+        ? UPGRADE_NODES.filter(n => n.branch === branch.key && n.subtrack === st.key)
+        : UPGRADE_NODES.filter(n => n.branch === branch.key);
+      const col = document.createElement("div");
+      col.className = "upgrade-branch";
+      col.style.color = branch.color;
+      const labelEl = document.createElement("div");
+      labelEl.className = "upgrade-branch-label";
+      labelEl.textContent = st.label;
+      col.appendChild(labelEl);
+      nodes.forEach(node => {
+        const status = nodeStatus(node);
+        const card = document.createElement("div");
+        card.className = "upgrade-node " + status + (nodeCurrency(node) === "cash" ? " cash" : "");
+        card.dataset.nodeId = node.id;
+        card.innerHTML = `
+          <span class="un-label">${node.label}</span>
+          <span class="un-desc">${node.desc}</span>
+          <span class="un-cost"><span class="un-cost-text">${nodeCostText(node)}</span></span>`;
+        col.appendChild(card);
+      });
+      sectionRoot.appendChild(col);
     });
-    body.appendChild(col);
   });
 }
 
@@ -6534,6 +6722,10 @@ function initActivityLog() { renderActivityLog(); }
 // rebuild their containers' HTML and would wipe the class otherwise.
 function paintUpgradeTriggers() {
   document.querySelectorAll(".upgrade-trigger").forEach(btn => {
+    if (btn.hasAttribute("data-sorting-branches")) {
+      btn.classList.toggle("ready", SORTING_BRANCHES.some(branchHasAvailableNode));
+      return;
+    }
     const branch = btn.dataset.upgradeBranch || btn.dataset.branch;
     btn.classList.toggle("ready", branch ? branchHasAvailableNode(branch) : false);
   });
@@ -7251,8 +7443,14 @@ $("upgrades-body").addEventListener("click", (e) => {
   if (!card || !card.dataset.nodeId) return;
   if (card.classList.contains("available")) purchaseNode(card.dataset.nodeId);
 });
-// Per-feature UPGRADE triggers (each opens the modal filtered to one branch).
+// Per-feature UPGRADE triggers (each opens the modal filtered to one branch
+// or a named branch group like SORTING_BRANCHES).
 document.addEventListener("click", (e) => {
+  const sortingTrig = e.target.closest("[data-sorting-branches]");
+  if (sortingTrig) {
+    openUpgradesPanel(SORTING_BRANCHES.slice());
+    return;
+  }
   const trig = e.target.closest("[data-branch], [data-upgrade-branch]");
   if (!trig) return;
   const branch = trig.dataset.branch || trig.dataset.upgradeBranch;
@@ -7269,19 +7467,40 @@ document.addEventListener("keydown", (e) => {
   }
 });
 setInterval(save, 5000);
-// Pulse-sort tick — when SORT_MODE is "hover_and_pulse", detonate whatever
-// live grain the cursor currently sits on. chainBusy and the grain-occupancy
-// check are the same guards used by the per-move handler.
+// Pulse-sort tick — when SORT_MODE is "hover_and_pulse", every
+// sortPulseMsEffective() ms detonate every live grain within
+// pulseRadiusEffective() of the cursor. Uses a high-frequency check with a
+// last-fired timestamp so the rate-upgrade can shorten the period live
+// without re-registering an interval. Falls back to the single-grain click
+// path when no radius upgrades are owned.
+let _lastSortPulseAt = 0;
 setInterval(() => {
   if (SORT_MODE !== "hover_and_pulse") return;
   if (chainBusy || !cursorPos) return;
-  const canvas = $("sand-canvas");
-  const h = canvas.clientHeight || 90;
-  const c = Math.floor(cursorPos.x / SAND_CELL_W);
-  const r = Math.floor((h - cursorPos.y) / SAND_CELL_H) - SAND_BUFFER_ROWS;
-  const k = cur().pile[c] && cur().pile[c][r];
-  if (k && k !== "__") sortCards({ click: { x: cursorPos.x, y: cursorPos.y } });
-}, SORT_PULSE_MS);
+  const now = performance.now();
+  if (now - _lastSortPulseAt < sortPulseMsEffective()) return;
+  const pr = pulseRadiusEffective();
+  if (pr > 0) {
+    const cells = cellsWithinRadius(cursorPos.x, cursorPos.y, pr);
+    if (cells.length === 0) return;
+    _lastSortPulseAt = now;
+    SFX.sort();
+    runChainCritFromMarks(cells, (total) => {
+      settlePileAfterChain();
+      renderAll(); save();
+      if (total > 5) logActivity(`✨ Pulse cleared ${total} cards.`, "success");
+    });
+    return;
+  }
+  // Default (no radius upgrades): defer to the click path so the cursor's
+  // SORT_CLICK_RADIUS_CELLS neighbourhood still gets searched. Only mark the
+  // pulse as fired when sortCards has work to do, so empty hovers don't burn
+  // the cooldown.
+  const seed = findClickedGrain(cursorPos.x, cursorPos.y);
+  if (!seed) return;
+  _lastSortPulseAt = now;
+  sortCards({ click: { x: cursorPos.x, y: cursorPos.y } });
+}, 30);
 setInterval(tickHomies, HOMIE_TICK_MS);
 setInterval(tickSorters, SORTER_TICK_MS);
 setInterval(resolveListings, LISTING_TICK_MS);
