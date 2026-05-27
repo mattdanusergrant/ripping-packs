@@ -174,11 +174,6 @@
   .homie-sprite[data-slot="10"] { left: calc(50% + 200px); top: 50%; }
   .homie-sprite[data-slot="11"] { left: calc(50% + 200px); top: 78%; }
   .homie-sprite .homie-emoji { font-size: 1.8rem; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
-  .homie-sprite .homie-set {
-    background: rgba(255,216,77,0.22); color: #ffd84d;
-    border-radius: 3px; font-size: 0.55rem; font-weight: bold;
-    padding: 0 4px; line-height: 1.3; letter-spacing: 0.5px;
-  }
   .homie-sprite .homie-count {
     background: var(--gold); color: #111;
     border-radius: 8px; font-size: 0.6rem; font-weight: bold;
@@ -916,11 +911,6 @@
     font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
   }
   .sorter-header .sorter-name { color: var(--gold); font-weight: bold; }
-  .sorter-header .sorter-set {
-    background: rgba(255,216,77,0.18); color: var(--gold);
-    border-radius: 3px; font-size: 0.58rem; letter-spacing: 1px;
-    padding: 1px 5px; font-weight: bold;
-  }
   /* Action row — fixed column widths so values stack into clean vertical
      columns across multiple sorters: hopper, rate, ⬆ SPD, spacer, sorted,
      ⬆ BUF, spacer, LOAD (flex), COLLECT (flex). The two spacer cells
@@ -5838,7 +5828,6 @@ function renderHomieSprites() {
       } else {
         el.innerHTML = `
           <span class="homie-emoji">🧢</span>
-          <span class="homie-set">S${h.setId != null ? h.setId : CURRENT_SET_ID}</span>
           <span class="homie-count">${h.packsRemaining}</span>
           <span class="homie-bar"><span style="width:0%"></span></span>`;
       }
@@ -6338,7 +6327,6 @@ function buildSorterCard(uid) {
   card.innerHTML = `
     <div class="sorter-header">
       <span class="sorter-name"></span>
-      <span class="sorter-set"></span>
     </div>
     <div class="sorter-row">
       <div class="sorter-cell hopper" title="In hopper — waiting to be sorted">
@@ -6406,10 +6394,6 @@ function renderSorters() {
     const nameEl = card.querySelector(".sorter-name");
     const nameText = `SORTER ${i + 1} · SPD LV ${speedLevel} · BUF LV ${bufferLevel}`;
     if (nameEl.textContent !== nameText) nameEl.textContent = nameText;
-    const setEl = card.querySelector(".sorter-set");
-    const setText = `S${s.setId != null ? s.setId : CURRENT_SET_ID}`;
-    if (setEl.textContent !== setText) setEl.textContent = setText;
-
     // Hopper count (unsorted input waiting to be processed).
     const hopperVal = card.querySelector(".sorter-hopper-val");
     const hopperText = String(inputN);
