@@ -2005,7 +2005,7 @@ function def(key, fallback) {
 // Two sorting interaction prototypes:
 //   "hover_and_click" — dwell to mark grains, then click to detonate (legacy)
 //   "just_hover"      — hovering a grain immediately detonates it (no click)
-let SORT_MODE = def("SORT_MODE", "hover_and_click");
+let SORT_MODE = def("SORT_MODE", "just_hover");
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // Per-slot foil roll. Each card in the pack independently rolls foil after
@@ -5071,8 +5071,8 @@ function armOffsets(n) {
   _armCache.set(n, out);
   return out;
 }
-let RARE_BLAST_REACH = def("RARE_BLAST_REACH", 3);
-let FOIL_BLAST_REACH = def("FOIL_BLAST_REACH", 6);
+let RARE_BLAST_REACH = def("RARE_BLAST_REACH", 2);
+let FOIL_BLAST_REACH = def("FOIL_BLAST_REACH", 3);
 function explosionOffsetsForKey(key) {
   // Foils throw a longer "+" — typically long enough to chain across most
   // piles. Rares throw a shorter one. Both follow a clean ray shape (no
