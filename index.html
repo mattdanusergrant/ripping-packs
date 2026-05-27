@@ -2173,7 +2173,7 @@ let PACK_COMMON_SLOTS = def("PACK_COMMON_SLOTS", 9);
 let PACK_RARE_SLOTS   = def("PACK_RARE_SLOTS", 1);
 // Probability a pack contains a foil (replaces one common slot). Tunes the
 // long-term foil drip without touching per-sheet mythic share.
-let FOIL_PER_PACK     = def("FOIL_PER_PACK", 0.5);
+let FOIL_PER_PACK     = def("FOIL_PER_PACK", 0.05);
 
 // ---- Set / identity -----------------------------------------------------
 // Composite card IDs bake in GAME, SET, and CARD numbers so additional games
@@ -5905,7 +5905,7 @@ const DESIGN_FIELDS = [
   // Pack rolls
   { group: "Pack rolls",       key: "PACK_COMMON_SLOTS",               path: "PACK_COMMON_SLOTS",         label: "Common slots / pack",          step: 1, min: 0, int: true },
   { group: "Pack rolls",       key: "PACK_RARE_SLOTS",                 path: "PACK_RARE_SLOTS",           label: "Rare slots / pack",            step: 1, min: 0, int: true },
-  { group: "Pack rolls",       key: "FOIL_PER_PACK",                   path: "FOIL_PER_PACK",             label: "Foil per pack (probability)",  step: 0.05, min: 0, max: 1 },
+  { group: "Pack rolls",       key: "FOIL_PER_PACK",                   path: "FOIL_PER_PACK",             label: "Foil per pack (probability)",  step: 0.01, min: 0, max: 1 },
   // Print-sheet runs — per-card print counts. Drop rates = (set size × prints)
   // share of the sheet. The common sheet only carries standards.
   { group: "Print sheet: common", key: "PRINT_SHEETS.common.standard",      path: "PRINT_SHEETS.common.standard",      label: "Standard prints / card",  step: 1, min: 0, int: true },
