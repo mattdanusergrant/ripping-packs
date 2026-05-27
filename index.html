@@ -128,12 +128,11 @@
 
   #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-height: 0; position: relative; }
   /* Three-column grid so the booster pack stays horizontally centered
-     in the OPENING column (above the typing zone). Activity log lives
-     in the left column; the right column is an empty spacer that
-     mirrors the log's width, AND it absorbs the overflow from the
-     outer-right sprite lane (which positions absolutely relative to
-     pack-wrap at calc(50% + 200px) — those sprites visually float into
-     the right column without crowding the pack). */
+     in the OPENING column (above the typing zone). Outer columns are
+     empty spacers — the right one absorbs overflow from the outer-right
+     sprite lane (which positions absolutely relative to pack-wrap at
+     calc(50% + 200px) — those sprites visually float into the right
+     column without crowding the pack). */
   #pack-row {
     display: grid;
     grid-template-columns: 1fr 200px 1fr;
@@ -502,13 +501,13 @@
   }
 
   /* Activity log — scrollable feed of recent events, replaces the old
-     single-line #hint ticker. Sits to the left of the booster pack in
-     the space the inner-left + outer-left sprite lanes used to occupy
-     (those lanes were removed; the right-side lanes remain). */
+     single-line #hint ticker. Sits beneath the unsorted-pile canvas
+     (~500 px wide) — sized to match so the column reads as one unit. */
   #activity-log {
-    flex: 1 1 0;
-    min-width: 140px;
-    max-height: 280px;
+    width: 500px;
+    max-width: 100%;
+    margin: 8px auto 0;
+    max-height: 140px;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 6px 8px;
@@ -518,7 +517,6 @@
     font-size: 0.7rem;
     line-height: 1.32;
     display: flex; flex-direction: column;
-    align-self: stretch;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,0.18) transparent;
   }
@@ -1723,7 +1721,7 @@
        to match. Side columns still flex with 1fr so the pack stays
        centered over the typing zone. */
     #pack-row { grid-template-columns: 1fr 150px 1fr; gap: 8px; }
-    #activity-log { min-width: 95px; font-size: 0.65rem; max-height: 220px; }
+    #activity-log { width: 100%; font-size: 0.65rem; max-height: 120px; }
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
@@ -1849,7 +1847,7 @@
       <span class="idle-hats" id="idle-hats"></span>
     </div>
     <div id="pack-row">
-      <div id="activity-log" aria-label="Activity log"></div>
+      <div class="pack-row-spacer" aria-hidden="true"></div>
       <div id="pack-wrap">
         <div class="pack" id="pack">
           <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
@@ -1878,6 +1876,7 @@
       <button class="upgrade-trigger" id="upgrade-paint" type="button" data-branch="paint">⬆ MARKING</button>
     </div>
     <canvas id="sand-canvas"></canvas>
+    <div id="activity-log" aria-label="Activity log"></div>
   </div>
 </section>
 
@@ -5216,25 +5215,18 @@ function sortCards(opts) {
     runChainCritFromMarks(seeds, (total) => {
       settlePileAfterChain();
       renderAll(); save();
-      logActivity(total > 5
-        ? `✨ CHAIN! Sorted ${total} cards from ${seeds.length} marks.`
-        : `Sorted ${total} card${total !== 1 ? "s" : ""}.`, total > 5 ? "success" : "info");
+      if (total > 5) logActivity(`✨ CHAIN! Sorted ${total} cards from ${seeds.length} marks.`, "success");
     });
     return;
   }
 
   // Single-click fallback: nearest-grain seed + click AoE (current behavior).
   const seed = findClickedGrain(opts.click.x, opts.click.y);
-  if (!seed) {
-    logActivity("Click on the pile to sort, or hover to mark.");
-    return;
-  }
+  if (!seed) return;
   runChainCrit(seed.col, seed.row, (total) => {
     settlePileAfterChain();
     renderAll(); save();
-    logActivity(total > 5
-      ? `✨ CHAIN! Sorted ${total} cards.`
-      : `Sorted ${total} card${total !== 1 ? "s" : ""}.`, total > 5 ? "success" : "info");
+    if (total > 5) logActivity(`✨ CHAIN! Sorted ${total} cards.`, "success");
   });
 }
 
@@ -6260,7 +6252,6 @@ function _loadSorterInner(s) {
   }
   settlePileAfterChain();
   renderAll(); save();
-  logActivity(`Loaded ${loaded} grain${loaded > 1 ? "s" : ""} into sorter.`);
 }
 
 function collectSorter(uid) {
@@ -6285,7 +6276,6 @@ function _collectSorterInner(s, total) {
     s.output[key] = 0;
   });
   renderAll(); save();
-  logActivity(`Collected ${total} card${total > 1 ? "s" : ""} from sorter.`);
 }
 
 function tickSorters() {
@@ -6499,7 +6489,6 @@ function buyPacks(qty, totalCost, label) {
   state.coins -= totalCost;
   cur().packSupply += qty;
   renderAll(); save();
-  logActivity(`Bought ${label}. Supply: ${cur().packSupply}.`);
 }
 function buyBoxes(qty, totalCost, label) {
   if (state.activeSetId !== CURRENT_SET_ID) {
@@ -6516,7 +6505,6 @@ function buyBoxes(qty, totalCost, label) {
   state.coins -= totalCost;
   cur().boxesOwned = (cur().boxesOwned || 0) + qty;
   renderAll(); save();
-  logActivity(`Bought ${label}. Boxes: ${cur().boxesOwned}.`);
 }
 
 function unsortedTotal() {
@@ -6526,7 +6514,6 @@ function maybeCrackBox() {
   if (cur().packSupply <= 0 && (cur().boxesOwned || 0) > 0) {
     cur().boxesOwned -= 1;
     cur().packSupply += BOX_SIZE;
-    logActivity(`Cracked a sealed box → ${BOX_SIZE} packs.`);
     return true;
   }
   return false;
@@ -6929,8 +6916,9 @@ function ripOne() {
   showHits(pulls, { newCount, completions });
   renderAll(); save();
   const foilCount = pulls.filter(p => p.foil).length;
-  const tail = foilCount > 0 ? `  ✨ ${foilCount} foil${foilCount > 1 ? "s" : ""}!` : "";
-  logActivity(`Nice rip. ${cur().packSupply} left.${tail}`);
+  if (foilCount > 0) {
+    logActivity(`Nice rip — ${foilCount} foil${foilCount > 1 ? "s" : ""} pulled! ✨`, "success");
+  }
 }
 
 
