@@ -3092,7 +3092,7 @@ let AVAILABLE_SLOTS_BASE  = def("AVAILABLE_SLOTS_BASE",  10);
 // slot shifts one position left, and a fresh offer enters at the
 // rightmost slot. Purchasing a slot empties it in place — the empty
 // rides along the conveyor until it shifts off on its own.
-let AVAILABLE_CONVEYOR_MS = def("AVAILABLE_CONVEYOR_MS", 2 * 60 * 1000); // 2 min
+let AVAILABLE_CONVEYOR_MS = def("AVAILABLE_CONVEYOR_MS", 10 * 1000); // 10 s — fast conveyor, blink and you miss the leftmost
 let AVAILABLE_PRICE_RATIO = def("AVAILABLE_PRICE_RATIO", 1.25);          // +25% premium
 // Standard (and its foil) is excluded: bulk-style commons aren't what
 // the AVAILABLE market is for — its job is targeted singles of the
@@ -3111,7 +3111,10 @@ const AVAILABLE_RARITIES = [
 ];
 function availableSlotsEffective()    { return AVAILABLE_SLOTS_BASE + (eff().availableSlots || 0); }
 function availableConveyorMsEffective() {
-  return Math.max(15000, AVAILABLE_CONVEYOR_MS + (eff().availableRefreshDelta || 0));
+  // Floor at 2s so a player can still react to (and click) the leftmost
+  // slot before it evicts. Anything tighter and the conveyor renders
+  // the buy-side market unusable.
+  return Math.max(2000, AVAILABLE_CONVEYOR_MS + (eff().availableRefreshDelta || 0));
 }
 function vintageSlotCountEffective() {
   return VINTAGE_SLOTS_BASE + (eff().vintageSlots || 0);
@@ -4581,6 +4584,11 @@ function tickAvailable() {
   const interval = availableConveyorMsEffective();
   if (typeof state.available.tickAt !== "number" || state.available.tickAt <= 0) {
     state.available.tickAt = now + interval;
+  } else if (state.available.tickAt - now > interval) {
+    // Far-future tickAt — comes from a save written under a longer
+    // interval (e.g., the old 2-min default). Snap back to a fresh
+    // cycle on the new interval so the conveyor doesn't appear frozen.
+    state.available.tickAt = now + interval;
   }
   let advanced = false;
   // Catch up on missed ticks (tab was backgrounded etc.) — one
@@ -4667,7 +4675,7 @@ function renderAvailable() {
     : `0:${String(Math.ceil(msToShift/1000)).padStart(2,"0")}`;
   const tiles = slots.map((slot, i) => {
     const leftmostBadge = i === 0
-      ? `<div class="avail-shift" title="Next shift in ${shiftLabel} — the leftmost slot rotates off the conveyor every ${Math.round(availableConveyorMsEffective()/60000)} min.">⏳ ${shiftLabel}</div>`
+      ? `<div class="avail-shift" title="Next shift in ${shiftLabel} — the leftmost slot rotates off the conveyor every ${Math.round(availableConveyorMsEffective()/1000)} s.">⏳ ${shiftLabel}</div>`
       : "";
     if (slot && slot.cardId != null) {
       const setId = slot.setId;
@@ -5474,7 +5482,7 @@ const DESIGN_FIELDS = [
   { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.box",        path: "VINTAGE_TYPE_WEIGHTS.box",  label: "Vintage roll: box weight",      step: 1, min: 0, int: true },
   { group: "Vintage shop",     key: "VINTAGE_TYPE_WEIGHTS.case",       path: "VINTAGE_TYPE_WEIGHTS.case", label: "Vintage roll: case weight",     step: 1, min: 0, int: true },
   { group: "Available market", key: "AVAILABLE_SLOTS_BASE",            path: "AVAILABLE_SLOTS_BASE",      label: "Available dealer slots",        step: 1, min: 1, int: true },
-  { group: "Available market", key: "AVAILABLE_CONVEYOR_MS",           path: "AVAILABLE_CONVEYOR_MS",     label: "Available conveyor shift (min)", step: 0.5, min: 0.25, scale: 60000 },
+  { group: "Available market", key: "AVAILABLE_CONVEYOR_MS",           path: "AVAILABLE_CONVEYOR_MS",     label: "Available conveyor shift (sec)", step: 1, min: 2, scale: 1000 },
   { group: "Available market", key: "AVAILABLE_PRICE_RATIO",           path: "AVAILABLE_PRICE_RATIO",     label: "Available price multiplier",    step: 0.05, min: 1.0 },
   { group: "Requests",         key: "REQUEST_SLOTS_BASE",            path: "REQUEST_SLOTS_BASE",        label: "Request slots",                 step: 1, min: 1, int: true },
   { group: "Requests",         key: "REQUEST_EXPIRE_MS",             path: "REQUEST_EXPIRE_MS",         label: "Request expire (min)",          step: 0.5, min: 0.5, scale: 60000 },
