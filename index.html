@@ -126,7 +126,19 @@
   .buy-btn .cost { color: var(--cash); font-size: 0.9rem; margin-top: 4px; font-weight: bold; }
   .buy-btn .save { color: var(--uncommon); font-size: 0.65rem; }
 
-  #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 10px; min-height: 0; position: relative; }
+  #pack-area { flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; gap: 10px; min-height: 0; position: relative; }
+  /* Two-column row: activity log on the left, pack stage on the right.
+     The pack stage reserves room on its right for the outer-right sprite
+     lane (which positions absolutely relative to pack-wrap at +200px). */
+  #pack-row { display: flex; flex-direction: row; align-items: stretch; gap: 12px; min-height: 0; }
+  .pack-stage {
+    flex: 0 0 auto;
+    position: relative;
+    /* Pack-wrap is 200px wide (matches the pack). Right padding leaves
+       room for the outer-right sprite (~225px right of pack-wrap's
+       center). 130px keeps the layout balanced without empty space. */
+    padding-right: 130px;
+  }
   /* Positioning container for homie sprites — sized exactly to the pack so
      "top: 25/50/75%" map to vertical thirds of the pack itself, not of a
      fluid pack-area. */
@@ -147,15 +159,14 @@
      `left` via translateX so the offsets read symmetrically. The
      SLOT_UNLOCK_ORDER table controls which of these are reachable as
      the player buys tables. */
-  .homie-sprite[data-slot="0"]  { left: calc(50% - 130px); top: 22%; }
-  .homie-sprite[data-slot="1"]  { left: calc(50% - 130px); top: 50%; }
-  .homie-sprite[data-slot="2"]  { left: calc(50% - 130px); top: 78%; }
+  /* Right-side ripping lanes only — the left lanes were retired to make
+     room for the activity log. Inner lane (slots 3-5) at +130px from the
+     pack center; outer lane (slots 9-11) at +200px. Top/mid/bottom
+     vertical tiers at 22% / 50% / 78%. Slots 0-2 and 6-8 are intentionally
+     unmapped — SLOT_UNLOCK_ORDER never includes them. */
   .homie-sprite[data-slot="3"]  { left: calc(50% + 130px); top: 22%; }
   .homie-sprite[data-slot="4"]  { left: calc(50% + 130px); top: 50%; }
   .homie-sprite[data-slot="5"]  { left: calc(50% + 130px); top: 78%; }
-  .homie-sprite[data-slot="6"]  { left: calc(50% - 200px); top: 22%; }
-  .homie-sprite[data-slot="7"]  { left: calc(50% - 200px); top: 50%; }
-  .homie-sprite[data-slot="8"]  { left: calc(50% - 200px); top: 78%; }
   .homie-sprite[data-slot="9"]  { left: calc(50% + 200px); top: 22%; }
   .homie-sprite[data-slot="10"] { left: calc(50% + 200px); top: 50%; }
   .homie-sprite[data-slot="11"] { left: calc(50% + 200px); top: 78%; }
@@ -492,12 +503,51 @@
     100% { opacity: 0; }
   }
 
-  #hint { text-align: center; font-size: 0.9rem; color: var(--gold); min-height: 1.2em; transition: color 0.18s; }
-  #hint.flash-error { animation: hint-flash-error 0.7s ease-out; }
+  /* Activity log — scrollable feed of recent events, replaces the old
+     single-line #hint ticker. Sits to the left of the booster pack in
+     the space the inner-left + outer-left sprite lanes used to occupy
+     (those lanes were removed; the right-side lanes remain). */
+  #activity-log {
+    flex: 1 1 0;
+    min-width: 140px;
+    max-height: 280px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px 8px;
+    background: rgba(0,0,0,0.22);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    font-size: 0.7rem;
+    line-height: 1.32;
+    display: flex; flex-direction: column;
+    align-self: stretch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.18) transparent;
+  }
+  #activity-log::-webkit-scrollbar { width: 6px; }
+  #activity-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
+  .activity-entry {
+    padding: 2px 0;
+    color: var(--muted);
+    border-bottom: 1px dashed rgba(255,255,255,0.05);
+    word-wrap: break-word;
+  }
+  .activity-entry:last-child { border-bottom: none; }
+  .activity-entry.kind-info      { color: rgba(255,255,255,0.72); }
+  .activity-entry.kind-success   { color: var(--uncommon); }
+  .activity-entry.kind-craft     { color: var(--gold); }
+  .activity-entry.kind-buy       { color: var(--uncommon); }
+  .activity-entry.kind-sale      { color: var(--gold); }
+  .activity-entry.kind-rip       { color: rgba(255,255,255,0.7); }
+  .activity-entry.kind-request   { color: #ff7eb3; font-weight: bold; }
+  .activity-entry.kind-milestone { color: #65d6ff; font-weight: bold; }
+  .activity-entry.kind-unlock    { color: #65d6ff; font-weight: bold; }
+  .activity-entry.kind-error     { color: #ff7a3d; }
+  .activity-entry.flash-error    { animation: hint-flash-error 0.7s ease-out; }
   @keyframes hint-flash-error {
     0%   { color: #ff7a3d; text-shadow: 0 0 8px rgba(255,122,61,0.6); }
     20%  { color: #ff7a3d; text-shadow: 0 0 12px rgba(255,122,61,0.9); }
-    100% { color: var(--gold); text-shadow: none; }
+    100% { text-shadow: none; }
   }
 
   .particle {
@@ -1596,13 +1646,17 @@
     footer { grid-column: 1; padding: 0; font-size: 0.65rem; }
     #shop, #vault { padding: 10px; gap: 8px; }
     #pack-area { gap: 8px; flex: 0 0 auto; }
+    /* Mobile pack is narrower (150px), so outer-right sprite is at +160px.
+       Tighter padding keeps the stage from bleeding off the column edge. */
+    #pack-row { gap: 8px; }
+    .pack-stage { padding-right: 100px; }
+    #activity-log { min-width: 110px; font-size: 0.65rem; max-height: 220px; }
     .pack { width: 150px; height: 215px; }
     .pack .label { font-size: 0.9rem; }
     .pack .label small { margin-top: 4px; }
-    /* Tighter homie offset for the narrower mobile pack. */
-    .homie-sprite[data-slot="0"], .homie-sprite[data-slot="1"], .homie-sprite[data-slot="2"] { left: calc(50% - 100px); }
+    /* Tighter homie offsets for the narrower mobile pack — right-side
+       lanes only; the left lanes belong to the activity log. */
     .homie-sprite[data-slot="3"], .homie-sprite[data-slot="4"], .homie-sprite[data-slot="5"] { left: calc(50% + 100px); }
-    .homie-sprite[data-slot="6"], .homie-sprite[data-slot="7"], .homie-sprite[data-slot="8"] { left: calc(50% - 160px); }
     .homie-sprite[data-slot="9"], .homie-sprite[data-slot="10"], .homie-sprite[data-slot="11"] { left: calc(50% + 160px); }
     #sand-canvas { width: 100%; height: auto; aspect-ratio: 50 / 26; }
     .buy-btn { padding: 6px 4px; }
@@ -1614,7 +1668,6 @@
     .collection-grid.combined { grid-template-columns: repeat(var(--cols, 18), 16px); }
     .collection-cell { width: 16px; }
     .stock-row { padding: 8px 10px; gap: 8px; }
-    #hint { font-size: 0.8rem; }
   }
 </style>
 </head>
@@ -1722,10 +1775,15 @@
       <span class="idle-label">IDLE</span>
       <span class="idle-hats" id="idle-hats"></span>
     </div>
-    <div id="pack-wrap">
-      <div class="pack" id="pack">
-        <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
-        <div class="pack-cta" id="pack-cta">CLICK TO RIP</div>
+    <div id="pack-row">
+      <div id="activity-log" aria-label="Activity log"></div>
+      <div class="pack-stage">
+        <div id="pack-wrap">
+          <div class="pack" id="pack">
+            <div class="label"><span id="pack-set-label">The 2030 Set</span><br>BOOSTER PACK<small id="supply-label">Supply: 0</small></div>
+            <div class="pack-cta" id="pack-cta">CLICK TO RIP</div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="typing-zone">
@@ -1736,7 +1794,6 @@
       <div class="typing-hint">type to rip</div>
       <div id="typing-word"></div>
     </div>
-<div id="hint">A case on the house — start ripping!</div>
   </div>
   <div>
     <button id="sorter-shop" type="button" class="sorter-shop-btn">BUY A SORTER<span class="sorter-shop-cost" id="sorter-shop-cost">$1,000</span></button>
@@ -2049,31 +2106,24 @@ let CRAFT_HOMIE_DURATION_MS  = def("CRAFT_HOMIE_DURATION_MS", 2 * 60 * 1000);
 // from — base size HOMIE_POOL_BASE, grown by the CLOUT "crew" branch.
 let TABLE_COST       = def("TABLE_COST", 100);
 let HOMIE_POOL_BASE  = def("HOMIE_POOL_BASE", 1);
-// Sequential unlock order for ALL homie slots, rip + craft alike. The
-// player starts with zero tables; buying a table at the current "next"
-// slot unlocks the slot — and reveals the next one as purchaseable.
-// Order escalates: inner-lane rip slots (center-out) → five craft-homie
-// rarities low-to-high → outer-lane rip slots (center-out, mirroring the
-// inner-lane pattern). The outer lane lands at the end as an endgame
-// scale-up after the player has fully automated the inner pipeline.
+// Sequential unlock order. Six rip slots on the right side of the pack
+// (inner lane first, then outer), then the five craft-homie rarities
+// low-to-high. The left side of the pack was retired to make room for
+// the activity log, so left-lane rip slots (0-2, 6-8) are absent here
+// — and a save with deployed homies in those slots gets them evicted +
+// pool-refunded on load (see migration block).
 const SLOT_UNLOCK_ORDER = [
-  { kind: "rip",   slot: 1 },
   { kind: "rip",   slot: 4 },
-  { kind: "rip",   slot: 0 },
   { kind: "rip",   slot: 3 },
-  { kind: "rip",   slot: 2 },
   { kind: "rip",   slot: 5 },
+  { kind: "rip",   slot: 10 },
+  { kind: "rip",   slot: 9 },
+  { kind: "rip",   slot: 11 },
   { kind: "craft", rarity: "standard" },
   { kind: "craft", rarity: "rare" },
   { kind: "craft", rarity: "epic" },
   { kind: "craft", rarity: "legendary" },
   { kind: "craft", rarity: "mythic" },
-  { kind: "rip",   slot: 7 },
-  { kind: "rip",   slot: 10 },
-  { kind: "rip",   slot: 6 },
-  { kind: "rip",   slot: 9 },
-  { kind: "rip",   slot: 8 },
-  { kind: "rip",   slot: 11 },
 ];
 function tablesOwnedCount() {
   return Math.max(0, Math.min(SLOT_UNLOCK_ORDER.length, state.tablesOwned || 0));
@@ -2249,9 +2299,9 @@ function purchaseNode(id) {
   if (!node) return;
   const st = nodeStatus(node);
   if (st === "owned") return;
-  if (st === "locked") { $("hint").textContent = "Prereqs not unlocked yet."; return; }
+  if (st === "locked") { logActivity("Prereqs not unlocked yet."); return; }
   if (st === "unaffordable") {
-    $("hint").textContent = `Need ${node.cost - (state.clout || 0)} more CLOUT.`;
+    logActivity(`Need ${node.cost - (state.clout || 0)} more CLOUT.`);
     return;
   }
   state.clout -= node.cost;
@@ -2268,7 +2318,7 @@ function purchaseNode(id) {
   renderAll();
   renderUpgrades();
   save();
-  $("hint").textContent = `Unlocked: ${node.label}.`;
+  logActivity(`Unlocked: ${node.label}.`, "unlock");
 }
 
 const eff = () => unlockedNodeEffects();
@@ -2359,15 +2409,11 @@ const SFX = {
   ], 80),
   error:  () => {
     playTone({ freq: 180, dur: 0.12, type: "sawtooth", vol: 0.08, freqEnd: 90 });
-    // Brief red flash on the hint line so the refused action also reads
-    // visually — every refused-action call site already pairs SFX.error()
-    // with a hint message, so adding the visual here covers all 16 sites.
-    const h = document.getElementById("hint");
-    if (h) {
-      h.classList.remove("flash-error");
-      void h.offsetWidth;
-      h.classList.add("flash-error");
-    }
+    // Brief red flash on the latest activity-log entry so the refused
+    // action reads visually — every refused-action call site pairs
+    // SFX.error() with a logActivity('...', 'error') call, so flashing
+    // the latest entry covers all of them.
+    if (typeof flashLastActivityEntry === "function") flashLastActivityEntry();
   },
 };
 function setSfxMuted(m) {
@@ -2472,6 +2518,11 @@ const defaultState = () => ({
   // for the unowned-id bias, so it can't run during defaultState).
   // tickAt is initialized lazily on first tickAvailable.
   available: { slots: [], tickAt: 0 },
+  // Persistent activity log — ring-buffered list of {ts, kind, text}
+  // entries, capped at ACTIVITY_LOG_MAX (200). Replaces the old single-
+  // line #hint ticker. Kinds drive color coding in the panel: info,
+  // success, error, milestone, sale, rip, craft, buy.
+  activity: [],
 });
 
 function blankVintageSlots() {
@@ -2635,10 +2686,24 @@ function load() {
       || Object.values(parsed.completeSetCrafts || {}).some(n => n > 0)
       || Object.values(parsed.foilCompleteSetCrafts || {}).some(n => n > 0);
     parsed.firstSetCrafted = everCompleteCrafted;
+    // Activity log: empty array for pre-log saves. Entries are append-
+    // only and capped by ACTIVITY_LOG_MAX, so we don't trim here on load.
+    if (!Array.isArray(parsed.activity)) parsed.activity = [];
+    // Left-lane retirement: rip slots 0,1,2,6,7,8 no longer exist in
+    // SLOT_UNLOCK_ORDER (their column was reclaimed for the activity
+    // log). Evict any homies sitting there so the slot grid render
+    // doesn't try to position sprites against missing CSS. The pool
+    // refund happens below as part of the homiePool init step.
+    const RETIRED_RIP_SLOTS = new Set([0, 1, 2, 6, 7, 8]);
+    if (Array.isArray(parsed.homies)) {
+      parsed.homies = parsed.homies.filter(h => !(h.kind !== "craft" && RETIRED_RIP_SLOTS.has(h.slot)));
+    }
     // Tables migration. tablesOwned now indexes into SLOT_UNLOCK_ORDER
-    // (rip slots 0-5, then craft rarities 6-10). Ensure tablesOwned is
-    // at least the highest sequence position needed to cover any
-    // currently-deployed homies so the new lock doesn't evict them.
+    // (rip slots 3,4,5,9,10,11 first, then 5 craft rarities). Ensure
+    // tablesOwned is at least the highest sequence position needed to
+    // cover any currently-deployed homies so the new lock doesn't
+    // evict them. Homies that survived the retirement filter above
+    // are necessarily on a kept slot, so this stays consistent.
     if (typeof parsed.tablesOwned !== "number") parsed.tablesOwned = 0;
     const ripSlotsUsed = new Set();
     const craftRaritiesUsed = new Set();
@@ -3169,6 +3234,66 @@ function patinaClassFor(setId) {
 // ---- Render --------------------------------------------------------------
 const $ = id => document.getElementById(id);
 
+// ---- Activity log -------------------------------------------------------
+// Persistent scrollable feed of "things that just happened". Replaces the
+// old single-line #hint ticker. Each call appends an entry to state.activity
+// (capped at ACTIVITY_LOG_MAX so the save doesn't bloat) and to the DOM
+// list. Auto-scrolls to bottom when the user is already at the bottom; if
+// they've scrolled up to read history, a new entry doesn't yank the view.
+const ACTIVITY_LOG_MAX = 200;
+// Recognized kinds → color-coded by .activity-entry.kind-X in CSS. Unknown
+// kinds fall through to .kind-info treatment.
+const ACTIVITY_KINDS = new Set(["info","success","error","milestone","sale","rip","craft","buy","unlock","request"]);
+function logActivity(text, kind) {
+  if (text == null) return;
+  text = String(text);
+  if (!text) return;
+  kind = kind && ACTIVITY_KINDS.has(kind) ? kind : "info";
+  if (!Array.isArray(state.activity)) state.activity = [];
+  const entry = { ts: Date.now(), kind, text };
+  state.activity.push(entry);
+  if (state.activity.length > ACTIVITY_LOG_MAX) {
+    state.activity.splice(0, state.activity.length - ACTIVITY_LOG_MAX);
+  }
+  appendActivityEntry(entry);
+}
+function appendActivityEntry(entry) {
+  const wrap = $("activity-log");
+  if (!wrap) return;
+  const wasAtBottom = (wrap.scrollTop + wrap.clientHeight) >= (wrap.scrollHeight - 8);
+  const div = document.createElement("div");
+  div.className = "activity-entry kind-" + entry.kind;
+  div.textContent = entry.text;
+  wrap.appendChild(div);
+  while (wrap.childElementCount > ACTIVITY_LOG_MAX) wrap.removeChild(wrap.firstChild);
+  if (wasAtBottom) wrap.scrollTop = wrap.scrollHeight;
+}
+function renderActivityLog() {
+  const wrap = $("activity-log");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  const entries = Array.isArray(state.activity) ? state.activity : [];
+  entries.forEach(e => {
+    const div = document.createElement("div");
+    div.className = "activity-entry kind-" + (ACTIVITY_KINDS.has(e.kind) ? e.kind : "info");
+    div.textContent = e.text;
+    wrap.appendChild(div);
+  });
+  wrap.scrollTop = wrap.scrollHeight;
+}
+// Flash the most-recent entry red — equivalent of the old #hint
+// flash-error visual. Triggered from SFX.error() so every refused action
+// still reads visually even when the player isn't looking at the entry.
+function flashLastActivityEntry() {
+  const wrap = $("activity-log");
+  if (!wrap) return;
+  const last = wrap.lastElementChild;
+  if (!last) return;
+  last.classList.remove("flash-error");
+  void last.offsetWidth;
+  last.classList.add("flash-error");
+}
+
 let _lastCloutBalance = null;
 function buyVintagePack(slotIdx) {
   const slot = state.vintageShop?.slots?.[slotIdx];
@@ -3178,7 +3303,7 @@ function buyVintagePack(slotIdx) {
   const cost = vintageSlotCost(slot);
   if (state.coins < cost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that ${setYearLabel(year)} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()}.`;
+    logActivity(`Need ${usd(cost - state.coins)} more for that ${setYearLabel(year)} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()}.`, "error");
     return;
   }
   SFX.buy();
@@ -3206,7 +3331,7 @@ function buyVintagePack(slotIdx) {
   renderAll();
   save();
   const unlockTag = newlyUnlocked ? ` 🔓 The ${setYearLabel(year)} Set unlocked in the year picker.` : "";
-  $("hint").textContent = `Bought a ${setYearLabel(year)} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()} — ${gainSummary} to The ${setYearLabel(year)} Set.${unlockTag} Switch year to rip.`;
+  logActivity(`Bought a ${setYearLabel(year)} vintage ${VINTAGE_TYPE_LABEL[type].toLowerCase()} — ${gainSummary} to The ${setYearLabel(year)} Set.${unlockTag} Switch year to rip.`);
 }
 
 function tickVintageShop() {
@@ -3850,7 +3975,7 @@ function craftSet(key, opts = {}) {
   if (opts.silent) {
     if (homieEarned) {
       SFX.unlock();
-      $("hint").textContent = `🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted!`;
+      logActivity(`🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted!`, "milestone");
     }
     return true;
   }
@@ -3858,9 +3983,9 @@ function craftSet(key, opts = {}) {
   SFX.craft();
   if (homieEarned) {
     SFX.unlock();
-    $("hint").textContent = `🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted! Hire from any open table to deploy.`;
+    logActivity(`🧢 New homie joined IDLE — first ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET crafted! Hire from any open table to deploy.`, "milestone");
   } else {
-    $("hint").textContent = `Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`;
+    logActivity(`Crafted a ${track.foil ? "FOIL " : ""}${RARITY_LABELS[track.baseRarity]} SET. Ready to list.`);
   }
   return true;
 }
@@ -3882,7 +4007,7 @@ function craftCompleteSet(key) {
   const def = completeSetDef(key);
   if (!def) return;
   if (!canCraftCompleteSet(key)) {
-    $("hint").textContent = `Need 1 of every ${def.foil ? "foil " : ""}rarity set first (${completeSetIngredientCount(key)}/${def.ingredients.length}).`;
+    logActivity(`Need 1 of every ${def.foil ? "foil " : ""}rarity set first (${completeSetIngredientCount(key)}/${def.ingredients.length}).`);
     return;
   }
   def.ingredients.forEach(k => {
@@ -3913,9 +4038,9 @@ function craftCompleteSet(key) {
   SFX.craft();
   if (firstUnlock) {
     SFX.unlock();
-    $("hint").textContent = `Crafted The ${setYearLabel(state.activeSetId)} ${def.label}! 🔓 Vintage Packs shop + year picker unlocked!`;
+    logActivity(`Crafted The ${setYearLabel(state.activeSetId)} ${def.label}! 🔓 Vintage Packs shop + year picker unlocked!`, "unlock");
   } else {
-    $("hint").textContent = `Crafted The ${setYearLabel(state.activeSetId)} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`;
+    logActivity(`Crafted The ${setYearLabel(state.activeSetId)} ${def.label}. Vault it for +${vaultVal} CLOUT or list it for cash.`);
   }
 }
 
@@ -3927,7 +4052,7 @@ function vaultCompleteSet(key) {
   // is refused outright — list extras for cash via the marketplace.
   if (((cur().vaultedSets || {})[key] || 0) > 0) {
     SFX.error();
-    $("hint").textContent = `The ${setYearLabel(setId)} ${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`;
+    logActivity(`The ${setYearLabel(setId)} ${def.label} is already vaulted — CLOUT redemption is one-time per variant. List extras for cash.`, "error");
     return;
   }
   const inv = cur().invById[key];
@@ -3941,14 +4066,14 @@ function vaultCompleteSet(key) {
   SFX.vault();
   renderAll(); save();
   const tag = setId === CURRENT_SET_ID ? "" : ` (×${cloutScaleFor(setId).toFixed(2)} vintage bonus)`;
-  $("hint").textContent = `Vaulted The ${setYearLabel(setId)} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}). 🔒 Variant claimed.`;
+  logActivity(`Vaulted The ${setYearLabel(setId)} ${def.label}. +${award} CLOUT${tag} (balance: ${state.clout}). 🔒 Variant claimed.`);
 }
 
 function listCompleteSet(key) {
   const def = completeSetDef(key);
   if (!def) return;
   if (listingSlotsFull()) {
-    $("hint").textContent = `All ${listingSlotsEffective()} listing slots full — cancel one first.`;
+    logActivity(`All ${listingSlotsEffective()} listing slots full — cancel one first.`);
     return;
   }
   const inv = cur().invById[key];
@@ -3968,14 +4093,14 @@ function listCompleteSet(key) {
     willResolve: true,
   });
   renderAll(); save();
-  $("hint").textContent = `Listed ${def.label} @ ${usd(ask)}.`;
+  logActivity(`Listed ${def.label} @ ${usd(ask)}.`);
 }
 
 function listSetItem(key, opts = {}) {
   const itemKey = setItemKey(key);
   if (!itemKey) return false;
   if (listingSlotsFull()) {
-    if (!opts.silent) $("hint").textContent = `All ${listingSlotsEffective()} listing slots full — cancel one first.`;
+    if (!opts.silent) logActivity(`All ${listingSlotsEffective()} listing slots full — cancel one first.`);
     return false;
   }
   const inv = cur().invById[itemKey];
@@ -4001,7 +4126,7 @@ function listSetItem(key, opts = {}) {
   renderAll(); save();
   const baseLabel = bulkBaseRarity(key);
   const isFoil = bulkIsFoil(key);
-  $("hint").textContent = `Listed ${isFoil ? "FOIL " : ""}${RARITY_LABELS[baseLabel]} SET @ ${usd(ask)}.`;
+  logActivity(`Listed ${isFoil ? "FOIL " : ""}${RARITY_LABELS[baseLabel]} SET @ ${usd(ask)}.`);
   return true;
 }
 
@@ -4025,7 +4150,7 @@ function cancelListing(uid) {
   }
   state.listings.splice(idx, 1);
   renderAll(); save();
-  $("hint").textContent = `Cancelled Set ${l.setId} listing — returned to inventory.`;
+  logActivity(`Cancelled Set ${l.setId} listing — returned to inventory.`);
 }
 
 
@@ -4073,7 +4198,7 @@ function resolveListings() {
   });
   if (changed) {
     renderAll(); save();
-    if (lastMessage) $("hint").textContent = lastMessage;
+    if (lastMessage) logActivity(lastMessage);
   }
 }
 
@@ -4091,13 +4216,13 @@ function buyAvailableSlot(slotIdx) {
   if (!slot || slot.cardId == null) return;
   if (slot.setId !== state.activeSetId) {
     SFX.error();
-    $("hint").textContent = `That offer is for The ${setYearLabel(slot.setId)} Set — switch year to buy.`;
+    logActivity(`That offer is for The ${setYearLabel(slot.setId)} Set — switch year to buy.`, "error");
     return;
   }
   const cost = slot.askPrice;
   if (state.coins < cost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(cost - state.coins)} more for that ${slot.foil ? "foil " : ""}${RARITY_LABELS[slot.rarity].toLowerCase()}.`;
+    logActivity(`Need ${usd(cost - state.coins)} more for that ${slot.foil ? "foil " : ""}${RARITY_LABELS[slot.rarity].toLowerCase()}.`, "error");
     return;
   }
   SFX.buy();
@@ -4112,7 +4237,7 @@ function buyAvailableSlot(slotIdx) {
   renderAll();
   save();
   const idLabel = cardFullId(slot.rarity, slot.cardId, GAME_ID, slot.setId);
-  $("hint").textContent = `Bought ${slot.foil ? "foil " : ""}${RARITY_LABELS[slot.rarity].toLowerCase()} ${idLabel} @ ${usd(cost)}.`;
+  logActivity(`Bought ${slot.foil ? "foil " : ""}${RARITY_LABELS[slot.rarity].toLowerCase()} ${idLabel} @ ${usd(cost)}.`);
 }
 
 // Advance the conveyor by one position: drop slot 0, shift every later
@@ -4708,9 +4833,9 @@ function sortCards(opts) {
     runChainCritFromMarks(seeds, (total) => {
       settlePileAfterChain();
       renderAll(); save();
-      $("hint").textContent = total > 5
+      logActivity(total > 5
         ? `✨ CHAIN! Sorted ${total} cards from ${seeds.length} marks.`
-        : `Sorted ${total} card${total !== 1 ? "s" : ""}.`;
+        : `Sorted ${total} card${total !== 1 ? "s" : ""}.`, total > 5 ? "success" : "info");
     });
     return;
   }
@@ -4718,15 +4843,15 @@ function sortCards(opts) {
   // Single-click fallback: nearest-grain seed + click AoE (current behavior).
   const seed = findClickedGrain(opts.click.x, opts.click.y);
   if (!seed) {
-    $("hint").textContent = "Click on the pile to sort, or hover to mark.";
+    logActivity("Click on the pile to sort, or hover to mark.");
     return;
   }
   runChainCrit(seed.col, seed.row, (total) => {
     settlePileAfterChain();
     renderAll(); save();
-    $("hint").textContent = total > 5
+    logActivity(total > 5
       ? `✨ CHAIN! Sorted ${total} cards.`
-      : `Sorted ${total} card${total !== 1 ? "s" : ""}.`;
+      : `Sorted ${total} card${total !== 1 ? "s" : ""}.`, total > 5 ? "success" : "info");
   });
 }
 
@@ -5360,13 +5485,13 @@ function renderHomieSprites() {
 function buyTable() {
   const next = nextTableEntry();
   if (!next) {
-    $("hint").textContent = `All ${SLOT_UNLOCK_ORDER.length} tables already bought.`;
+    logActivity(`All ${SLOT_UNLOCK_ORDER.length} tables already bought.`);
     return;
   }
   const cost = tableCost();
   if (state.coins < cost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(cost - state.coins)} more for another table.`;
+    logActivity(`Need ${usd(cost - state.coins)} more for another table.`, "error");
     return;
   }
   SFX.buy();
@@ -5381,25 +5506,25 @@ function buyTable() {
   if (!after) tail = `Every slot is now open.`;
   else if (after.kind === "rip")    tail = `Next: another booster-pack table (${usd(tableCost())}).`;
   else                              tail = `Next: a ${RARITY_LABELS[after.rarity]} craft table (${usd(tableCost())}).`;
-  $("hint").textContent = `Bought ${justBoughtLabel}. ${tail}`;
+  logActivity(`Bought ${justBoughtLabel}. ${tail}`);
 }
 
 function hireHomie(preferredSlot) {
   if ((state.homiePool || 0) <= 0) {
     SFX.error();
-    $("hint").textContent = `No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`;
+    logActivity(`No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`, "error");
     return;
   }
   if ((state.homies || []).filter(h => h.kind !== "craft").length >= HOMIE_MAX) {
-    $("hint").textContent = `Max homies (${HOMIE_MAX}) already on the clock.`;
+    logActivity(`Max homies (${HOMIE_MAX}) already on the clock.`);
     return;
   }
   if (state.coins < HOMIE_COST) {
-    $("hint").textContent = `Need ${usd(HOMIE_COST - state.coins)} more to hire a homie.`;
+    logActivity(`Need ${usd(HOMIE_COST - state.coins)} more to hire a homie.`);
     return;
   }
   if ((cur().boxesOwned || 0) < 1) {
-    $("hint").textContent = `Need a sealed box first — buy one from the shop.`;
+    logActivity(`Need a sealed box first — buy one from the shop.`);
     return;
   }
   // Pack-side slot must have a bought table behind it. Player can only
@@ -5420,7 +5545,7 @@ function hireHomie(preferredSlot) {
     }
   }
   if (slot < 0) {
-    $("hint").textContent = `No empty table — buy another or wait for a homie to finish.`;
+    logActivity(`No empty table — buy another or wait for a homie to finish.`);
     return;
   }
   state.coins -= HOMIE_COST;
@@ -5440,7 +5565,7 @@ function hireHomie(preferredSlot) {
     lastRipAt: 0,
   });
   renderAll(); save();
-  $("hint").textContent = `Hired a homie for The ${setYearLabel(hiredSetId)} Set! They'll rip ${BOX_SIZE} packs from your box.`;
+  logActivity(`Hired a homie for The ${setYearLabel(hiredSetId)} Set! They'll rip ${BOX_SIZE} packs from your box.`);
 }
 
 function findCraftHomie(setId, craftRarity) {
@@ -5479,28 +5604,28 @@ function hireCraftHomie(craftRarity) {
   if (!RARITIES.includes(craftRarity)) return;
   if (!hasCraftTable(craftRarity)) {
     SFX.error();
-    $("hint").textContent = `No ${RARITY_LABELS[craftRarity]} craft table yet — buy one (${usd(tableCost())}) to unlock this slot.`;
+    logActivity(`No ${RARITY_LABELS[craftRarity]} craft table yet — buy one (${usd(tableCost())}) to unlock this slot.`, "error");
     return;
   }
   const setId = state.activeSetId;
   if (findCraftHomie(setId, craftRarity)) {
     SFX.error();
-    $("hint").textContent = `Already have a craft homie on ${RARITY_LABELS[craftRarity]} for The ${setYearLabel(setId)} Set.`;
+    logActivity(`Already have a craft homie on ${RARITY_LABELS[craftRarity]} for The ${setYearLabel(setId)} Set.`, "error");
     return;
   }
   if (!craftHomieHasWork(craftRarity)) {
     SFX.error();
-    $("hint").textContent = `No ${RARITY_LABELS[craftRarity]} sets to craft or list yet — collect a full ${RARITY_LABELS[craftRarity]} set first.`;
+    logActivity(`No ${RARITY_LABELS[craftRarity]} sets to craft or list yet — collect a full ${RARITY_LABELS[craftRarity]} set first.`, "error");
     return;
   }
   if (state.coins < CRAFT_HOMIE_COST) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(CRAFT_HOMIE_COST - state.coins)} more to hire a craft homie.`;
+    logActivity(`Need ${usd(CRAFT_HOMIE_COST - state.coins)} more to hire a craft homie.`, "error");
     return;
   }
   if ((state.homiePool || 0) <= 0) {
     SFX.error();
-    $("hint").textContent = `No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`;
+    logActivity(`No homies in the pool — wait for one to finish, or buy more crew with CLOUT.`, "error");
     return;
   }
   state.coins -= CRAFT_HOMIE_COST;
@@ -5520,7 +5645,7 @@ function hireCraftHomie(craftRarity) {
   SFX.buy();
   renderAll(); save();
   const mins = Math.round(CRAFT_HOMIE_DURATION_MS / 60000);
-  $("hint").textContent = `Hired a ${RARITY_LABELS[craftRarity]} craft homie for The ${setYearLabel(setId)} Set — auto-crafts foil + non-foil for ${mins} min.`;
+  logActivity(`Hired a ${RARITY_LABELS[craftRarity]} craft homie for The ${setYearLabel(setId)} Set — auto-crafts foil + non-foil for ${mins} min.`);
 }
 
 function homieRipPack(homie) {
@@ -5615,11 +5740,11 @@ function buySorter() {
   const owned = (state.sorters || []).length;
   const cap = sorterMaxEffective();
   if (owned >= cap) {
-    $("hint").textContent = `Max sorters (${cap}) reached.`;
+    logActivity(`Max sorters (${cap}) reached.`);
     return;
   }
   if (state.coins < SORTER_COST) {
-    $("hint").textContent = `Need ${usd(SORTER_COST - state.coins)} more for a sorter.`;
+    logActivity(`Need ${usd(SORTER_COST - state.coins)} more for a sorter.`);
     return;
   }
   state.coins -= SORTER_COST;
@@ -5639,7 +5764,7 @@ function buySorter() {
     lastSortAt: 0,
   });
   renderAll(); save();
-  $("hint").textContent = `Sorter installed for The ${setYearLabel(installSetId)} Set. Click LOAD to scoop the pile's bottom row.`;
+  logActivity(`Sorter installed for The ${setYearLabel(installSetId)} Set. Click LOAD to scoop the pile's bottom row.`);
 }
 
 function upgradeSorterSpeed(uid) {
@@ -5647,20 +5772,20 @@ function upgradeSorterSpeed(uid) {
   if (!s) return;
   if (s.level >= SORTER_LEVEL_MAX) {
     SFX.error();
-    $("hint").textContent = "Sorter speed already at max level.";
+    logActivity("Sorter speed already at max level.", "error");
     return;
   }
   const cost = sorterSpeedUpgradeCost(s.level);
   if (state.coins < cost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(cost - state.coins)} more to upgrade speed.`;
+    logActivity(`Need ${usd(cost - state.coins)} more to upgrade speed.`, "error");
     return;
   }
   state.coins -= cost;
   s.level += 1;
   SFX.buy();
   renderAll(); save();
-  $("hint").textContent = `Sorter speed → Lv ${s.level} (${sortsPerSecond(s.level).toFixed(1)} cards/s).`;
+  logActivity(`Sorter speed → Lv ${s.level} (${sortsPerSecond(s.level).toFixed(1)} cards/s).`);
 }
 
 function upgradeSorterBuffer(uid) {
@@ -5668,20 +5793,20 @@ function upgradeSorterBuffer(uid) {
   if (!s) return;
   if ((s.bufferLevel || 1) >= SORTER_LEVEL_MAX) {
     SFX.error();
-    $("hint").textContent = "Sorter buffer already at max level.";
+    logActivity("Sorter buffer already at max level.", "error");
     return;
   }
   const cost = sorterBufferUpgradeCost(s.bufferLevel || 1);
   if (state.coins < cost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(cost - state.coins)} more to upgrade buffer.`;
+    logActivity(`Need ${usd(cost - state.coins)} more to upgrade buffer.`, "error");
     return;
   }
   state.coins -= cost;
   s.bufferLevel = (s.bufferLevel || 1) + 1;
   SFX.buy();
   renderAll(); save();
-  $("hint").textContent = `Sorter buffer → Lv ${s.bufferLevel} (${sorterCapacity(s.bufferLevel)} slots).`;
+  logActivity(`Sorter buffer → Lv ${s.bufferLevel} (${sorterCapacity(s.bufferLevel)} slots).`);
 }
 
 // Compute what a LOAD click would scoop right now: every grain in the pile,
@@ -5721,11 +5846,11 @@ function _loadSorterInner(s) {
   syncPileWithStock();
   const preview = previewLoadGrains(s);
   if (preview.available === 0) {
-    $("hint").textContent = "Pile is empty — nothing to load.";
+    logActivity("Pile is empty — nothing to load.");
     return;
   }
   if (preview.remaining <= 0) {
-    $("hint").textContent = "Sorter is full — collect first.";
+    logActivity("Sorter is full — collect first.");
     return;
   }
   let loaded = 0;
@@ -5749,7 +5874,7 @@ function _loadSorterInner(s) {
   }
   settlePileAfterChain();
   renderAll(); save();
-  $("hint").textContent = `Loaded ${loaded} grain${loaded > 1 ? "s" : ""} into sorter.`;
+  logActivity(`Loaded ${loaded} grain${loaded > 1 ? "s" : ""} into sorter.`);
 }
 
 function collectSorter(uid) {
@@ -5774,7 +5899,7 @@ function _collectSorterInner(s, total) {
     s.output[key] = 0;
   });
   renderAll(); save();
-  $("hint").textContent = `Collected ${total} card${total > 1 ? "s" : ""} from sorter.`;
+  logActivity(`Collected ${total} card${total > 1 ? "s" : ""} from sorter.`);
 }
 
 function tickSorters() {
@@ -5959,6 +6084,12 @@ function renderSorters() {
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
 function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
+// One-shot at boot: populate the activity-log scrollback from saved
+// state. renderAll() doesn't include this because the log is append-
+// only — logActivity patches the DOM directly on each new entry, and
+// rebuilding the whole list on every renderAll() would reset scroll
+// position and animation state mid-game.
+function initActivityLog() { renderActivityLog(); }
 
 // Pulse the upgrade-branch triggers (⬆ PAINT / ⬆ VINTAGE / ⬆ SLOTS) when
 // the player has CLOUT to spend on at least one node in that branch. Run
@@ -5975,36 +6106,36 @@ function paintUpgradeTriggers() {
 function buyPacks(qty, totalCost, label) {
   if (state.activeSetId !== CURRENT_SET_ID) {
     SFX.error();
-    $("hint").textContent = `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`;
+    logActivity(`Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`, "error");
     return;
   }
   if (state.coins < totalCost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
+    logActivity(`Need ${usd(totalCost - state.coins)} more.`, "error");
     return;
   }
   SFX.buy();
   state.coins -= totalCost;
   cur().packSupply += qty;
   renderAll(); save();
-  $("hint").textContent = `Bought ${label}. Supply: ${cur().packSupply}.`;
+  logActivity(`Bought ${label}. Supply: ${cur().packSupply}.`);
 }
 function buyBoxes(qty, totalCost, label) {
   if (state.activeSetId !== CURRENT_SET_ID) {
     SFX.error();
-    $("hint").textContent = `Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`;
+    logActivity(`Vintage years only sell via the Vintage Packs shop — switch to Set ${CURRENT_SET_ID} for current stock.`, "error");
     return;
   }
   if (state.coins < totalCost) {
     SFX.error();
-    $("hint").textContent = `Need ${usd(totalCost - state.coins)} more.`;
+    logActivity(`Need ${usd(totalCost - state.coins)} more.`, "error");
     return;
   }
   SFX.buy();
   state.coins -= totalCost;
   cur().boxesOwned = (cur().boxesOwned || 0) + qty;
   renderAll(); save();
-  $("hint").textContent = `Bought ${label}. Boxes: ${cur().boxesOwned}.`;
+  logActivity(`Bought ${label}. Boxes: ${cur().boxesOwned}.`);
 }
 
 function unsortedTotal() {
@@ -6014,7 +6145,7 @@ function maybeCrackBox() {
   if (cur().packSupply <= 0 && (cur().boxesOwned || 0) > 0) {
     cur().boxesOwned -= 1;
     cur().packSupply += BOX_SIZE;
-    $("hint").textContent = `Cracked a sealed box → ${BOX_SIZE} packs.`;
+    logActivity(`Cracked a sealed box → ${BOX_SIZE} packs.`);
     return true;
   }
   return false;
@@ -6389,12 +6520,12 @@ function ripOne() {
   if (cur().packSupply < 1) maybeCrackBox();
   if (cur().packSupply < 1) {
     SFX.error();
-    $("hint").textContent = "No packs in supply. Buy one above.";
+    logActivity("No packs in supply. Buy one above.", "error");
     return;
   }
   if (unsortedTotal() >= UNSORTED_CAPACITY) {
     SFX.error();
-    $("hint").textContent = `Unsorted pile full (${UNSORTED_CAPACITY}). Sort some cards first.`;
+    logActivity(`Unsorted pile full (${UNSORTED_CAPACITY}). Sort some cards first.`, "error");
     return;
   }
   SFX.rip();
@@ -6418,7 +6549,7 @@ function ripOne() {
   renderAll(); save();
   const foilCount = pulls.filter(p => p.foil).length;
   const tail = foilCount > 0 ? `  ✨ ${foilCount} foil${foilCount > 1 ? "s" : ""}!` : "";
-  $("hint").textContent = `Nice rip. ${cur().packSupply} left.${tail}`;
+  logActivity(`Nice rip. ${cur().packSupply} left.${tail}`);
 }
 
 
@@ -6467,14 +6598,14 @@ function switchToSet(sid) {
   if (sid === state.activeSetId) { syncYearPickerSelection(); return; }
   if (!isSetUnlocked(sid)) {
     SFX.error();
-    $("hint").textContent = `The ${setYearLabel(sid)} Set is locked — buy a ${setYearLabel(sid)} vintage pack first.`;
+    logActivity(`The ${setYearLabel(sid)} Set is locked — buy a ${setYearLabel(sid)} vintage pack first.`, "error");
     syncYearPickerSelection();
     return;
   }
   const block = yearSwitchBlockReason();
   if (block) {
     SFX.error();
-    $("hint").textContent = block;
+    logActivity(block, "error");
     syncYearPickerSelection();
     return;
   }
@@ -6490,7 +6621,7 @@ function switchToSet(sid) {
   }
   SFX.switch();
   renderAll(); save();
-  $("hint").textContent = `Now viewing The ${setYearLabel(sid)} Set. Packs ${usd(packCost())} each.`;
+  logActivity(`Now viewing The ${setYearLabel(sid)} Set. Packs ${usd(packCost())} each.`);
 }
 // Snap the dropdown back to the active set — used after a refused switch so
 // the visible selection mirrors the actual state.
@@ -6725,7 +6856,9 @@ window.addEventListener("keydown", (e) => {
 });
 updateSandSizing();
 renderAll();
+initActivityLog();
 renderTypingZone();
+if ((state.activity || []).length === 0) logActivity("A case on the house — start ripping!", "info");
 
 // ---- Opening splash dismiss ----------------------------------------------
 // Any click or keypress closes the splash, but only after the entrance
