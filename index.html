@@ -2289,7 +2289,7 @@ function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
 // Apex (completeSet / foilCompleteSet) sum their component Sets and add
 // COMPLETE_SET_PREMIUM on top of that raw component sum.
 let VALUE_MULTIPLIER     = def("VALUE_MULTIPLIER", 1.0);
-let SET_BUNDLE_BONUS     = def("SET_BUNDLE_BONUS", 0.2);
+let SET_BUNDLE_BONUS     = def("SET_BUNDLE_BONUS", 0);
 let COMPLETE_SET_PREMIUM = def("COMPLETE_SET_PREMIUM", 0.25);
 
 function _sheetTotalSlots(sheetKey) {
