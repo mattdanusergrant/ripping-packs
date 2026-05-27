@@ -2163,9 +2163,11 @@ let PRINT_SHEETS = def("PRINT_SHEETS", {
   // 9 rares × 8 + 3 epics × 4 + 3 legs × 3 + 3 mythics × 2 = 99 slots.
   // Mythic share = 6/99 ≈ 6.1% of rare-slot pulls.
   rare:   { rare: 8, epic: 4, legendary: 3, mythic: 2 },
-  // Foil sheet: separate mythic share so foils stay attainable. Total slots:
-  // 18×4 + 9×3 + 3×2 + 3×2 + 3×2 = 117. Mythic share = 6/117 ≈ 5.1%.
-  foil:   { standard: 4, rare: 3, epic: 2, legendary: 2, mythic: 2 },
+  // Foil sheet uses its own per-card runs (foils are physically printed on a
+  // separate sheet in real-world TCG factories). Differential prints — mythic
+  // 1 / leg 2 / epic 3 / rare 6 / std 8 — keep foil mythics as the rarity
+  // trophy without making other foil tiers unattainable.
+  foil:   { standard: 8, rare: 6, epic: 3, legendary: 2, mythic: 1 },
 });
 let PACK_COMMON_SLOTS = def("PACK_COMMON_SLOTS", 9);
 let PACK_RARE_SLOTS   = def("PACK_RARE_SLOTS", 1);
@@ -2276,27 +2278,20 @@ function isSetItemKey(k) { return SET_ITEM_KEYS.includes(k); }
 // legendary ~600, mythic ~2,500. Foils 5–10× harder. At $3/pack the long
 // horizon target is ~$4/pack revenue.
 // ---- Market baselines (derived from print sheets) ----------------------
-// Set prices are no longer hand-tuned numbers; they're computed from the
-// PRINT_SHEETS print runs and PACK_COST. The formula for one Set's baseline
-// price is:
+// Single-card prices come first; Set prices are bundles built from them.
 //
-//   baseline = N · H(N) · PACK_COST · VALUE_MULTIPLIER / specificCardRate
+//   singleCardBaseline(r, foil) = PACK_COST · VALUE_MULTIPLIER / specificCardRate
+//     i.e. "what would you pay to find one specific copy by ripping packs?"
 //
-// where N is the rarity's card count, H(N) is the harmonic number (coupon-
-// collector overhead for collecting all N), and specificCardRate is the
-// expected per-pack rate of pulling one *specific* card of that rarity.
-// In words: "expected pack spend to complete this Set" × value multiplier.
+//   setBaseline(r, foil) = N · single · (1 + SET_BUNDLE_BONUS)
+//     +SET_BUNDLE_BONUS rewards selling a Set assembled vs. spot-selling parts.
 //
-// Apex sets (completeSet / foilCompleteSet) sum their components and add
-// COMPLETE_SET_PREMIUM as a crafting bonus over the raw sum.
+// Apex (completeSet / foilCompleteSet) sum their component Sets and add
+// COMPLETE_SET_PREMIUM on top of that raw component sum.
 let VALUE_MULTIPLIER     = def("VALUE_MULTIPLIER", 1.0);
+let SET_BUNDLE_BONUS     = def("SET_BUNDLE_BONUS", 0.2);
 let COMPLETE_SET_PREMIUM = def("COMPLETE_SET_PREMIUM", 0.25);
 
-function _harmonic(n) {
-  let h = 0;
-  for (let i = 1; i <= n; i++) h += 1 / i;
-  return h;
-}
 function _sheetTotalSlots(sheetKey) {
   const sheet = PRINT_SHEETS[sheetKey] || {};
   let total = 0;
@@ -2311,18 +2306,22 @@ function specificCardRatePerPack(rarity, foil) {
   const total = _sheetTotalSlots(sheetKey);
   if (total <= 0) return 0;
   const perCardShare = prints / total;
-  // How many slots in a pack draw from this sheet?
   let slots = 0;
   if (sheetKey === "common") slots = Math.max(0, PACK_COMMON_SLOTS - FOIL_PER_PACK);
   else if (sheetKey === "rare") slots = PACK_RARE_SLOTS;
   else if (sheetKey === "foil") slots = FOIL_PER_PACK;
   return slots * perCardShare;
 }
-function setBaselineFor(rarity, foil) {
+function singleCardBaseline(rarity, foil) {
   const rate = specificCardRatePerPack(rarity, foil);
+  if (rate <= 0) return 0;
+  return (PACK_COST || 0) * VALUE_MULTIPLIER / rate;
+}
+function setBaselineFor(rarity, foil) {
+  const single = singleCardBaseline(rarity, foil);
   const n = SET_SIZES[rarity] || 0;
-  if (rate <= 0 || n <= 0) return 0;
-  return n * _harmonic(n) * (PACK_COST || 0) * VALUE_MULTIPLIER / rate;
+  if (single <= 0 || n <= 0) return 0;
+  return n * single * (1 + SET_BUNDLE_BONUS);
 }
 const _SET_KEY_TO_RARITY = {
   standardSet:      { rarity: "standard",  foil: false },
@@ -3627,17 +3626,17 @@ function rollVintageSlot() {
 }
 
 // ---- AVAILABLE buy-market helpers --------------------------------------
-// Per-card price is derived from the Set baseline since the game has no
-// native per-card market (singles aren't listable; only Sets are). We
-// divide the current dynamic Set price by the Set size so the per-card
-// number tracks the same supply/demand curve as the corresponding Set.
+// Per-card price tracks the Set's market dynamics but strips the bundle
+// bonus so singles trade at "buy-one" parity, not "buy-the-whole-set" parity.
+//   singleMarket = setMarket / (N · (1 + SET_BUNDLE_BONUS))
+//                = singleBaseline · scarcityScale
 function singleCardMarketPrice(setId, rarity, foil) {
   const stem = foil ? "foil" + rarity.charAt(0).toUpperCase() + rarity.slice(1) : rarity;
   const setKey = stem + "Set";
   if (!isMarketSetKey(setKey)) return 0;
   const setPrice = marketPriceFor(setId, setKey, 1);
   const size = SET_SIZES[rarity] || 1;
-  return setPrice / size;
+  return setPrice / (size * (1 + SET_BUNDLE_BONUS));
 }
 function availableOfferPrice(setId, rarity, foil) {
   return Math.max(0.01, singleCardMarketPrice(setId, rarity, foil) * AVAILABLE_PRICE_RATIO);
@@ -5902,8 +5901,9 @@ const DESIGN_FIELDS = [
 
   // Market baselines — every Set is explicit since singles don't list.
   // Numbers reflect the long-horizon cash value of completing that rarity.
-  { group: "Market baselines", key: "VALUE_MULTIPLIER",                path: "VALUE_MULTIPLIER",              label: "Value multiplier (× pack-spend)", step: 0.05, min: 0 },
-  { group: "Market baselines", key: "COMPLETE_SET_PREMIUM",             path: "COMPLETE_SET_PREMIUM",          label: "Complete-Set premium (× sum)",    step: 0.05, min: 0 },
+  { group: "Market baselines", key: "VALUE_MULTIPLIER",                path: "VALUE_MULTIPLIER",              label: "Value multiplier (× single price)", step: 0.05, min: 0 },
+  { group: "Market baselines", key: "SET_BUNDLE_BONUS",                 path: "SET_BUNDLE_BONUS",              label: "Set bundle bonus (× N singles)",    step: 0.05, min: 0 },
+  { group: "Market baselines", key: "COMPLETE_SET_PREMIUM",             path: "COMPLETE_SET_PREMIUM",          label: "Complete-Set premium (× sum)",      step: 0.05, min: 0 },
   { group: "Market baselines", key: "SET_CRAFT_MULTIPLIER",            path: "SET_CRAFT_MULTIPLIER",          label: "Global Set sell multiplier",     step: 0.05, min: 0.1 },
   { group: "Market baselines", key: "PRICE_FLOOR_RATIO",               path: "PRICE_FLOOR_RATIO",             label: "Scarcity floor (× baseline)",    step: 0.05, min: 0.1 },
   { group: "Market baselines", key: "PRICE_CEIL_RATIO",                path: "PRICE_CEIL_RATIO",              label: "Scarcity ceiling (× baseline)",  step: 0.05, min: 1   },
@@ -5993,7 +5993,7 @@ function _liveDesignSnapshot() {
   return {
     PACK_COST, BOX_COST, CASE_COST, BOX_SIZE, CASE_SIZE,
     PRINT_SHEETS, PACK_COMMON_SLOTS, PACK_RARE_SLOTS, FOIL_PER_PACK,
-    VALUE_MULTIPLIER, COMPLETE_SET_PREMIUM,
+    VALUE_MULTIPLIER, SET_BUNDLE_BONUS, COMPLETE_SET_PREMIUM,
     SET_SIZES,
     HOVER_AUTORIP_MS,
     SORT_MODE, SORT_PULSE_MS,
