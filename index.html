@@ -2258,6 +2258,10 @@ let SORT_PULSE_MS = def("SORT_PULSE_MS", 650);
 // pulse to the N nearest grains inside that radius.
 let SORT_PULSE_BASE_RADIUS = def("SORT_PULSE_BASE_RADIUS", 1.1);
 let SORT_PULSE_GRAINS = def("SORT_PULSE_GRAINS", 2);
+// hover_and_move: cursor clear radius, min ms between clears, grains/clear.
+let SORT_MOVE_BASE_RADIUS = def("SORT_MOVE_BASE_RADIUS", 0.6);
+let SORT_MOVE_COOLDOWN_MS = def("SORT_MOVE_COOLDOWN_MS", 120);
+let SORT_MOVE_GRAINS = def("SORT_MOVE_GRAINS", 1);
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // ---- Print sheets (per-rarity) ------------------------------------------
@@ -2753,24 +2757,24 @@ const UPGRADE_NODES = [
   { id: "click_speed6",  branch: "sort_click", subtrack: "speed",  currency: "cash", label: "Instant Mark",   desc: "Dwell -5ms",         cost: 25000, effect: { hoverDwellDelta: -5 },  prereq: ["click_speed5"] },
 
   // ----- MOVE (hover_and_move) -----
-  { id: "move_reach1",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Steady Hand",      desc: "Sweep +1 cell",          cost: 30,    effect: { moveSweepRadius: 1 } },
-  { id: "move_reach2",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Wider Stride",     desc: "Sweep +1 cell",          cost: 120,   effect: { moveSweepRadius: 1 }, prereq: ["move_reach1"] },
-  { id: "move_reach3",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Long Reach",       desc: "Sweep +1 cell",          cost: 500,   effect: { moveSweepRadius: 1 }, prereq: ["move_reach2"] },
-  { id: "move_reach4",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Broom Arm",        desc: "Sweep +1 cell",          cost: 2000,  effect: { moveSweepRadius: 1 }, prereq: ["move_reach3"] },
-  { id: "move_reach5",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Telescoping Arm",  desc: "Sweep +2 cells",         cost: 7500,  effect: { moveSweepRadius: 2 }, prereq: ["move_reach4"] },
-  { id: "move_reach6",   branch: "sort_move", subtrack: "reach",   currency: "cash", label: "Gravity Well",     desc: "Sweep +3 cells",         cost: 25000, effect: { moveSweepRadius: 3 }, prereq: ["move_reach5"] },
-  { id: "move_rare1",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Sharp Rares",      desc: "Rare blast +1 (move)",   cost: 50,    effect: { moveRareBoost: 1 } },
-  { id: "move_rare2",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Crackling Rares",  desc: "Rare blast +1 (move)",   cost: 200,   effect: { moveRareBoost: 1 }, prereq: ["move_rare1"] },
-  { id: "move_rare3",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Loud Rares",       desc: "Rare blast +1 (move)",   cost: 800,   effect: { moveRareBoost: 1 }, prereq: ["move_rare2"] },
-  { id: "move_rare4",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Booming Rares",    desc: "Rare blast +1 (move)",   cost: 3000,  effect: { moveRareBoost: 1 }, prereq: ["move_rare3"] },
-  { id: "move_rare5",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Thundering Rares", desc: "Rare blast +2 (move)",   cost: 12000, effect: { moveRareBoost: 2 }, prereq: ["move_rare4"] },
-  { id: "move_rare6",    branch: "sort_move", subtrack: "rare",    currency: "cash", label: "Detonating Rares", desc: "Rare blast +3 (move)",   cost: 40000, effect: { moveRareBoost: 3 }, prereq: ["move_rare5"] },
-  { id: "move_foil1",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Bright Foils",     desc: "Foil blast +1 (move)",   cost: 60,    effect: { moveFoilBoost: 1 } },
-  { id: "move_foil2",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Shining Foils",    desc: "Foil blast +1 (move)",   cost: 300,   effect: { moveFoilBoost: 1 }, prereq: ["move_foil1"] },
-  { id: "move_foil3",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Searing Foils",    desc: "Foil blast +1 (move)",   cost: 1500,  effect: { moveFoilBoost: 1 }, prereq: ["move_foil2"] },
-  { id: "move_foil4",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Blinding Foils",   desc: "Foil blast +1 (move)",   cost: 6000,  effect: { moveFoilBoost: 1 }, prereq: ["move_foil3"] },
-  { id: "move_foil5",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Supernova Foils",  desc: "Foil blast +2 (move)",   cost: 25000, effect: { moveFoilBoost: 2 }, prereq: ["move_foil4"] },
-  { id: "move_foil6",    branch: "sort_move", subtrack: "foil",    currency: "cash", label: "Cosmic Foils",     desc: "Foil blast +3 (move)",   cost: 75000, effect: { moveFoilBoost: 3 }, prereq: ["move_foil5"] },
+  { id: "move_size1",  branch: "sort_move", subtrack: "size",  currency: "cash", label: "Steady Hand",     desc: "Cursor +0.2",        cost: 30,    effect: { moveRadius: 0.2 } },
+  { id: "move_size2",  branch: "sort_move", subtrack: "size",  currency: "cash", label: "Wider Reach",     desc: "Cursor +0.2",        cost: 120,   effect: { moveRadius: 0.2 }, prereq: ["move_size1"] },
+  { id: "move_size3",  branch: "sort_move", subtrack: "size",  currency: "cash", label: "Big Mitts",       desc: "Cursor +0.3",        cost: 500,   effect: { moveRadius: 0.3 }, prereq: ["move_size2"] },
+  { id: "move_size4",  branch: "sort_move", subtrack: "size",  currency: "cash", label: "Broom Sweep",     desc: "Cursor +0.4",        cost: 2000,  effect: { moveRadius: 0.4 }, prereq: ["move_size3"] },
+  { id: "move_size5",  branch: "sort_move", subtrack: "size",  currency: "cash", label: "Floor Squeegee",  desc: "Cursor +0.6",        cost: 7500,  effect: { moveRadius: 0.6 }, prereq: ["move_size4"] },
+  { id: "move_size6",  branch: "sort_move", subtrack: "size",  currency: "cash", label: "Magnet Field",    desc: "Cursor +1.0",        cost: 25000, effect: { moveRadius: 1.0 }, prereq: ["move_size5"] },
+  { id: "move_spd1",   branch: "sort_move", subtrack: "speed", currency: "cash", label: "Quick Wrist",     desc: "Clear -30ms",        cost: 40,    effect: { moveCooldownDelta: -30 } },
+  { id: "move_spd2",   branch: "sort_move", subtrack: "speed", currency: "cash", label: "Loose Wrist",     desc: "Clear -30ms",        cost: 200,   effect: { moveCooldownDelta: -30 }, prereq: ["move_spd1"] },
+  { id: "move_spd3",   branch: "sort_move", subtrack: "speed", currency: "cash", label: "Fast Hands",      desc: "Clear -25ms",        cost: 800,   effect: { moveCooldownDelta: -25 }, prereq: ["move_spd2"] },
+  { id: "move_spd4",   branch: "sort_move", subtrack: "speed", currency: "cash", label: "Blur Sweep",      desc: "Clear -20ms",        cost: 3000,  effect: { moveCooldownDelta: -20 }, prereq: ["move_spd3"] },
+  { id: "move_spd5",   branch: "sort_move", subtrack: "speed", currency: "cash", label: "Frictionless",    desc: "Clear -20ms",        cost: 12000, effect: { moveCooldownDelta: -20 }, prereq: ["move_spd4"] },
+  { id: "move_spd6",   branch: "sort_move", subtrack: "speed", currency: "cash", label: "Instant Sweep",   desc: "Clear -25ms",        cost: 40000, effect: { moveCooldownDelta: -25 }, prereq: ["move_spd5"] },
+  { id: "move_card1",  branch: "sort_move", subtrack: "cards", currency: "cash", label: "Double Grab",     desc: "+1 card / clear",    cost: 60,    effect: { moveGrains: 1 } },
+  { id: "move_card2",  branch: "sort_move", subtrack: "cards", currency: "cash", label: "Triple Grab",     desc: "+1 card / clear",    cost: 300,   effect: { moveGrains: 1 }, prereq: ["move_card1"] },
+  { id: "move_card3",  branch: "sort_move", subtrack: "cards", currency: "cash", label: "Handful",         desc: "+1 card / clear",    cost: 1500,  effect: { moveGrains: 1 }, prereq: ["move_card2"] },
+  { id: "move_card4",  branch: "sort_move", subtrack: "cards", currency: "cash", label: "Armful",          desc: "+2 cards / clear",   cost: 6000,  effect: { moveGrains: 2 }, prereq: ["move_card3"] },
+  { id: "move_card5",  branch: "sort_move", subtrack: "cards", currency: "cash", label: "Scoop",           desc: "+3 cards / clear",   cost: 25000, effect: { moveGrains: 3 }, prereq: ["move_card4"] },
+  { id: "move_card6",  branch: "sort_move", subtrack: "cards", currency: "cash", label: "Avalanche",       desc: "+5 cards / clear",   cost: 80000, effect: { moveGrains: 5 }, prereq: ["move_card5"] },
 
   // ----- PULSE (hover_and_pulse) -----
   { id: "pulse_rate1",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Quickened Pulse",  desc: "Pulse -25ms",            cost: 20,    effect: { sortPulseMsDelta: -25 } },
@@ -2807,9 +2811,9 @@ const UPGRADE_BRANCHES = [
     { key: "speed",    label: "MARKING SPEED" },
   ] },
   { key: "sort_move",  label: "HOVER AND MOVE",   color: "#5aa8ff", subtracks: [
-    { key: "reach",    label: "SWEEP REACH" },
-    { key: "rare",     label: "MOVE RARE BLAST" },
-    { key: "foil",     label: "MOVE FOIL BLAST" },
+    { key: "size",   label: "CURSOR SIZE" },
+    { key: "speed",  label: "CLEAR SPEED" },
+    { key: "cards",  label: "CARDS CLEARED" },
   ] },
   { key: "sort_pulse", label: "HOVER AND PULSE",  color: "#b8ff5a", subtracks: [
     { key: "rate",     label: "PULSE RATE" },
@@ -2913,24 +2917,21 @@ function hoverDwellMsEffective()      { return Math.max(5, HOVER_DWELL_MS + (eff
 function sortPulseMsEffective()       { return Math.max(50, SORT_PULSE_MS + (eff().sortPulseMsDelta || 0)); }
 function pulseRadiusEffective()       { return Math.max(0,  SORT_PULSE_BASE_RADIUS + (eff().pulseRadius || 0)); }
 function pulseGrainsEffective()       { return Math.max(1,  Math.round(SORT_PULSE_GRAINS + (eff().pulseGrains || 0))); }
+// hover_and_move: cursor clear radius, min cooldown between clears, and how
+// many grains a single clear takes.
+function moveRadiusEffective()        { return Math.max(0,  SORT_MOVE_BASE_RADIUS + (eff().moveRadius || 0)); }
+function moveCooldownEffective()      { return Math.max(0,  SORT_MOVE_COOLDOWN_MS + (eff().moveCooldownDelta || 0)); }
+function moveGrainsEffective()        { return Math.max(1,  Math.round(SORT_MOVE_GRAINS + (eff().moveGrains || 0))); }
 function sortClickRadiusEffective() {
-  let base = SORT_CLICK_RADIUS_CELLS;
-  if (SORT_MODE === "hover_and_move") base += (eff().moveSweepRadius || 0);
-  return base;
+  return SORT_CLICK_RADIUS_CELLS;
 }
-// Chain reach now only matters in click_and_chain mode (the hover modes
-// no longer chain). Existing move/pulse "blast" upgrades all feed the
-// same global value — the upgrade trees haven't been re-themed yet, so
-// everything still stacks regardless of which tree the player invested in.
+// Chain reach only matters in click_and_chain mode (the hover modes don't
+// chain). The pulse "power" upgrades still feed it globally.
 function rareBlastEffective() {
-  return Math.max(0, RARE_BLAST_REACH
-    + (eff().moveRareBoost  || 0)
-    + (eff().pulseRareBoost || 0));
+  return Math.max(0, RARE_BLAST_REACH + (eff().pulseRareBoost || 0));
 }
 function foilBlastEffective() {
-  return Math.max(0, FOIL_BLAST_REACH
-    + (eff().moveFoilBoost  || 0)
-    + (eff().pulseFoilBoost || 0));
+  return Math.max(0, FOIL_BLAST_REACH + (eff().pulseFoilBoost || 0));
 }
 function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
 function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
@@ -5771,6 +5772,30 @@ function sortOneOfKey(key) {
 // After a chain explosion peppers tombstones through the pile, convert every
 // surviving grain in a touched column into a falling grain anchored at its
 // current visual Y. The existing physics loop then settles them straight down.
+// Shared detonation for the radius-based hover modes (pulse + move): clear
+// the `cap` grains nearest (x, y) within `radius` cells. No chain. Returns
+// true if anything was cleared. `_lastMoveClearAt` gates move-mode cadence.
+let _lastMoveClearAt = 0;
+function pulseDetonate(x, y, radius, cap) {
+  let cells = cellsWithinRadius(x, y, radius);
+  if (cells.length === 0) return false;
+  if (cells.length > cap) {
+    const h = $("sand-canvas").clientHeight || 90;
+    const dist2 = ({ col, row }) => {
+      const gx = col * SAND_CELL_W + SAND_CELL_W / 2;
+      const gy = h - (row + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H + SAND_CELL_H / 2;
+      return (gx - x) * (gx - x) + (gy - y) * (gy - y);
+    };
+    cells = cells.sort((a, b) => dist2(a) - dist2(b)).slice(0, cap);
+  }
+  SFX.sort();
+  runChainCritFromMarks(cells, () => {
+    settlePileAfterChain();
+    renderAll(); save();
+  }, { propagate: false });
+  return true;
+}
+
 function settlePileAfterChain() {
   const canvas = $("sand-canvas");
   if (!canvas) return;
@@ -5964,9 +5989,7 @@ function drawSand() {
     if (SORT_MODE === "hover_and_click") {
       radiusCells = hoverRadiusEffective();
     } else if (SORT_MODE === "hover_and_move") {
-      // Move clears the single grain under the cursor — show a small point
-      // ring, not the (large) click search radius.
-      radiusCells = 0.6;
+      radiusCells = moveRadiusEffective();
       color = "rgba(90,168,255,0.65)";
     } else if (SORT_MODE === "hover_and_pulse") {
       // Pulse with no radius upgrade clears a single nearest grain, so show a
@@ -6143,6 +6166,9 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "SORT_PULSE_MS",                   path: "SORT_PULSE_MS",             label: "Pulse interval (ms, hover_and_pulse)", step: 50, min: 50, int: true },
   { group: "Sorting",          key: "SORT_PULSE_BASE_RADIUS",          path: "SORT_PULSE_BASE_RADIUS",    label: "Pulse base radius (cells)",    step: 0.1, min: 0 },
   { group: "Sorting",          key: "SORT_PULSE_GRAINS",               path: "SORT_PULSE_GRAINS",         label: "Pulse grains per tick",        step: 1, min: 1, int: true },
+  { group: "Sorting",          key: "SORT_MOVE_BASE_RADIUS",           path: "SORT_MOVE_BASE_RADIUS",     label: "Move base radius (cells)",     step: 0.1, min: 0 },
+  { group: "Sorting",          key: "SORT_MOVE_COOLDOWN_MS",           path: "SORT_MOVE_COOLDOWN_MS",     label: "Move clear cooldown (ms)",     step: 10, min: 0, int: true },
+  { group: "Sorting",          key: "SORT_MOVE_GRAINS",                path: "SORT_MOVE_GRAINS",          label: "Move grains per clear",        step: 1, min: 1, int: true },
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_DWELL_MS",                  path: "HOVER_DWELL_MS",            label: "Paint dwell time (ms)",        step: 10, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
@@ -6213,6 +6239,7 @@ function _liveDesignSnapshot() {
     SET_SIZES,
     HOVER_AUTORIP_MS,
     SORT_MODE, SORT_PULSE_MS, SORT_PULSE_BASE_RADIUS, SORT_PULSE_GRAINS,
+    SORT_MOVE_BASE_RADIUS, SORT_MOVE_COOLDOWN_MS, SORT_MOVE_GRAINS,
     SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     RARE_BLAST_REACH, FOIL_BLAST_REACH,
     HOMIE_COST, HOMIE_PACK_MS,
@@ -8037,7 +8064,14 @@ $("sand-canvas").addEventListener("mousemove", (e) => {
   const r = Math.floor((h - y) / SAND_CELL_H) - SAND_BUFFER_ROWS;
   const k = cur().pile[c] && cur().pile[c][r];
   if (SORT_MODE === "hover_and_move") {
-    if (k && k !== "__") sortCards({ click: { x, y } });
+    // Clear up to moveGrainsEffective() grains within the cursor radius,
+    // rate-limited by moveCooldownEffective().
+    const now = performance.now();
+    if (now - _lastMoveClearAt >= moveCooldownEffective()) {
+      if (pulseDetonate(x, y, moveRadiusEffective(), moveGrainsEffective())) {
+        _lastMoveClearAt = now;
+      }
+    }
     drawSand();
     return;
   }
@@ -8195,27 +8229,9 @@ setInterval(() => {
   if (chainBusy || !cursorPos) return;
   const now = performance.now();
   if (now - _lastSortPulseAt < sortPulseMsEffective()) return;
-  const pr = pulseRadiusEffective();
-  let cells = cellsWithinRadius(cursorPos.x, cursorPos.y, pr);
-  if (cells.length === 0) return;
-  // Keep only the N grains closest to the cursor (per-pulse grain cap).
-  const cap = pulseGrainsEffective();
-  if (cells.length > cap) {
-    const cx = cursorPos.x, cy = cursorPos.y;
-    const h = $("sand-canvas").clientHeight || 90;
-    const dist2 = ({ col, row }) => {
-      const gx = col * SAND_CELL_W + SAND_CELL_W / 2;
-      const gy = h - (row + 1 + SAND_BUFFER_ROWS) * SAND_CELL_H + SAND_CELL_H / 2;
-      return (gx - cx) * (gx - cx) + (gy - cy) * (gy - cy);
-    };
-    cells = cells.sort((a, b) => dist2(a) - dist2(b)).slice(0, cap);
+  if (pulseDetonate(cursorPos.x, cursorPos.y, pulseRadiusEffective(), pulseGrainsEffective())) {
+    _lastSortPulseAt = now;
   }
-  _lastSortPulseAt = now;
-  SFX.sort();
-  runChainCritFromMarks(cells, (total) => {
-    settlePileAfterChain();
-    renderAll(); save();
-  }, { propagate: false });
 }, 30);
 setInterval(tickHomies, HOMIE_TICK_MS);
 setInterval(tickSorters, SORTER_TICK_MS);
