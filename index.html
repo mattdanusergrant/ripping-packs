@@ -1867,6 +1867,10 @@
   /* Debug-only UI bits elsewhere on the page. */
   .debug-only { display: none !important; }
   body.debug-mode .debug-only { display: revert !important; }
+  /* In debug mode the CASH/CLOUT chips become click-to-grant buttons. */
+  body.debug-mode #cash-chip, body.debug-mode #clout-chip { cursor: pointer; }
+  body.debug-mode #cash-chip:hover  { box-shadow: 0 0 8px var(--cash); }
+  body.debug-mode #clout-chip:hover { box-shadow: 0 0 8px var(--clout); }
   /* Debug fill-bulk button under the activity log. */
   .debug-fill-bulk {
     margin-top: 6px;
@@ -2003,7 +2007,7 @@
   <div class="header-top">
     <h1>KEEP RIPPING PACKS</h1>
     <div class="hero-resources">
-      <div class="hero-chip cash" title="Cash on hand"><span class="hero-label">CASH</span><span class="hero-value" id="coins">$0</span></div>
+      <div class="hero-chip cash" id="cash-chip" title="Cash on hand"><span class="hero-label">CASH</span><span class="hero-value" id="coins">$0</span></div>
       <div class="hero-chip clout" id="clout-chip" title="CLOUT — earned by vaulting crafted sets"><span class="hero-label">CLOUT</span><span class="hero-value"><b id="clout-now">0</b></span></div>
       <div class="hero-chip homies" id="homies-chip" title="Homie tokens — both rip and craft homies draw from this shared pool. Refunds when a homie finishes."><span class="hero-label">HOMIES</span><span class="hero-value"><b id="homies-now">3</b><span class="hero-pool-max">/<span id="homies-max">3</span></span></span></div>
     </div>
@@ -8183,6 +8187,19 @@ $("design-reset").addEventListener("click", resetDesignOverrides);
 $("debug-toggle").addEventListener("click", () => setDebugMode(!_debugMode));
 $("debug-fill-bulk").addEventListener("click", debugFillBulk);
 $("sort-hint-text").addEventListener("click", () => { if (_debugMode) cycleSortMode(); });
+// Debug-only currency injectors — click the header chips to grant currency.
+$("cash-chip").addEventListener("click", () => {
+  if (!_debugMode) return;
+  state.coins = Math.round((state.coins + 10000) * 100) / 100;
+  renderAll(); save();
+  logActivity("Debug: +$10,000 cash.", "info");
+});
+$("clout-chip").addEventListener("click", () => {
+  if (!_debugMode) return;
+  state.clout = (state.clout || 0) + 100;
+  renderAll(); save();
+  logActivity("Debug: +100 CLOUT.", "info");
+});
 // Initialize body class + button labels from persisted debug state.
 setDebugMode(_debugMode);
 $("upgrades-close").addEventListener("click", closeUpgradesPanel);
