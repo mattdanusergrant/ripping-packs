@@ -5964,7 +5964,9 @@ function drawSand() {
     if (SORT_MODE === "hover_and_click") {
       radiusCells = hoverRadiusEffective();
     } else if (SORT_MODE === "hover_and_move") {
-      radiusCells = sortClickRadiusEffective();
+      // Move clears the single grain under the cursor — show a small point
+      // ring, not the (large) click search radius.
+      radiusCells = 0.6;
       color = "rgba(90,168,255,0.65)";
     } else if (SORT_MODE === "hover_and_pulse") {
       // Pulse with no radius upgrade clears a single nearest grain, so show a
@@ -8009,6 +8011,9 @@ $("stock-rows").addEventListener("click", (e) => {
   }
 });
 $("sand-canvas").addEventListener("click", (e) => {
+  // Only click-driven modes respond to clicks. hover_and_move and
+  // hover_and_pulse are hover-driven — a click there should do nothing.
+  if (SORT_MODE !== "hover_and_click" && SORT_MODE !== "click_and_chain") return;
   const canvas = $("sand-canvas");
   const rect = canvas.getBoundingClientRect();
   const x = e.clientX - rect.left;
