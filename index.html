@@ -2793,12 +2793,12 @@ const UPGRADE_NODES = [
   { id: "pulse_radius4", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Wave Front",       desc: "Pulse radius +0.5",      cost: 3000,  effect: { pulseRadius: 0.5 }, prereq: ["pulse_radius3"] },
   { id: "pulse_radius5", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Shock Wave",       desc: "Pulse radius +0.7",      cost: 12000, effect: { pulseRadius: 0.7 }, prereq: ["pulse_radius4"] },
   { id: "pulse_radius6", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Tidal Pulse",      desc: "Pulse radius +1.0",      cost: 40000, effect: { pulseRadius: 1.0 }, prereq: ["pulse_radius5"] },
-  { id: "pulse_power1",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hot Pulse",        desc: "Rare blast +1 (pulse)",  cost: 80,    effect: { pulseRareBoost: 1 } },
-  { id: "pulse_power2",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hotter Pulse",     desc: "Foil blast +1 (pulse)",  cost: 350,   effect: { pulseFoilBoost: 1 }, prereq: ["pulse_power1"] },
-  { id: "pulse_power3",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Searing Pulse",    desc: "Rare blast +1 (pulse)",  cost: 1500,  effect: { pulseRareBoost: 1 }, prereq: ["pulse_power2"] },
-  { id: "pulse_power4",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Magma Pulse",      desc: "Foil blast +1 (pulse)",  cost: 6000,  effect: { pulseFoilBoost: 1 }, prereq: ["pulse_power3"] },
-  { id: "pulse_power5",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Plasma Pulse",     desc: "Rare/Foil blast +1",     cost: 25000, effect: { pulseRareBoost: 1, pulseFoilBoost: 1 }, prereq: ["pulse_power4"] },
-  { id: "pulse_power6",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Fusion Pulse",     desc: "Rare/Foil blast +2",     cost: 80000, effect: { pulseRareBoost: 2, pulseFoilBoost: 2 }, prereq: ["pulse_power5"] },
+  { id: "pulse_power1",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hot Pulse",        desc: "+1 card / pulse",        cost: 80,    effect: { pulseGrains: 1 } },
+  { id: "pulse_power2",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hotter Pulse",     desc: "+1 card / pulse",        cost: 350,   effect: { pulseGrains: 1 }, prereq: ["pulse_power1"] },
+  { id: "pulse_power3",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Searing Pulse",    desc: "+1 card / pulse",        cost: 1500,  effect: { pulseGrains: 1 }, prereq: ["pulse_power2"] },
+  { id: "pulse_power4",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Magma Pulse",      desc: "+2 cards / pulse",       cost: 6000,  effect: { pulseGrains: 2 }, prereq: ["pulse_power3"] },
+  { id: "pulse_power5",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Plasma Pulse",     desc: "+3 cards / pulse",       cost: 25000, effect: { pulseGrains: 3 }, prereq: ["pulse_power4"] },
+  { id: "pulse_power6",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Fusion Pulse",     desc: "+5 cards / pulse",       cost: 80000, effect: { pulseGrains: 5 }, prereq: ["pulse_power5"] },
 
   // LISTINGS — marketplace slot expansion.
   { id: "list1",  branch: "listings", label: "Side Hustle",      desc: "+1 listing slot",     cost: 5,   effect: { listingSlots: 1 } },
@@ -2822,7 +2822,7 @@ const UPGRADE_BRANCHES = [
   { key: "sort_pulse", label: "HOVER AND PULSE",  color: "#b8ff5a", subtracks: [
     { key: "rate",     label: "PULSE RATE" },
     { key: "radius",   label: "PULSE RADIUS" },
-    { key: "power",    label: "PULSE POWER" },
+    { key: "power",    label: "CARDS CLEARED" },
   ] },
   { key: "listings",   label: "LISTINGS",         color: "#ffd84d" },
 ];
@@ -2930,12 +2930,12 @@ function sortClickRadiusEffective() {
   return SORT_CLICK_RADIUS_CELLS;
 }
 // Chain reach only matters in click_and_chain mode (the hover modes don't
-// chain). The pulse "power" upgrades still feed it globally.
+// chain). No upgrade track feeds it yet — just the base reaches.
 function rareBlastEffective() {
-  return Math.max(0, RARE_BLAST_REACH + (eff().pulseRareBoost || 0));
+  return Math.max(0, RARE_BLAST_REACH);
 }
 function foilBlastEffective() {
-  return Math.max(0, FOIL_BLAST_REACH + (eff().pulseFoilBoost || 0));
+  return Math.max(0, FOIL_BLAST_REACH);
 }
 function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
 function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
