@@ -2109,6 +2109,18 @@ const DEBUG_MODE_KEY = "ripping_packs_debug_mode";
 const _DESIGN_DEFAULTS = {};
 let _designOverrides = {};
 try { _designOverrides = JSON.parse(localStorage.getItem(DESIGN_KEY) || "{}"); } catch { _designOverrides = {}; }
+// Migration: PRINT_SHEETS used to be { common, rare, foil } with nested
+// per-rarity print counts. New shape is per-rarity { standard, rare, epic,
+// legendary, mythic } each with { prints }. Drop stale overrides so the
+// new defaults take effect instead of merging garbage.
+(function _migrateOldPrintSheets() {
+  const looksOld = (obj) => obj && typeof obj === "object" && (
+    "common" in obj || "foil" in obj ||
+    (obj.rare && typeof obj.rare === "object" && obj.rare.rare != null)
+  );
+  if (looksOld(_designOverrides.PRINT_SHEETS))      delete _designOverrides.PRINT_SHEETS;
+  if (looksOld(_designOverrides.FOIL_PRINT_SHEETS)) delete _designOverrides.FOIL_PRINT_SHEETS;
+})();
 let _debugMode = (() => { try { return localStorage.getItem(DEBUG_MODE_KEY) === "1"; } catch { return false; } })();
 function def(key, fallback) {
   _DESIGN_DEFAULTS[key] = fallback;
@@ -2140,37 +2152,45 @@ let SORT_MODE = def("SORT_MODE", "hover_and_pulse");
 let SORT_PULSE_MS = def("SORT_PULSE_MS", 250);
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
-// ---- Print sheets --------------------------------------------------------
-// Pack rolls are driven by physical print-sheet composition. A real factory
-// prints cards on uncut sheets where each card has a fixed print run; pulling
-// a card is just sampling a slot on a sheet uniformly. The per-card print
-// run IS the drop rate — no separate weight tables to keep in sync.
+// ---- Print sheets (per-rarity) ------------------------------------------
+// Each rarity gets its own physical print sheet. Cards within a sheet are
+// printed in equal counts (`prints` is per-card), so card-id selection is
+// uniform within a rarity. The rate that a *rarity* lands in a given pack
+// slot is controlled separately by SLOT_WEIGHTS — slot type decides which
+// rarity-sheet to draw from, then a uniform card on that sheet.
 //
-// All sheets share one factory dimension: 12 × 18 = 216 slots per sheet.
-// Each sheet's per-card prints sum to exactly 216. Foils get a dedicated
-// sheet (foils are printed on different stock than non-foils in reality).
+// Per-card print counts here are physical-realism flavor: they set the
+// sheet dimension (SET_SIZES[r] × prints[r]) but do NOT affect drop rates.
+// All sheets default to 12 × 12 = 144 slots so one factory press can run
+// any sheet swap (sheet dimensions tracked by auditPrintSheets()).
 //
-// Three sheets:
-//   common  — standards only
-//   rare    — rare / epic / legendary / mythic, weighted by per-card print
-//             run. Modeled after Magic's "rare slot" (rares + mythics share
-//             one sheet, with mythics printed at a much lower count).
-//   foil    — every rarity, weighted independently so foil mythics can be
-//             tuned without affecting non-foil mythic rates.
-//
-// A pack pulls PACK_COMMON_SLOTS commons + PACK_RARE_SLOTS rares; with
-// probability FOIL_PER_PACK one of the COMMON slots is replaced by a
-// foil-sheet pull (matches the real-world "foil replaces a common" pattern).
+// Foil sheets are physically separate — foils use different stock — so
+// they get their own FOIL_PRINT_SHEETS table and FOIL_SLOT_WEIGHTS.
 let PRINT_SHEETS = def("PRINT_SHEETS", {
-  // 18 standards × 12 prints = 216-slot common sheet (12×18 grid).
-  common: { standard: 12 },
-  // 9 rares × 18 + 3 epics × 8 + 3 legs × 6 + 3 mythics × 4 = 216.
-  // Mythic slot share = 12/216 ≈ 5.6% of rare-slot pulls.
-  rare:   { rare: 18, epic: 8, legendary: 6, mythic: 4 },
-  // 18 std × 8 + 9 rare × 6 + 3 epic × 3 + 3 leg × 2 + 3 mythic × 1 = 216.
-  // Foil mythic share = 3/216 ≈ 1.4% of foil-sheet pulls.
-  foil:   { standard: 8, rare: 6, epic: 3, legendary: 2, mythic: 1 },
+  standard:  { prints: 8  }, // 18 × 8  = 144 (12×12)
+  rare:      { prints: 16 }, //  9 × 16 = 144 (12×12)
+  epic:      { prints: 48 }, //  3 × 48 = 144 (12×12)
+  legendary: { prints: 48 }, //  3 × 48 = 144 (12×12)
+  mythic:    { prints: 48 }, //  3 × 48 = 144 (12×12)
 });
+let FOIL_PRINT_SHEETS = def("FOIL_PRINT_SHEETS", {
+  standard:  { prints: 8  },
+  rare:      { prints: 16 },
+  epic:      { prints: 48 },
+  legendary: { prints: 48 },
+  mythic:    { prints: 48 },
+});
+
+// Slot weights — probability that a single rare / foil slot becomes each
+// rarity. Weights are normalized at roll time, but defaults sum to 1.0 so
+// each entry reads as a direct probability.
+let RARE_SLOT_WEIGHTS = def("RARE_SLOT_WEIGHTS", {
+  rare: 0.75, epic: 0.12, legendary: 0.08, mythic: 0.05,
+});
+let FOIL_SLOT_WEIGHTS = def("FOIL_SLOT_WEIGHTS", {
+  standard: 0.67, rare: 0.25, epic: 0.04, legendary: 0.03, mythic: 0.01,
+});
+
 let PACK_COMMON_SLOTS = def("PACK_COMMON_SLOTS", 14);
 let PACK_RARE_SLOTS   = def("PACK_RARE_SLOTS", 1);
 // Probability a pack contains a foil (replaces one common slot). Tunes the
@@ -2297,11 +2317,11 @@ let VALUE_MULTIPLIER     = def("VALUE_MULTIPLIER", 1.0);
 let SET_BUNDLE_BONUS     = def("SET_BUNDLE_BONUS", 0);
 let COMPLETE_SET_PREMIUM = def("COMPLETE_SET_PREMIUM", 0.25);
 
-function _sheetTotalSlots(sheetKey) {
-  const sheet = PRINT_SHEETS[sheetKey] || {};
-  let total = 0;
-  for (const r in sheet) total += (SET_SIZES[r] || 0) * (sheet[r] || 0);
-  return total;
+function _sheetTotalSlots(rarity, foil) {
+  const sheets = foil ? FOIL_PRINT_SHEETS : PRINT_SHEETS;
+  const def = sheets[rarity];
+  if (!def) return 0;
+  return (SET_SIZES[rarity] || 0) * (def.prints || 0);
 }
 // Audit helper: return the most-square XxY factorization for a slot count,
 // or null if the count is prime/inadmissible. A "real" factory sheet must
@@ -2315,14 +2335,17 @@ function _sheetDimensions(n) {
 }
 function auditPrintSheets() {
   const out = [];
-  for (const key of Object.keys(PRINT_SHEETS)) {
-    const total = _sheetTotalSlots(key);
-    const dims = _sheetDimensions(total);
-    out.push({
-      sheet: key,
-      slots: total,
-      dimensions: dims ? `${dims[0]}×${dims[1]}` : "INVALID (not a sensible rectangle)",
-    });
+  for (const foil of [false, true]) {
+    const sheets = foil ? FOIL_PRINT_SHEETS : PRINT_SHEETS;
+    for (const r of Object.keys(sheets)) {
+      const total = _sheetTotalSlots(r, foil);
+      const dims = _sheetDimensions(total);
+      out.push({
+        sheet: (foil ? "foil_" : "") + r,
+        slots: total,
+        dimensions: dims ? `${dims[0]}×${dims[1]}` : "INVALID (not a sensible rectangle)",
+      });
+    }
   }
   return out;
 }
@@ -2334,19 +2357,29 @@ function auditPrintSheets() {
     console.warn("PRINT_SHEETS audit:", report);
   }
 })();
-// Expected per-pack rate of pulling one specific (rarity, foil-flag) card.
-function specificCardRatePerPack(rarity, foil) {
-  const sheetKey = foil ? "foil" : (rarity === "standard" ? "common" : "rare");
-  const prints = (PRINT_SHEETS[sheetKey] || {})[rarity] || 0;
-  if (prints <= 0) return 0;
-  const total = _sheetTotalSlots(sheetKey);
+function _slotWeightFraction(weights, rarity) {
+  let total = 0;
+  for (const k in weights) total += Math.max(0, weights[k] || 0);
   if (total <= 0) return 0;
-  const perCardShare = prints / total;
-  let slots = 0;
-  if (sheetKey === "common") slots = Math.max(0, PACK_COMMON_SLOTS - FOIL_PER_PACK);
-  else if (sheetKey === "rare") slots = PACK_RARE_SLOTS;
-  else if (sheetKey === "foil") slots = FOIL_PER_PACK;
-  return slots * perCardShare;
+  return Math.max(0, weights[rarity] || 0) / total;
+}
+// Expected per-pack rate of pulling one specific (rarity, foil-flag) card.
+//   per-rate = slots-of-this-kind × P(slot becomes this rarity) / N
+// Common slots are dedicated to standards (no slot weight needed); rare /
+// foil slots use the slot-weights tables.
+function specificCardRatePerPack(rarity, foil) {
+  const n = SET_SIZES[rarity] || 0;
+  if (n <= 0) return 0;
+  if (foil) {
+    const fraction = _slotWeightFraction(FOIL_SLOT_WEIGHTS, rarity);
+    return FOIL_PER_PACK * fraction / n;
+  }
+  if (rarity === "standard") {
+    const effectiveCommons = Math.max(0, PACK_COMMON_SLOTS - FOIL_PER_PACK);
+    return effectiveCommons / n;
+  }
+  const fraction = _slotWeightFraction(RARE_SLOT_WEIGHTS, rarity);
+  return PACK_RARE_SLOTS * fraction / n;
 }
 // Count distinct printed cards across all sheets that can drop in a pack.
 // Each (rarity, foil-flag) only counts if its specific-rate is > 0 — sheets
@@ -3465,36 +3498,38 @@ function randomCardId(rarity) {
 // Sample a rarity from one of the PRINT_SHEETS. Each entry contributes
 // SET_SIZES[r] × prints slots; sampling is uniform across total slots, so
 // every (rarity, card-id) combination prints at exactly its run count.
-function rollSheet(sheetKey) {
-  const sheet = PRINT_SHEETS[sheetKey] || {};
+// Pick a rarity by weighted roll. Weights need not sum to 1 — normalized
+// at roll time.
+function _rollSlotWeights(weights, fallback) {
   let total = 0;
-  for (const r in sheet) total += (SET_SIZES[r] || 0) * (sheet[r] || 0);
-  if (total <= 0) return "standard";
-  let pick = Math.random() * total;
-  for (const r in sheet) {
-    const w = (SET_SIZES[r] || 0) * (sheet[r] || 0);
+  for (const k in weights) total += Math.max(0, weights[k] || 0);
+  if (total <= 0) return fallback;
+  let r = Math.random() * total;
+  for (const k in weights) {
+    const w = Math.max(0, weights[k] || 0);
     if (w <= 0) continue;
-    pick -= w;
-    if (pick < 0) return r;
+    r -= w;
+    if (r < 0) return k;
   }
-  return "standard";
+  return fallback;
 }
 
 function rollPack() {
   const cards = [];
+  // Common slots always pull from the standard sheet (uniform within).
   for (let i = 0; i < PACK_COMMON_SLOTS; i++) {
-    const r = rollSheet("common");
-    cards.push({ rarity: r, foil: false, id: randomCardId(r) });
+    cards.push({ rarity: "standard", foil: false, id: randomCardId("standard") });
   }
+  // Rare slots: pick rarity by slot-weight, then uniform within that sheet.
   for (let i = 0; i < PACK_RARE_SLOTS; i++) {
-    const r = rollSheet("rare");
+    const r = _rollSlotWeights(RARE_SLOT_WEIGHTS, "rare");
     cards.push({ rarity: r, foil: false, id: randomCardId(r) });
   }
   // Foil slot replaces a random COMMON slot (matches real-world packs where
   // the rare slot is preserved and the foil supplants a common).
   if (PACK_COMMON_SLOTS > 0 && Math.random() < FOIL_PER_PACK) {
     const slot = Math.floor(Math.random() * PACK_COMMON_SLOTS);
-    const r = rollSheet("foil");
+    const r = _rollSlotWeights(FOIL_SLOT_WEIGHTS, "standard");
     cards[slot] = { rarity: r, foil: true, id: randomCardId(r) };
   }
   return cards;
@@ -5941,16 +5976,28 @@ const DESIGN_FIELDS = [
   { group: "Pack rolls",       key: "FOIL_PER_PACK",                   path: "FOIL_PER_PACK",             label: "Foil per pack (probability)",  step: 0.001, min: 0, max: 1 },
   // Print-sheet runs — per-card print counts. Drop rates = (set size × prints)
   // share of the sheet. The common sheet only carries standards.
-  { group: "Print sheet: common", key: "PRINT_SHEETS.common.standard",      path: "PRINT_SHEETS.common.standard",      label: "Standard prints / card",  step: 1, min: 0, int: true },
-  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.rare",            path: "PRINT_SHEETS.rare.rare",            label: "Rare prints / card",      step: 1, min: 0, int: true },
-  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.epic",            path: "PRINT_SHEETS.rare.epic",            label: "Epic prints / card",      step: 1, min: 0, int: true },
-  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.legendary",       path: "PRINT_SHEETS.rare.legendary",       label: "Legendary prints / card", step: 1, min: 0, int: true },
-  { group: "Print sheet: rare",   key: "PRINT_SHEETS.rare.mythic",          path: "PRINT_SHEETS.rare.mythic",          label: "Mythic prints / card",    step: 1, min: 0, int: true },
-  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.standard",        path: "PRINT_SHEETS.foil.standard",        label: "Standard prints / card",  step: 1, min: 0, int: true },
-  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.rare",            path: "PRINT_SHEETS.foil.rare",            label: "Rare prints / card",      step: 1, min: 0, int: true },
-  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.epic",            path: "PRINT_SHEETS.foil.epic",            label: "Epic prints / card",      step: 1, min: 0, int: true },
-  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.legendary",       path: "PRINT_SHEETS.foil.legendary",       label: "Legendary prints / card", step: 1, min: 0, int: true },
-  { group: "Print sheet: foil",   key: "PRINT_SHEETS.foil.mythic",          path: "PRINT_SHEETS.foil.mythic",          label: "Mythic prints / card",    step: 1, min: 0, int: true },
+  // Rare-slot weights (probability the rare slot becomes each rarity).
+  { group: "Rare-slot weights",   key: "RARE_SLOT_WEIGHTS.rare",            path: "RARE_SLOT_WEIGHTS.rare",            label: "Rare",       step: 0.01, min: 0 },
+  { group: "Rare-slot weights",   key: "RARE_SLOT_WEIGHTS.epic",            path: "RARE_SLOT_WEIGHTS.epic",            label: "Epic",       step: 0.01, min: 0 },
+  { group: "Rare-slot weights",   key: "RARE_SLOT_WEIGHTS.legendary",       path: "RARE_SLOT_WEIGHTS.legendary",       label: "Legendary",  step: 0.01, min: 0 },
+  { group: "Rare-slot weights",   key: "RARE_SLOT_WEIGHTS.mythic",          path: "RARE_SLOT_WEIGHTS.mythic",          label: "Mythic",     step: 0.01, min: 0 },
+  // Foil-slot weights (probability the foil slot becomes each rarity).
+  { group: "Foil-slot weights",   key: "FOIL_SLOT_WEIGHTS.standard",        path: "FOIL_SLOT_WEIGHTS.standard",        label: "Standard",   step: 0.01, min: 0 },
+  { group: "Foil-slot weights",   key: "FOIL_SLOT_WEIGHTS.rare",            path: "FOIL_SLOT_WEIGHTS.rare",            label: "Rare",       step: 0.01, min: 0 },
+  { group: "Foil-slot weights",   key: "FOIL_SLOT_WEIGHTS.epic",            path: "FOIL_SLOT_WEIGHTS.epic",            label: "Epic",       step: 0.01, min: 0 },
+  { group: "Foil-slot weights",   key: "FOIL_SLOT_WEIGHTS.legendary",       path: "FOIL_SLOT_WEIGHTS.legendary",       label: "Legendary",  step: 0.01, min: 0 },
+  { group: "Foil-slot weights",   key: "FOIL_SLOT_WEIGHTS.mythic",          path: "FOIL_SLOT_WEIGHTS.mythic",          label: "Mythic",     step: 0.01, min: 0 },
+  // Print sheet per-card runs (sets sheet dimension; doesn't affect drop rate).
+  { group: "Print sheets",        key: "PRINT_SHEETS.standard.prints",      path: "PRINT_SHEETS.standard.prints",      label: "Std sheet prints / card",       step: 1, min: 1, int: true },
+  { group: "Print sheets",        key: "PRINT_SHEETS.rare.prints",          path: "PRINT_SHEETS.rare.prints",          label: "Rare sheet prints / card",      step: 1, min: 1, int: true },
+  { group: "Print sheets",        key: "PRINT_SHEETS.epic.prints",          path: "PRINT_SHEETS.epic.prints",          label: "Epic sheet prints / card",      step: 1, min: 1, int: true },
+  { group: "Print sheets",        key: "PRINT_SHEETS.legendary.prints",     path: "PRINT_SHEETS.legendary.prints",     label: "Legendary sheet prints / card", step: 1, min: 1, int: true },
+  { group: "Print sheets",        key: "PRINT_SHEETS.mythic.prints",        path: "PRINT_SHEETS.mythic.prints",        label: "Mythic sheet prints / card",    step: 1, min: 1, int: true },
+  { group: "Foil print sheets",   key: "FOIL_PRINT_SHEETS.standard.prints", path: "FOIL_PRINT_SHEETS.standard.prints", label: "Foil std prints / card",        step: 1, min: 1, int: true },
+  { group: "Foil print sheets",   key: "FOIL_PRINT_SHEETS.rare.prints",     path: "FOIL_PRINT_SHEETS.rare.prints",     label: "Foil rare prints / card",       step: 1, min: 1, int: true },
+  { group: "Foil print sheets",   key: "FOIL_PRINT_SHEETS.epic.prints",     path: "FOIL_PRINT_SHEETS.epic.prints",     label: "Foil epic prints / card",       step: 1, min: 1, int: true },
+  { group: "Foil print sheets",   key: "FOIL_PRINT_SHEETS.legendary.prints",path: "FOIL_PRINT_SHEETS.legendary.prints",label: "Foil legendary prints / card",  step: 1, min: 1, int: true },
+  { group: "Foil print sheets",   key: "FOIL_PRINT_SHEETS.mythic.prints",   path: "FOIL_PRINT_SHEETS.mythic.prints",   label: "Foil mythic prints / card",     step: 1, min: 1, int: true },
 
   // Market baselines — every Set is explicit since singles don't list.
   // Numbers reflect the long-horizon cash value of completing that rarity.
@@ -6045,7 +6092,8 @@ function _resolvePath(root, path) {
 function _liveDesignSnapshot() {
   return {
     PACK_COST, BOX_COST, CASE_COST, BOX_SIZE, CASE_SIZE,
-    PRINT_SHEETS, PACK_COMMON_SLOTS, PACK_RARE_SLOTS, FOIL_PER_PACK,
+    PRINT_SHEETS, FOIL_PRINT_SHEETS, RARE_SLOT_WEIGHTS, FOIL_SLOT_WEIGHTS,
+    PACK_COMMON_SLOTS, PACK_RARE_SLOTS, FOIL_PER_PACK,
     VALUE_MULTIPLIER, SET_BUNDLE_BONUS, COMPLETE_SET_PREMIUM,
     SET_SIZES,
     HOVER_AUTORIP_MS,
