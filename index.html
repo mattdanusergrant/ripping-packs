@@ -6002,7 +6002,9 @@ function drawSand() {
       radiusCells = pr > 0 ? pr : 0.6;
       color = "rgba(184,255,90,0.7)";
     } else if (SORT_MODE === "click_and_chain") {
-      radiusCells = sortClickRadiusEffective();
+      // A click detonates a single nearest grain — show a small point ring,
+      // not the full click search radius.
+      radiusCells = 0.6;
       color = "rgba(255,120,90,0.7)";
     }
     if (radiusCells > 0) {
