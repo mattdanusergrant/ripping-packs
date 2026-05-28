@@ -1777,7 +1777,93 @@
   /* Hide the game-design innards when debug mode is off. */
   body:not(.debug-mode) #design-modal .design-modal-note,
   body:not(.debug-mode) #design-modal #design-form,
+  body:not(.debug-mode) #design-modal #balance-tuner,
   body:not(.debug-mode) #design-modal .design-modal-footer { display: none; }
+
+  /* Balance tuner — live-edit knobs + computed preview. */
+  .balance-tuner {
+    padding: 14px 18px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .balance-tuner .tuner-title {
+    margin: 0 0 6px;
+    font-size: 0.85rem;
+    letter-spacing: 3px;
+    color: var(--gold);
+  }
+  .balance-tuner .tuner-note {
+    margin: 0 0 12px;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .balance-tuner .tuner-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 16px;
+  }
+  .balance-tuner .tuner-section {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .balance-tuner .tuner-section h4 {
+    margin: 0 0 6px;
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    color: var(--ink);
+    opacity: 0.85;
+  }
+  .balance-tuner .tuner-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+    font-size: 0.76rem;
+    padding: 2px 0;
+  }
+  .balance-tuner .tuner-row label { color: var(--ink); opacity: 0.85; }
+  .balance-tuner .tuner-row input[type=number] {
+    width: 90px; text-align: right;
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 4px;
+    padding: 3px 6px;
+    font: inherit; font-size: 0.78rem;
+  }
+  .balance-tuner .tuner-row input:focus { outline: none; border-color: var(--gold); }
+  .balance-tuner .tuner-preview {
+    margin-top: 12px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .balance-tuner .tuner-preview h4 {
+    margin: 0 0 6px;
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    color: var(--cash);
+  }
+  .balance-tuner .tuner-preview table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.72rem;
+  }
+  .balance-tuner .tuner-preview th, .balance-tuner .tuner-preview td {
+    padding: 3px 6px;
+    text-align: right;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .balance-tuner .tuner-preview th { color: var(--muted); font-weight: normal; }
+  .balance-tuner .tuner-preview td:first-child, .balance-tuner .tuner-preview th:first-child { text-align: left; }
+  .balance-tuner .tuner-preview tr.foil td { color: #ffd884; }
+  .balance-tuner .tuner-stats {
+    margin-top: 8px;
+    font-size: 0.72rem;
+    color: var(--muted);
+  }
+  .balance-tuner .tuner-stats b { color: var(--ink); }
+  @media (max-width: 760px) {
+    .balance-tuner .tuner-grid { grid-template-columns: 1fr; }
+  }
   /* Debug-only UI bits elsewhere on the page. */
   .debug-only { display: none !important; }
   body.debug-mode .debug-only { display: revert !important; }
@@ -1961,8 +2047,9 @@
       <button type="button" class="debug-toggle-btn" id="debug-toggle">Enable Debug Mode</button>
       <span class="debug-toggle-hint" id="debug-toggle-hint">Game design knobs and dev shortcuts are hidden until enabled.</span>
     </div>
+    <div id="balance-tuner" class="balance-tuner"></div>
     <div class="design-modal-note">
-      Edit any value, then <b>Apply &amp; Reload</b>. Overrides persist in this browser until reset.
+      <b>Advanced.</b> Edit any value, then <b>Apply &amp; Reload</b>. Overrides persist in this browser until reset.
     </div>
     <form id="design-form" class="design-form"></form>
     <div class="design-modal-footer">
@@ -6178,8 +6265,168 @@ function buildDesignForm() {
   });
 }
 
+// ---- Balance tuner (live edit, no reload) -------------------------------
+// Targets the knobs that have actually been moved during balancing —
+// rare-slot weights, foil-slot weights, pack composition, pricing. Each
+// edit applies in-memory immediately, persists to localStorage, and
+// re-renders the price/rate preview block beneath.
+const LIVE_TUNERS = {
+  // Rare-slot weights
+  "RARE_SLOT_WEIGHTS.rare":      { get: () => RARE_SLOT_WEIGHTS.rare,      set: v => { RARE_SLOT_WEIGHTS.rare = v; } },
+  "RARE_SLOT_WEIGHTS.epic":      { get: () => RARE_SLOT_WEIGHTS.epic,      set: v => { RARE_SLOT_WEIGHTS.epic = v; } },
+  "RARE_SLOT_WEIGHTS.legendary": { get: () => RARE_SLOT_WEIGHTS.legendary, set: v => { RARE_SLOT_WEIGHTS.legendary = v; } },
+  "RARE_SLOT_WEIGHTS.mythic":    { get: () => RARE_SLOT_WEIGHTS.mythic,    set: v => { RARE_SLOT_WEIGHTS.mythic = v; } },
+  // Foil-slot weights
+  "FOIL_SLOT_WEIGHTS.standard":  { get: () => FOIL_SLOT_WEIGHTS.standard,  set: v => { FOIL_SLOT_WEIGHTS.standard = v; } },
+  "FOIL_SLOT_WEIGHTS.rare":      { get: () => FOIL_SLOT_WEIGHTS.rare,      set: v => { FOIL_SLOT_WEIGHTS.rare = v; } },
+  "FOIL_SLOT_WEIGHTS.epic":      { get: () => FOIL_SLOT_WEIGHTS.epic,      set: v => { FOIL_SLOT_WEIGHTS.epic = v; } },
+  "FOIL_SLOT_WEIGHTS.legendary": { get: () => FOIL_SLOT_WEIGHTS.legendary, set: v => { FOIL_SLOT_WEIGHTS.legendary = v; } },
+  "FOIL_SLOT_WEIGHTS.mythic":    { get: () => FOIL_SLOT_WEIGHTS.mythic,    set: v => { FOIL_SLOT_WEIGHTS.mythic = v; } },
+  // Pack composition
+  "PACK_COST":          { get: () => PACK_COST,          set: v => { PACK_COST = v; } },
+  "PACK_COMMON_SLOTS":  { get: () => PACK_COMMON_SLOTS,  set: v => { PACK_COMMON_SLOTS = v; } },
+  "PACK_RARE_SLOTS":    { get: () => PACK_RARE_SLOTS,    set: v => { PACK_RARE_SLOTS = v; } },
+  "FOIL_PER_PACK":      { get: () => FOIL_PER_PACK,      set: v => { FOIL_PER_PACK = v; } },
+  // Pricing
+  "VALUE_MULTIPLIER":     { get: () => VALUE_MULTIPLIER,     set: v => { VALUE_MULTIPLIER = v; } },
+  "SET_BUNDLE_BONUS":     { get: () => SET_BUNDLE_BONUS,     set: v => { SET_BUNDLE_BONUS = v; } },
+  "COMPLETE_SET_PREMIUM": { get: () => COMPLETE_SET_PREMIUM, set: v => { COMPLETE_SET_PREMIUM = v; } },
+};
+const LIVE_TUNER_LAYOUT = [
+  { title: "Rare-slot weights", fields: [
+    { path: "RARE_SLOT_WEIGHTS.rare",      label: "Rare",      step: 0.01, min: 0 },
+    { path: "RARE_SLOT_WEIGHTS.epic",      label: "Epic",      step: 0.01, min: 0 },
+    { path: "RARE_SLOT_WEIGHTS.legendary", label: "Legendary", step: 0.01, min: 0 },
+    { path: "RARE_SLOT_WEIGHTS.mythic",    label: "Mythic",    step: 0.01, min: 0 },
+  ]},
+  { title: "Foil-slot weights", fields: [
+    { path: "FOIL_SLOT_WEIGHTS.standard",  label: "Standard",  step: 0.01, min: 0 },
+    { path: "FOIL_SLOT_WEIGHTS.rare",      label: "Rare",      step: 0.01, min: 0 },
+    { path: "FOIL_SLOT_WEIGHTS.epic",      label: "Epic",      step: 0.01, min: 0 },
+    { path: "FOIL_SLOT_WEIGHTS.legendary", label: "Legendary", step: 0.01, min: 0 },
+    { path: "FOIL_SLOT_WEIGHTS.mythic",    label: "Mythic",    step: 0.01, min: 0 },
+  ]},
+  { title: "Pack composition", fields: [
+    { path: "PACK_COST",         label: "Pack cost ($)", step: 0.5, min: 0 },
+    { path: "PACK_COMMON_SLOTS", label: "Common slots",  step: 1,    min: 0, int: true },
+    { path: "PACK_RARE_SLOTS",   label: "Rare slots",    step: 1,    min: 0, int: true },
+    { path: "FOIL_PER_PACK",     label: "Foil per pack", step: 0.005, min: 0, max: 1 },
+  ]},
+  { title: "Pricing", fields: [
+    { path: "VALUE_MULTIPLIER",     label: "Value multiplier",   step: 0.05, min: 0 },
+    { path: "SET_BUNDLE_BONUS",     label: "Set bundle bonus",   step: 0.05, min: 0 },
+    { path: "COMPLETE_SET_PREMIUM", label: "Complete-set premium", step: 0.05, min: 0 },
+  ]},
+];
+function _persistLiveTune(path, value) {
+  const parts = path.split(".");
+  const rootKey = parts[0];
+  if (parts.length === 1) {
+    _designOverrides[rootKey] = value;
+  } else {
+    if (!_designOverrides[rootKey] || typeof _designOverrides[rootKey] !== "object") {
+      _designOverrides[rootKey] = { ...(_DESIGN_DEFAULTS[rootKey] || {}) };
+    }
+    let cur = _designOverrides[rootKey];
+    for (let i = 1; i < parts.length - 1; i++) {
+      if (!cur[parts[i]] || typeof cur[parts[i]] !== "object") cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+  }
+  try { localStorage.setItem(DESIGN_KEY, JSON.stringify(_designOverrides)); } catch (_) {}
+}
+function liveTuneSet(path, raw) {
+  const tuner = LIVE_TUNERS[path];
+  if (!tuner) return;
+  const n = parseFloat(raw);
+  if (!isFinite(n)) return;
+  tuner.set(n);
+  _persistLiveTune(path, n);
+  renderAll();
+  renderTunerPreview();
+}
+function buildBalanceTuner() {
+  const root = $("balance-tuner");
+  if (!root) return;
+  let html = `<h3 class="tuner-title">BALANCE TUNER · LIVE</h3>
+    <p class="tuner-note">Changes apply instantly to the running game and persist. No reload required.</p>
+    <div class="tuner-grid">`;
+  for (const section of LIVE_TUNER_LAYOUT) {
+    html += `<div class="tuner-section"><h4>${section.title}</h4>`;
+    for (const f of section.fields) {
+      const v = LIVE_TUNERS[f.path].get();
+      const shown = (typeof v === "number" && isFinite(v))
+        ? (f.int ? String(Math.round(v)) : String(v))
+        : "";
+      const max = f.max != null ? ` max="${f.max}"` : "";
+      html += `<div class="tuner-row">
+        <label for="tuner-${f.path}">${f.label}</label>
+        <input id="tuner-${f.path}" type="number" data-tuner-path="${f.path}"
+               step="${f.step}" min="${f.min}"${max} value="${shown}">
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div><div class="tuner-preview" id="tuner-preview"></div>`;
+  root.innerHTML = html;
+  // Event delegation: any tuner input change triggers live apply.
+  root.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.dataset && t.dataset.tunerPath) {
+      liveTuneSet(t.dataset.tunerPath, t.value);
+    }
+  });
+  renderTunerPreview();
+}
+function renderTunerPreview() {
+  const el = $("tuner-preview");
+  if (!el) return;
+  // Per-pack rates × singles × set sizes
+  let packEV = 0;
+  for (const r of RARITIES) {
+    const n = SET_SIZES[r] || 0;
+    packEV += specificCardRatePerPack(r, false) * singleCardBaseline(r, false) * n;
+    packEV += specificCardRatePerPack(r, true)  * singleCardBaseline(r, true)  * n;
+  }
+  const ratio = (PACK_COST > 0) ? packEV / PACK_COST : 0;
+  let html = `<h4>LIVE DROP RATES &amp; PRICES</h4>
+    <table>
+      <thead><tr><th>Rarity</th><th>rate / pack</th><th>1 in N packs</th><th>single $</th><th>set $</th></tr></thead>
+      <tbody>`;
+  const fmtRate = (r) => r > 0 ? r.toExponential(2) : "—";
+  const fmtOdds = (r) => r > 0 ? "1 / " + Math.round(1/r).toLocaleString() : "—";
+  for (const foil of [false, true]) {
+    for (const r of RARITIES) {
+      const rate = specificCardRatePerPack(r, foil);
+      const single = singleCardBaseline(r, foil);
+      const setKey = (foil ? "foil" + r[0].toUpperCase() + r.slice(1) : r) + "Set";
+      const setPrice = computedBaselineSet(setKey);
+      const label = (foil ? "Foil " : "") + r;
+      html += `<tr${foil ? ' class="foil"' : ''}>
+        <td>${label}</td>
+        <td>${fmtRate(rate)}</td>
+        <td>${fmtOdds(rate)}</td>
+        <td>${single > 0 ? usd(single) : "—"}</td>
+        <td>${setPrice > 0 ? usd(setPrice) : "—"}</td>
+      </tr>`;
+    }
+  }
+  // Apex Sets
+  const completeP = computedBaselineSet("completeSet");
+  const foilCompleteP = computedBaselineSet("foilCompleteSet");
+  html += `<tr><td>Complete Set</td><td colspan="3">—</td><td>${usd(completeP)}</td></tr>
+           <tr class="foil"><td>Foil Complete Set</td><td colspan="3">—</td><td>${usd(foilCompleteP)}</td></tr>`;
+  html += `</tbody></table>
+    <div class="tuner-stats">
+      Pack EV: <b>${usd(packEV)}</b> · Pack cost: <b>${usd(PACK_COST)}</b> · EV / cost ratio: <b>${ratio.toFixed(2)}×</b>
+    </div>`;
+  el.innerHTML = html;
+}
+
 function openDesignPanel() {
   buildDesignForm();
+  buildBalanceTuner();
   $("design-modal").hidden = false;
 }
 function closeDesignPanel() {
