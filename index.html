@@ -1944,41 +1944,50 @@
   @media (max-width: 760px), (hover: none) and (pointer: coarse) {
     body > *:not(#mobile-gate) { display: none !important; }
     #mobile-gate {
-      display: flex;
+      display: block;
       position: fixed; inset: 0;
-      align-items: center; justify-content: center;
+      overflow-y: auto;
       background: #0e0a1f;
       color: var(--ink, #e7e5f2);
-      padding: 24px;
       z-index: 100000;
     }
+    .mobile-gate-inner {
+      max-width: 560px; margin: 0 auto;
+      padding: 18px 14px 40px;
+    }
     .mobile-gate-card {
-      max-width: 360px; width: 100%;
+      width: 100%;
       text-align: center;
       background: #1a1430;
       border: 1px solid rgba(255,255,255,0.12);
       border-radius: 14px;
-      padding: 28px 24px;
+      padding: 18px 16px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+      margin-bottom: 14px;
     }
     .mobile-gate-title {
-      font-size: 1.1rem; letter-spacing: 3px;
+      font-size: 1rem; letter-spacing: 3px;
       color: #f5c542; font-weight: bold;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     .mobile-gate-body {
-      font-size: 0.95rem; color: #a8a4c0;
-      letter-spacing: 1px;
+      font-size: 0.85rem; color: #a8a4c0;
+      line-height: 1.4;
     }
+    /* The mobile tuner lives outside the design modal, so un-gate it. */
+    #mobile-gate .balance-tuner { display: block; border-bottom: none; padding: 0; }
   }
 </style>
 </head>
 <body>
 
-<div id="mobile-gate" role="dialog" aria-modal="true" aria-label="Mobile not supported">
-  <div class="mobile-gate-card">
-    <div class="mobile-gate-title">MOBILE NOT SUPPORTED YET</div>
-    <div class="mobile-gate-body">try on desktop</div>
+<div id="mobile-gate" role="dialog" aria-modal="true" aria-label="Mobile: drop-rate calculator">
+  <div class="mobile-gate-inner">
+    <div class="mobile-gate-card">
+      <div class="mobile-gate-title">DROP-RATE CALCULATOR</div>
+      <div class="mobile-gate-body">Gameplay is desktop-only (it needs a mouse) — but here's the live balance calculator to play with on the go.</div>
+    </div>
+    <div id="mobile-gate-tuner" class="balance-tuner"></div>
   </div>
 </div>
 
@@ -2209,6 +2218,13 @@ try { _designOverrides = JSON.parse(localStorage.getItem(DESIGN_KEY) || "{}"); }
   if (looksOld(_designOverrides.FOIL_PRINT_SHEETS)) delete _designOverrides.FOIL_PRINT_SHEETS;
 })();
 let _debugMode = (() => { try { return localStorage.getItem(DEBUG_MODE_KEY) === "1"; } catch { return false; } })();
+// True when the mobile gate is showing (small screen / touch primary). In
+// this mode gameplay is hidden and only the drop-rate calculator renders, so
+// live tuner edits skip the (hidden) game re-render.
+let _mobileGateMode = (() => {
+  try { return window.matchMedia("(max-width: 760px), (hover: none) and (pointer: coarse)").matches; }
+  catch { return false; }
+})();
 function def(key, fallback) {
   _DESIGN_DEFAULTS[key] = fallback;
   if (Object.prototype.hasOwnProperty.call(_designOverrides, key)) {
@@ -6343,14 +6359,14 @@ function liveTuneSet(path, raw) {
   if (!isFinite(n)) return;
   tuner.set(n);
   _persistLiveTune(path, n);
-  renderAll();
+  if (!_mobileGateMode) renderAll(); // no live game UI to refresh on mobile
   renderTunerPreview();
 }
-function buildBalanceTuner() {
-  const root = $("balance-tuner");
+function buildBalanceTuner(root) {
+  root = root || $("balance-tuner");
   if (!root) return;
   let html = `<h3 class="tuner-title">BALANCE TUNER · LIVE</h3>
-    <p class="tuner-note">Changes apply instantly to the running game and persist. No reload required.</p>
+    <p class="tuner-note">Changes apply instantly and persist. No reload required.</p>
     <div class="tuner-grid">`;
   for (const section of LIVE_TUNER_LAYOUT) {
     html += `<div class="tuner-section"><h4>${section.title}</h4>`;
@@ -6361,28 +6377,29 @@ function buildBalanceTuner() {
         : "";
       const max = f.max != null ? ` max="${f.max}"` : "";
       html += `<div class="tuner-row">
-        <label for="tuner-${f.path}">${f.label}</label>
-        <input id="tuner-${f.path}" type="number" data-tuner-path="${f.path}"
+        <label>${f.label}</label>
+        <input type="number" data-tuner-path="${f.path}"
                step="${f.step}" min="${f.min}"${max} value="${shown}">
       </div>`;
     }
     html += `</div>`;
   }
-  html += `</div><div class="tuner-preview" id="tuner-preview"></div>`;
+  html += `</div><div class="tuner-preview"></div>`;
   root.innerHTML = html;
-  // Event delegation: any tuner input change triggers live apply.
-  root.addEventListener("input", (e) => {
-    const t = e.target;
-    if (t.dataset && t.dataset.tunerPath) {
-      liveTuneSet(t.dataset.tunerPath, t.value);
-    }
-  });
+  // Attach the input listener once per root (innerHTML resets children, but
+  // the root element itself persists across rebuilds).
+  if (!root.dataset.tunerWired) {
+    root.addEventListener("input", (e) => {
+      const t = e.target;
+      if (t.dataset && t.dataset.tunerPath) {
+        liveTuneSet(t.dataset.tunerPath, t.value);
+      }
+    });
+    root.dataset.tunerWired = "1";
+  }
   renderTunerPreview();
 }
-function renderTunerPreview() {
-  const el = $("tuner-preview");
-  if (!el) return;
-  // Per-pack rates × singles × set sizes
+function _tunerPreviewHtml() {
   let packEV = 0;
   for (const r of RARITIES) {
     const n = SET_SIZES[r] || 0;
@@ -6390,12 +6407,12 @@ function renderTunerPreview() {
     packEV += specificCardRatePerPack(r, true)  * singleCardBaseline(r, true)  * n;
   }
   const ratio = (PACK_COST > 0) ? packEV / PACK_COST : 0;
+  const fmtRate = (r) => r > 0 ? r.toExponential(2) : "—";
+  const fmtOdds = (r) => r > 0 ? "1 / " + Math.round(1/r).toLocaleString() : "—";
   let html = `<h4>LIVE DROP RATES &amp; PRICES</h4>
     <table>
       <thead><tr><th>Rarity</th><th>rate / pack</th><th>1 in N packs</th><th>single $</th><th>set $</th></tr></thead>
       <tbody>`;
-  const fmtRate = (r) => r > 0 ? r.toExponential(2) : "—";
-  const fmtOdds = (r) => r > 0 ? "1 / " + Math.round(1/r).toLocaleString() : "—";
   for (const foil of [false, true]) {
     for (const r of RARITIES) {
       const rate = specificCardRatePerPack(r, foil);
@@ -6412,7 +6429,6 @@ function renderTunerPreview() {
       </tr>`;
     }
   }
-  // Apex Sets
   const completeP = computedBaselineSet("completeSet");
   const foilCompleteP = computedBaselineSet("foilCompleteSet");
   html += `<tr><td>Complete Set</td><td colspan="3">—</td><td>${usd(completeP)}</td></tr>
@@ -6421,7 +6437,14 @@ function renderTunerPreview() {
     <div class="tuner-stats">
       Pack EV: <b>${usd(packEV)}</b> · Pack cost: <b>${usd(PACK_COST)}</b> · EV / cost ratio: <b>${ratio.toFixed(2)}×</b>
     </div>`;
-  el.innerHTML = html;
+  return html;
+}
+// Update every tuner preview on the page (design modal + mobile gate).
+function renderTunerPreview() {
+  const els = document.querySelectorAll(".tuner-preview");
+  if (!els.length) return;
+  const html = _tunerPreviewHtml();
+  els.forEach(el => { el.innerHTML = html; });
 }
 
 function openDesignPanel() {
@@ -8227,6 +8250,10 @@ renderAll();
 initActivityLog();
 renderTypingZone();
 if ((state.activity || []).length === 0) logActivity("A case on the house — start ripping!", "info");
+
+// On mobile/touch the game is gated; render the standalone drop-rate
+// calculator into the gate so it's usable on the go.
+if (_mobileGateMode) buildBalanceTuner($("mobile-gate-tuner"));
 
 // ---- Opening splash dismiss ----------------------------------------------
 // Any click or keypress closes the splash, but only after the entrance
