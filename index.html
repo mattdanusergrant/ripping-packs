@@ -2243,10 +2243,10 @@ function def(key, fallback) {
 }
 
 // ---- Sorting -------------------------------------------------------------
-// Sorting is purely positional: the player clicks the sand pile, the nearest
-// grain detonates plus its 4 orthogonal neighbors, then non-standard grains
-// caught in the blast chain-explode (rare = RARE_BLAST_REACH-cell "+" arm in
-// each cardinal direction, foil = FOIL_BLAST_REACH-cell "+" arm).
+// Sorting is positional: the player targets the sand pile and grains clear.
+// In click_and_chain the cleared grain propagates a type-specific chain
+// (see chainOffsetsFor): standards roll a per-direction chance, rares extend
+// along a random axis, foils extend in all four directions.
 // Four sorting interaction prototypes:
 //   "hover_and_click" — dwell to mark grains, then click to detonate
 //   "hover_and_move"  — moving cursor over a grain detonates it
@@ -2801,6 +2801,26 @@ const UPGRADE_NODES = [
   { id: "pulse_power5",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Plasma Pulse",     desc: "+5 cards / pulse (30)",  cost: 25000, effect: { pulseGrains: 5 }, prereq: ["pulse_power4"] },
   { id: "pulse_power6",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Fusion Pulse",     desc: "+5 cards / pulse (35)",  cost: 80000, effect: { pulseGrains: 5 }, prereq: ["pulse_power5"] },
 
+  // ----- CLICK AND CHAIN (click_and_chain) -----
+  { id: "chain_std1",  branch: "sort_chain", subtrack: "stdchance", currency: "cash", label: "Loose Stack",     desc: "+8% std chain (33%)",  cost: 80,    effect: { stdChainChance: 0.08 } },
+  { id: "chain_std2",  branch: "sort_chain", subtrack: "stdchance", currency: "cash", label: "Slippery Cards",  desc: "+8% std chain (41%)",  cost: 350,   effect: { stdChainChance: 0.08 }, prereq: ["chain_std1"] },
+  { id: "chain_std3",  branch: "sort_chain", subtrack: "stdchance", currency: "cash", label: "Static Cling",    desc: "+8% std chain (49%)",  cost: 1500,  effect: { stdChainChance: 0.08 }, prereq: ["chain_std2"] },
+  { id: "chain_std4",  branch: "sort_chain", subtrack: "stdchance", currency: "cash", label: "Domino Theory",   desc: "+8% std chain (57%)",  cost: 6000,  effect: { stdChainChance: 0.08 }, prereq: ["chain_std3"] },
+  { id: "chain_std5",  branch: "sort_chain", subtrack: "stdchance", currency: "cash", label: "Cascade",         desc: "+8% std chain (65%)",  cost: 25000, effect: { stdChainChance: 0.08 }, prereq: ["chain_std4"] },
+  { id: "chain_std6",  branch: "sort_chain", subtrack: "stdchance", currency: "cash", label: "Chain Reaction",  desc: "+10% std chain (75%)", cost: 80000, effect: { stdChainChance: 0.10 }, prereq: ["chain_std5"] },
+  { id: "chain_rare1", branch: "sort_chain", subtrack: "raredist",  currency: "cash", label: "Rare Ripple",     desc: "Rare dist +1 (3)",     cost: 120,   effect: { rareChainDist: 1 } },
+  { id: "chain_rare2", branch: "sort_chain", subtrack: "raredist",  currency: "cash", label: "Rare Wave",       desc: "Rare dist +1 (4)",     cost: 500,   effect: { rareChainDist: 1 }, prereq: ["chain_rare1"] },
+  { id: "chain_rare3", branch: "sort_chain", subtrack: "raredist",  currency: "cash", label: "Rare Surge",      desc: "Rare dist +1 (5)",     cost: 2000,  effect: { rareChainDist: 1 }, prereq: ["chain_rare2"] },
+  { id: "chain_rare4", branch: "sort_chain", subtrack: "raredist",  currency: "cash", label: "Rare Torrent",    desc: "Rare dist +2 (7)",     cost: 8000,  effect: { rareChainDist: 2 }, prereq: ["chain_rare3"] },
+  { id: "chain_rare5", branch: "sort_chain", subtrack: "raredist",  currency: "cash", label: "Rare Cascade",    desc: "Rare dist +3 (10)",    cost: 30000, effect: { rareChainDist: 3 }, prereq: ["chain_rare4"] },
+  { id: "chain_rare6", branch: "sort_chain", subtrack: "raredist",  currency: "cash", label: "Rare Tsunami",    desc: "Rare dist +5 (15)",    cost: 90000, effect: { rareChainDist: 5 }, prereq: ["chain_rare5"] },
+  { id: "chain_foil1", branch: "sort_chain", subtrack: "foildist",  currency: "cash", label: "Foil Flare",      desc: "Foil dist +1 (3)",     cost: 150,   effect: { foilChainDist: 1 } },
+  { id: "chain_foil2", branch: "sort_chain", subtrack: "foildist",  currency: "cash", label: "Foil Burst",      desc: "Foil dist +1 (4)",     cost: 700,   effect: { foilChainDist: 1 }, prereq: ["chain_foil1"] },
+  { id: "chain_foil3", branch: "sort_chain", subtrack: "foildist",  currency: "cash", label: "Foil Bloom",      desc: "Foil dist +1 (5)",     cost: 3000,  effect: { foilChainDist: 1 }, prereq: ["chain_foil2"] },
+  { id: "chain_foil4", branch: "sort_chain", subtrack: "foildist",  currency: "cash", label: "Foil Nova",       desc: "Foil dist +2 (7)",     cost: 12000, effect: { foilChainDist: 2 }, prereq: ["chain_foil3"] },
+  { id: "chain_foil5", branch: "sort_chain", subtrack: "foildist",  currency: "cash", label: "Foil Supernova",  desc: "Foil dist +3 (10)",    cost: 40000, effect: { foilChainDist: 3 }, prereq: ["chain_foil4"] },
+  { id: "chain_foil6", branch: "sort_chain", subtrack: "foildist",  currency: "cash", label: "Foil Singularity",desc: "Foil dist +5 (15)",    cost: 120000,effect: { foilChainDist: 5 }, prereq: ["chain_foil5"] },
+
   // LISTINGS — marketplace slot expansion.
   { id: "list1",  branch: "listings", label: "Side Hustle",      desc: "+1 listing slot",     cost: 5,   effect: { listingSlots: 1 } },
   { id: "list2",  branch: "listings", label: "Shop Front",       desc: "+1 listing slot",     cost: 20,  effect: { listingSlots: 1 },      prereq: ["list1"] },
@@ -2825,19 +2845,22 @@ const UPGRADE_BRANCHES = [
     { key: "radius",   label: "PULSE RADIUS" },
     { key: "power",    label: "CARDS CLEARED" },
   ] },
+  { key: "sort_chain", label: "CLICK AND CHAIN",  color: "#ff785a", subtracks: [
+    { key: "stdchance", label: "STD CHAIN CHANCE" },
+    { key: "raredist",  label: "RARE CHAIN DIST" },
+    { key: "foildist",  label: "FOIL CHAIN DIST" },
+  ] },
   { key: "listings",   label: "LISTINGS",         color: "#ffd84d" },
 ];
 // Branches grouped under the SORTING UPGRADES button (the canvas trigger).
-const SORTING_BRANCHES = ["sort_click", "sort_move", "sort_pulse"];
+const SORTING_BRANCHES = ["sort_click", "sort_move", "sort_pulse", "sort_chain"];
 // Maps the active SORT_MODE to the branch shown by the "⬆ SORTING UPGRADES"
-// trigger. click_and_chain has no dedicated branch yet (its chain reach
-// benefits from the move/pulse blast upgrades), so it returns null and the
-// modal renders an "upgrades coming soon" placeholder.
+// trigger.
 const SORT_MODE_TO_BRANCH = {
   hover_and_click: "sort_click",
   hover_and_move:  "sort_move",
   hover_and_pulse: "sort_pulse",
-  click_and_chain: null,
+  click_and_chain: "sort_chain",
 };
 function activeSortingBranch() { return SORT_MODE_TO_BRANCH[SORT_MODE] || null; }
 
@@ -2933,13 +2956,16 @@ function sortClickRadiusEffective() {
   if (SORT_MODE === "click_and_chain") return SORT_CHAIN_CLICK_RADIUS;
   return SORT_CLICK_RADIUS_CELLS;
 }
-// Chain reach only matters in click_and_chain mode (the hover modes don't
-// chain). No upgrade track feeds it yet — just the base reaches.
-function rareBlastEffective() {
-  return Math.max(0, RARE_BLAST_REACH);
+// Click-and-chain per-type chain shape (see chainOffsetsFor). Standards chain
+// probabilistically (capped below 100%); rares/foils chain a fixed distance.
+function standardChainChanceEffective() {
+  return Math.min(SORT_STD_CHAIN_CAP, Math.max(0, SORT_STD_CHAIN_CHANCE + (eff().stdChainChance || 0)));
 }
-function foilBlastEffective() {
-  return Math.max(0, FOIL_BLAST_REACH);
+function rareChainDistEffective() {
+  return Math.max(0, Math.round(SORT_RARE_CHAIN_DIST + (eff().rareChainDist || 0)));
+}
+function foilChainDistEffective() {
+  return Math.max(0, Math.round(SORT_FOIL_CHAIN_DIST + (eff().foilChainDist || 0)));
 }
 function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
 function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
@@ -5689,13 +5715,36 @@ function armOffsets(n) {
   _armCache.set(n, out);
   return out;
 }
-let RARE_BLAST_REACH = def("RARE_BLAST_REACH", 2);
-let FOIL_BLAST_REACH = def("FOIL_BLAST_REACH", 3);
-function explosionOffsetsForKey(key) {
-  // Foils throw a longer "+" — typically long enough to chain across most
-  // piles. Rares throw a shorter one. Both follow a clean ray shape (no
-  // diagonals). Reaches are tunable via the Game Design panel.
-  return bulkIsFoil(key) ? armOffsets(foilBlastEffective()) : armOffsets(rareBlastEffective());
+// ---- Click-and-chain detonation ----------------------------------------
+// When a cleared grain propagates (click_and_chain only), the chain shape
+// depends on its type:
+//   standard — each of the 4 orthogonal directions independently has
+//              standardChainChanceEffective() chance to chain 1 more card
+//              that way. The chance is capped below 100% (SORT_STD_CHAIN_CAP).
+//   rare     — picks an axis (50% vertical / 50% horizontal) and chains
+//              rareChainDistEffective() cards in both directions of it.
+//   foil     — chains foilChainDistEffective() cards in all 4 directions.
+let SORT_STD_CHAIN_CHANCE = def("SORT_STD_CHAIN_CHANCE", 0.25);
+let SORT_STD_CHAIN_CAP    = def("SORT_STD_CHAIN_CAP", 0.95);
+let SORT_RARE_CHAIN_DIST  = def("SORT_RARE_CHAIN_DIST", 2);
+let SORT_FOIL_CHAIN_DIST  = def("SORT_FOIL_CHAIN_DIST", 2);
+function chainOffsetsFor(key) {
+  if (bulkIsFoil(key)) return armOffsets(foilChainDistEffective());
+  if (key === "rare") {
+    const d = rareChainDistEffective();
+    const out = [];
+    if (Math.random() < 0.5) { for (let i = 1; i <= d; i++) out.push([0, i], [0, -i]); }
+    else                     { for (let i = 1; i <= d; i++) out.push([i, 0], [-i, 0]); }
+    return out;
+  }
+  // standard: independent per-direction roll for a single-cell chain.
+  const p = standardChainChanceEffective();
+  const out = [];
+  if (Math.random() < p) out.push([1, 0]);
+  if (Math.random() < p) out.push([-1, 0]);
+  if (Math.random() < p) out.push([0, 1]);
+  if (Math.random() < p) out.push([0, -1]);
+  return out;
 }
 
 function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
@@ -5713,15 +5762,16 @@ function applyBlast(centerCol, centerRow, offsets, outDetonators, refs) {
     spawnCritPop(nc, nr, k);
     sortOneOfKey(k);
     refs.total += 1;
-    if (k !== "standard") outDetonators.push({ col: nc, row: nr, key: k });
+    // Every cleared grain propagates — standards roll their per-direction
+    // chance, rares/foils extend by distance (see chainOffsetsFor).
+    outDetonators.push({ col: nc, row: nr, key: k });
   });
 }
 
 // Wave-based chain detonation seeded from the player's click.
 // Wave 0:  destroy the seed (+ optional click AoE).
-// Wave N+: every non-standard cell destroyed in the previous wave detonates
-//          with its own key's "+" arm — rare reaches rareBlastEffective(),
-//          foil reaches foilBlastEffective().
+// Wave N+: every cleared cell propagates via chainOffsetsFor(key) — standards
+//          roll a per-direction chance, rares/foils extend by distance.
 // `opts`:
 //   propagate    (default true)  — false: stop after wave 0 (no chain)
 //   applyClickAoe (default true) — false: skip the 4-ortho click AoE
@@ -5740,7 +5790,7 @@ function runChainCrit(startCol, startRow, onDone, opts) {
   spawnCritPop(startCol, startRow, seedKey);
   sortOneOfKey(seedKey);
   refs.total += 1;
-  if (propagate && seedKey !== "standard") detonators.push({ col: startCol, row: startRow, key: seedKey });
+  if (propagate) detonators.push({ col: startCol, row: startRow, key: seedKey });
   if (applyClickAoe) applyBlast(startCol, startRow, CLICK_AOE_OFFSETS, detonators, refs);
   startSandAnim();
   renderHeader();
@@ -5752,7 +5802,7 @@ function runChainCrit(startCol, startRow, onDone, opts) {
     if (detonators.length === 0) { finish(refs.total); return; }
     const next = [];
     detonators.forEach(d => {
-      applyBlast(d.col, d.row, explosionOffsetsForKey(d.key), next, refs);
+      applyBlast(d.col, d.row, chainOffsetsFor(d.key), next, refs);
     });
     startSandAnim();
     renderHeader();
@@ -5857,7 +5907,7 @@ function runChainCritFromMarks(seedCells, onDone, opts) {
   function step() {
     if (queue.length === 0) { finish(refs.total); return; }
     const next = [];
-    queue.forEach(d => applyBlast(d.col, d.row, explosionOffsetsForKey(d.key), next, refs));
+    queue.forEach(d => applyBlast(d.col, d.row, chainOffsetsFor(d.key), next, refs));
     startSandAnim();
     renderHeader(); renderVault(); renderSandPile();
     queue = next;
@@ -6184,8 +6234,10 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
   { group: "Sorting",          key: "MAX_HIGHLIGHTS",                  path: "MAX_HIGHLIGHTS",            label: "Max marked grains (base)",     step: 1, min: 1, int: true },
   { group: "Sorting",          key: "UNSORTED_CAPACITY",               path: "UNSORTED_CAPACITY",         label: "Unsorted pile cap",            step: 10, min: 1, int: true },
-  { group: "Sorting",          key: "RARE_BLAST_REACH",                path: "RARE_BLAST_REACH",          label: "Rare grain blast reach (cells)", step: 1, min: 0, int: true },
-  { group: "Sorting",          key: "FOIL_BLAST_REACH",                path: "FOIL_BLAST_REACH",          label: "Foil grain blast reach (cells)", step: 1, min: 0, int: true },
+  { group: "Sorting",          key: "SORT_STD_CHAIN_CHANCE",           path: "SORT_STD_CHAIN_CHANCE",     label: "Std chain chance / dir",       step: 0.01, min: 0, max: 1 },
+  { group: "Sorting",          key: "SORT_STD_CHAIN_CAP",              path: "SORT_STD_CHAIN_CAP",        label: "Std chain chance cap",         step: 0.01, min: 0, max: 1 },
+  { group: "Sorting",          key: "SORT_RARE_CHAIN_DIST",            path: "SORT_RARE_CHAIN_DIST",      label: "Rare chain distance (cells)",  step: 1, min: 0, int: true },
+  { group: "Sorting",          key: "SORT_FOIL_CHAIN_DIST",            path: "SORT_FOIL_CHAIN_DIST",      label: "Foil chain distance (cells)",  step: 1, min: 0, int: true },
 
   // Staff
   { group: "Staff",            key: "TABLE_COST",                      path: "TABLE_COST",                label: "Booster-pack table cost ($)",   step: 50,  min: 0 },
@@ -6251,7 +6303,7 @@ function _liveDesignSnapshot() {
     SORT_MODE, SORT_PULSE_MS, SORT_PULSE_BASE_RADIUS, SORT_PULSE_GRAINS,
     SORT_MOVE_BASE_RADIUS, SORT_MOVE_COOLDOWN_MS, SORT_MOVE_GRAINS,
     SORT_CLICK_RADIUS_CELLS, SORT_CHAIN_CLICK_RADIUS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
-    RARE_BLAST_REACH, FOIL_BLAST_REACH,
+    SORT_STD_CHAIN_CHANCE, SORT_STD_CHAIN_CAP, SORT_RARE_CHAIN_DIST, SORT_FOIL_CHAIN_DIST,
     HOMIE_COST, HOMIE_PACK_MS,
     TABLE_COST, HOMIE_POOL_BASE,
     CRAFT_HOMIE_COST, CRAFT_HOMIE_TICK_MS, CRAFT_HOMIE_DURATION_MS,
