@@ -2267,6 +2267,7 @@ let SORT_MOVE_BASE_RADIUS = def("SORT_MOVE_BASE_RADIUS", 0.6);
 let SORT_MOVE_COOLDOWN_MS = def("SORT_MOVE_COOLDOWN_MS", 120);
 let SORT_MOVE_GRAINS = def("SORT_MOVE_GRAINS", 1);
 let SORT_CLICK_RADIUS_CELLS = def("SORT_CLICK_RADIUS_CELLS", 4); // cells from the click to search for the seed grain
+let SORT_CHAIN_CLICK_RADIUS = def("SORT_CHAIN_CLICK_RADIUS", 1); // click_and_chain: tight "hunt and peck" search radius
 let UNSORTED_CAPACITY    = def("UNSORTED_CAPACITY", 1000);
 // ---- Print sheets (per-rarity) ------------------------------------------
 // Each rarity gets its own physical print sheet. Cards within a sheet are
@@ -2927,6 +2928,9 @@ function moveRadiusEffective()        { return Math.max(0,  SORT_MOVE_BASE_RADIU
 function moveCooldownEffective()      { return Math.max(0,  SORT_MOVE_COOLDOWN_MS + (eff().moveCooldownDelta || 0)); }
 function moveGrainsEffective()        { return Math.max(1,  Math.round(SORT_MOVE_GRAINS + (eff().moveGrains || 0))); }
 function sortClickRadiusEffective() {
+  // click_and_chain is a precise "hunt and peck" mode — a tight search radius
+  // so you detonate the grain you actually click, not a distant neighbour.
+  if (SORT_MODE === "click_and_chain") return SORT_CHAIN_CLICK_RADIUS;
   return SORT_CLICK_RADIUS_CELLS;
 }
 // Chain reach only matters in click_and_chain mode (the hover modes don't
@@ -6002,9 +6006,8 @@ function drawSand() {
       radiusCells = pr > 0 ? pr : 0.6;
       color = "rgba(184,255,90,0.7)";
     } else if (SORT_MODE === "click_and_chain") {
-      // A click detonates a single nearest grain — show a small point ring,
-      // not the full click search radius.
-      radiusCells = 0.6;
+      // Ring matches the actual (tight) click search radius — hunt and peck.
+      radiusCells = sortClickRadiusEffective();
       color = "rgba(255,120,90,0.7)";
     }
     if (radiusCells > 0) {
@@ -6176,6 +6179,7 @@ const DESIGN_FIELDS = [
   { group: "Sorting",          key: "SORT_MOVE_COOLDOWN_MS",           path: "SORT_MOVE_COOLDOWN_MS",     label: "Move clear cooldown (ms)",     step: 10, min: 0, int: true },
   { group: "Sorting",          key: "SORT_MOVE_GRAINS",                path: "SORT_MOVE_GRAINS",          label: "Move grains per clear",        step: 1, min: 1, int: true },
   { group: "Sorting",          key: "SORT_CLICK_RADIUS_CELLS",         path: "SORT_CLICK_RADIUS_CELLS",   label: "Click search radius (cells)",  step: 1, min: 0, int: true },
+  { group: "Sorting",          key: "SORT_CHAIN_CLICK_RADIUS",         path: "SORT_CHAIN_CLICK_RADIUS",   label: "Chain peck radius (cells)",    step: 1, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_DWELL_MS",                  path: "HOVER_DWELL_MS",            label: "Paint dwell time (ms)",        step: 10, min: 0, int: true },
   { group: "Sorting",          key: "HOVER_RADIUS_CELLS",              path: "HOVER_RADIUS_CELLS",        label: "Cursor radius (cells)",        step: 0.1, min: 0 },
   { group: "Sorting",          key: "MAX_HIGHLIGHTS",                  path: "MAX_HIGHLIGHTS",            label: "Max marked grains (base)",     step: 1, min: 1, int: true },
@@ -6246,7 +6250,7 @@ function _liveDesignSnapshot() {
     HOVER_AUTORIP_MS,
     SORT_MODE, SORT_PULSE_MS, SORT_PULSE_BASE_RADIUS, SORT_PULSE_GRAINS,
     SORT_MOVE_BASE_RADIUS, SORT_MOVE_COOLDOWN_MS, SORT_MOVE_GRAINS,
-    SORT_CLICK_RADIUS_CELLS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
+    SORT_CLICK_RADIUS_CELLS, SORT_CHAIN_CLICK_RADIUS, HOVER_DWELL_MS, HOVER_RADIUS_CELLS, MAX_HIGHLIGHTS, UNSORTED_CAPACITY,
     RARE_BLAST_REACH, FOIL_BLAST_REACH,
     HOMIE_COST, HOMIE_PACK_MS,
     TABLE_COST, HOMIE_POOL_BASE,
