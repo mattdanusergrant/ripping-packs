@@ -6407,11 +6407,10 @@ function _tunerPreviewHtml() {
     packEV += specificCardRatePerPack(r, true)  * singleCardBaseline(r, true)  * n;
   }
   const ratio = (PACK_COST > 0) ? packEV / PACK_COST : 0;
-  const fmtRate = (r) => r > 0 ? r.toExponential(2) : "—";
   const fmtOdds = (r) => r > 0 ? "1 / " + Math.round(1/r).toLocaleString() : "—";
   let html = `<h4>LIVE DROP RATES &amp; PRICES</h4>
     <table>
-      <thead><tr><th>Rarity</th><th>rate / pack</th><th>1 in N packs</th><th>single $</th><th>set $</th></tr></thead>
+      <thead><tr><th>Rarity</th><th>1 in N packs</th><th>single $</th><th>set $</th></tr></thead>
       <tbody>`;
   for (const foil of [false, true]) {
     for (const r of RARITIES) {
@@ -6422,7 +6421,6 @@ function _tunerPreviewHtml() {
       const label = (foil ? "Foil " : "") + r;
       html += `<tr${foil ? ' class="foil"' : ''}>
         <td>${label}</td>
-        <td>${fmtRate(rate)}</td>
         <td>${fmtOdds(rate)}</td>
         <td>${single > 0 ? usd(single) : "—"}</td>
         <td>${setPrice > 0 ? usd(setPrice) : "—"}</td>
@@ -6431,8 +6429,8 @@ function _tunerPreviewHtml() {
   }
   const completeP = computedBaselineSet("completeSet");
   const foilCompleteP = computedBaselineSet("foilCompleteSet");
-  html += `<tr><td>Complete Set</td><td colspan="3">—</td><td>${usd(completeP)}</td></tr>
-           <tr class="foil"><td>Foil Complete Set</td><td colspan="3">—</td><td>${usd(foilCompleteP)}</td></tr>`;
+  html += `<tr><td>Complete Set</td><td colspan="2">—</td><td>${usd(completeP)}</td></tr>
+           <tr class="foil"><td>Foil Complete Set</td><td colspan="2">—</td><td>${usd(foilCompleteP)}</td></tr>`;
   html += `</tbody></table>
     <div class="tuner-stats">
       Pack EV: <b>${usd(packEV)}</b> · Pack cost: <b>${usd(PACK_COST)}</b> · EV / cost ratio: <b>${ratio.toFixed(2)}×</b>
