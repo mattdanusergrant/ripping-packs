@@ -2261,7 +2261,7 @@ let SORT_PULSE_MS = def("SORT_PULSE_MS", 325);
 // clears. Pulse-radius upgrades add to the radius; the grain cap keeps each
 // pulse to the N nearest grains inside that radius.
 let SORT_PULSE_BASE_RADIUS = def("SORT_PULSE_BASE_RADIUS", 1.1);
-let SORT_PULSE_GRAINS = def("SORT_PULSE_GRAINS", 4);
+let SORT_PULSE_GRAINS = def("SORT_PULSE_GRAINS", 5);
 // hover_and_move: cursor clear radius, min ms between clears, grains/clear.
 let SORT_MOVE_BASE_RADIUS = def("SORT_MOVE_BASE_RADIUS", 0.6);
 let SORT_MOVE_COOLDOWN_MS = def("SORT_MOVE_COOLDOWN_MS", 120);
@@ -2793,12 +2793,12 @@ const UPGRADE_NODES = [
   { id: "pulse_radius4", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Wave Front",       desc: "Pulse radius +0.5",      cost: 3000,  effect: { pulseRadius: 0.5 }, prereq: ["pulse_radius3"] },
   { id: "pulse_radius5", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Shock Wave",       desc: "Pulse radius +0.7",      cost: 12000, effect: { pulseRadius: 0.7 }, prereq: ["pulse_radius4"] },
   { id: "pulse_radius6", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Tidal Pulse",      desc: "Pulse radius +1.0",      cost: 40000, effect: { pulseRadius: 1.0 }, prereq: ["pulse_radius5"] },
-  { id: "pulse_power1",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hot Pulse",        desc: "+4 cards / pulse (8)",   cost: 80,    effect: { pulseGrains: 4 } },
-  { id: "pulse_power2",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hotter Pulse",     desc: "+4 cards / pulse (12)",  cost: 350,   effect: { pulseGrains: 4 }, prereq: ["pulse_power1"] },
-  { id: "pulse_power3",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Searing Pulse",    desc: "+4 cards / pulse (16)",  cost: 1500,  effect: { pulseGrains: 4 }, prereq: ["pulse_power2"] },
-  { id: "pulse_power4",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Magma Pulse",      desc: "+4 cards / pulse (20)",  cost: 6000,  effect: { pulseGrains: 4 }, prereq: ["pulse_power3"] },
-  { id: "pulse_power5",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Plasma Pulse",     desc: "+4 cards / pulse (24)",  cost: 25000, effect: { pulseGrains: 4 }, prereq: ["pulse_power4"] },
-  { id: "pulse_power6",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Fusion Pulse",     desc: "+4 cards / pulse (28)",  cost: 80000, effect: { pulseGrains: 4 }, prereq: ["pulse_power5"] },
+  { id: "pulse_power1",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hot Pulse",        desc: "+5 cards / pulse (10)",  cost: 80,    effect: { pulseGrains: 5 } },
+  { id: "pulse_power2",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Hotter Pulse",     desc: "+5 cards / pulse (15)",  cost: 350,   effect: { pulseGrains: 5 }, prereq: ["pulse_power1"] },
+  { id: "pulse_power3",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Searing Pulse",    desc: "+5 cards / pulse (20)",  cost: 1500,  effect: { pulseGrains: 5 }, prereq: ["pulse_power2"] },
+  { id: "pulse_power4",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Magma Pulse",      desc: "+5 cards / pulse (25)",  cost: 6000,  effect: { pulseGrains: 5 }, prereq: ["pulse_power3"] },
+  { id: "pulse_power5",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Plasma Pulse",     desc: "+5 cards / pulse (30)",  cost: 25000, effect: { pulseGrains: 5 }, prereq: ["pulse_power4"] },
+  { id: "pulse_power6",  branch: "sort_pulse", subtrack: "power",   currency: "cash", label: "Fusion Pulse",     desc: "+5 cards / pulse (35)",  cost: 80000, effect: { pulseGrains: 5 }, prereq: ["pulse_power5"] },
 
   // LISTINGS — marketplace slot expansion.
   { id: "list1",  branch: "listings", label: "Side Hustle",      desc: "+1 listing slot",     cost: 5,   effect: { listingSlots: 1 } },
