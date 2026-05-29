@@ -2256,7 +2256,7 @@ function def(key, fallback) {
 // Chain propagation is *only* enabled in click_and_chain; the hover modes
 // just sort the targeted grain(s) flatly.
 let SORT_MODE = def("SORT_MODE", "hover_and_pulse");
-let SORT_PULSE_MS = def("SORT_PULSE_MS", 325);
+let SORT_PULSE_MS = def("SORT_PULSE_MS", 650);
 // hover_and_pulse: base AoE radius (cells) and how many grains a single pulse
 // clears. Pulse-radius upgrades add to the radius; the grain cap keeps each
 // pulse to the N nearest grains inside that radius.
