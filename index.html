@@ -1881,13 +1881,13 @@
     font: bold 0.7rem inherit; letter-spacing: 1.5px;
   }
   .debug-fill-bulk:hover { background: rgba(245,197,66,0.18); }
-  /* Sort-hint mode-cycler — only clickable in debug mode. */
-  body.debug-mode #sort-hint-text {
+  /* Sort-hint mode-cycler — always clickable to rotate sort modes. */
+  #sort-hint-text {
     cursor: pointer;
     text-decoration: underline dotted;
     text-underline-offset: 3px;
   }
-  body.debug-mode #sort-hint-text:hover { color: var(--gold); }
+  #sort-hint-text:hover { color: var(--gold); }
   .design-modal-footer button {
     background: var(--panel-light); color: var(--ink);
     border: 1px solid rgba(255,255,255,0.10); border-radius: 6px;
@@ -7970,6 +7970,7 @@ function resetGame() {
   _resetting = true;
   localStorage.removeItem(SAVE_KEY);
   localStorage.removeItem(DESIGN_KEY);
+  localStorage.removeItem(DEBUG_MODE_KEY); // reset also exits debug mode
   // Reload rather than mutating in place — the design constants are
   // captured into module-scope `let` bindings at boot via def(), so
   // clearing DESIGN_KEY only takes effect after a fresh page load.
@@ -8247,7 +8248,7 @@ $("design-apply").addEventListener("click", applyDesignAndReload);
 $("design-reset").addEventListener("click", resetDesignOverrides);
 $("debug-toggle").addEventListener("click", () => setDebugMode(!_debugMode));
 $("debug-fill-bulk").addEventListener("click", debugFillBulk);
-$("sort-hint-text").addEventListener("click", () => { if (_debugMode) cycleSortMode(); });
+$("sort-hint-text").addEventListener("click", () => cycleSortMode());
 // Debug-only currency injectors — click the header chips to grant currency.
 $("cash-chip").addEventListener("click", () => {
   if (!_debugMode) return;
