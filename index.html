@@ -2256,7 +2256,7 @@ function def(key, fallback) {
 // Chain propagation is *only* enabled in click_and_chain; the hover modes
 // just sort the targeted grain(s) flatly.
 let SORT_MODE = def("SORT_MODE", "hover_and_pulse");
-let SORT_PULSE_MS = def("SORT_PULSE_MS", 650);
+let SORT_PULSE_MS = def("SORT_PULSE_MS", 2000);
 // hover_and_pulse: base AoE radius (cells) and how many grains a single pulse
 // clears. Pulse-radius upgrades add to the radius; the grain cap keeps each
 // pulse to the N nearest grains inside that radius.
@@ -2782,12 +2782,12 @@ const UPGRADE_NODES = [
   { id: "move_card6",  branch: "sort_move", subtrack: "cards", currency: "cash", label: "Avalanche",       desc: "+5 cards / clear",   cost: 80000, effect: { moveGrains: 5 }, prereq: ["move_card5"] },
 
   // ----- PULSE (hover_and_pulse) -----
-  { id: "pulse_rate1",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Quickened Pulse",  desc: "Pulse -25ms",            cost: 20,    effect: { sortPulseMsDelta: -25 } },
-  { id: "pulse_rate2",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Brisk Pulse",      desc: "Pulse -25ms",            cost: 80,    effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate1"] },
-  { id: "pulse_rate3",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Fast Pulse",       desc: "Pulse -25ms",            cost: 300,   effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate2"] },
-  { id: "pulse_rate4",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Racing Pulse",     desc: "Pulse -25ms",            cost: 1000,  effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate3"] },
-  { id: "pulse_rate5",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Hummingbird",      desc: "Pulse -25ms",            cost: 4000,  effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate4"] },
-  { id: "pulse_rate6",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Strobe Pulse",     desc: "Pulse -25ms",            cost: 15000, effect: { sortPulseMsDelta: -25 }, prereq: ["pulse_rate5"] },
+  { id: "pulse_rate1",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Quickened Pulse",  desc: "Pulse -200ms (1800)",    cost: 20,    effect: { sortPulseMsDelta: -200 } },
+  { id: "pulse_rate2",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Brisk Pulse",      desc: "Pulse -200ms (1600)",    cost: 80,    effect: { sortPulseMsDelta: -200 }, prereq: ["pulse_rate1"] },
+  { id: "pulse_rate3",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Fast Pulse",       desc: "Pulse -200ms (1400)",    cost: 300,   effect: { sortPulseMsDelta: -200 }, prereq: ["pulse_rate2"] },
+  { id: "pulse_rate4",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Racing Pulse",     desc: "Pulse -200ms (1200)",    cost: 1000,  effect: { sortPulseMsDelta: -200 }, prereq: ["pulse_rate3"] },
+  { id: "pulse_rate5",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Hummingbird",      desc: "Pulse -200ms (1000)",    cost: 4000,  effect: { sortPulseMsDelta: -200 }, prereq: ["pulse_rate4"] },
+  { id: "pulse_rate6",   branch: "sort_pulse", subtrack: "rate",    currency: "cash", label: "Strobe Pulse",     desc: "Pulse -200ms (800)",     cost: 15000, effect: { sortPulseMsDelta: -200 }, prereq: ["pulse_rate5"] },
   { id: "pulse_radius1", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Splash Pulse",     desc: "Pulse radius +0.3",      cost: 50,    effect: { pulseRadius: 0.3 } },
   { id: "pulse_radius2", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Wider Wave",       desc: "Pulse radius +0.3",      cost: 200,   effect: { pulseRadius: 0.3 }, prereq: ["pulse_radius1"] },
   { id: "pulse_radius3", branch: "sort_pulse", subtrack: "radius",  currency: "cash", label: "Ring Pulse",       desc: "Pulse radius +0.4",      cost: 800,   effect: { pulseRadius: 0.4 }, prereq: ["pulse_radius2"] },
