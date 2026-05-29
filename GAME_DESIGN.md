@@ -2,6 +2,74 @@
 
 A single-file browser idler about cracking trading-card booster packs, sorting the sand pile, and selling completed sets on a live market. Built as one HTML file with vanilla JS + CSS. All gameplay state persists in `localStorage`.
 
+> **About this doc.** Sections 1–19 below describe the **original design vision** that the prototype was built against — a multi-set economy with 10-card packs and a single click-AoE sorting mode. The actual shipping prototype has diverged significantly during balancing. **Section 0 (immediately below) is the source of truth for current behaviour.** Where a later section conflicts, treat the §0 description as authoritative.
+
+---
+
+## 0. Current implementation (live)
+
+### Scope
+- **Single set, 36 cards**: `SET_SIZES = { standard: 18, rare: 9, epic: 3, legendary: 3, mythic: 3 }`. The multi-set / vintage system described in §19 is paused (`CURRENT_SET_ID = 1`, `setAgeMult` returns 1×).
+- **15-card packs**: `PACK_COMMON_SLOTS = 14` standards + `PACK_RARE_SLOTS = 1` rare-slot. With probability `FOIL_PER_PACK = 0.005` (1 in 200) a common slot is replaced by a foil-sheet pull.
+- **Pack cost** $3, box $100, case $500.
+
+### Pack rolls — print-sheet model
+The old `PACK_FOIL_CHANCE` + `PACK_UPGRADE_CHANCE` + `RARE_PLUS_WEIGHTS` system is gone. Drop rates now come from physical print sheets plus slot weights:
+
+- One **per-rarity sheet** in `PRINT_SHEETS` (non-foil) and `FOIL_PRINT_SHEETS`. Each sheet has `{ prints: N }` per card; sheet area = `SET_SIZES[r] × prints[r]`. Defaults are 144 slots / sheet (12×12 grid); `auditPrintSheets()` warns if a sheet isn't a sensible rectangle.
+- **Per-card prints don't affect drop rates** — they only set sheet dimension. Card-id selection within a rarity is uniform.
+- What rarity a slot lands on is controlled by **slot weights**:
+  - `RARE_SLOT_WEIGHTS` = `{ rare: 0.75, epic: 0.12, legendary: 0.08, mythic: 0.05 }`
+  - `FOIL_SLOT_WEIGHTS` = `{ standard: 0.67, rare: 0.25, epic: 0.04, legendary: 0.03, mythic: 0.01 }`
+- Per-pack rate of a specific (rarity, foil) card = `slots_of_that_kind × weight[r] / SET_SIZES[r]`.
+
+### Pricing — derived from drop rates
+Hand-tuned `BASELINE` prices are gone; baselines compute from drop rates:
+
+```
+K           = PACK_COST · VALUE_MULTIPLIER / total_unique_printed_cards
+singleCard  = K / specificCardRatePerPack(rarity, foil)
+setBaseline = N · singleCard · (1 + SET_BUNDLE_BONUS)
+complete    = Σ component sets · (1 + COMPLETE_SET_PREMIUM)
+```
+
+- `VALUE_MULTIPLIER` (default 1.0) is the **pack EV ÷ pack cost** ratio. At 1.0 ripping is exactly break-even on expected card value.
+- `SET_BUNDLE_BONUS` (default 0) is the premium for selling a Set vs. its singles. Currently 0 — there is no singles market.
+- `COMPLETE_SET_PREMIUM` (default 0.25) is the apex-Set crafting bonus.
+
+Market price still scales each baseline by NPC scarcity (`marketPriceFor`), clamped between `PRICE_FLOOR_RATIO` and `PRICE_CEIL_RATIO`.
+
+### Sorting — four interaction modes
+The single click-AoE sort described in §4 has been replaced by **four switchable modes**. Click the hint text under the unsorted pile to rotate them; `SORT_MODE` in the Game Design panel persists the choice.
+
+| Mode | `SORT_MODE` | How it clears |
+|---|---|---|
+| Hover and click | `hover_and_click` | Dwell to mark grains (`HOVER_DWELL_MS`, cap `MAX_HIGHLIGHTS`), click to clear all marks. No chain. |
+| Hover and move | `hover_and_move` | Moving the cursor clears `SORT_MOVE_GRAINS` (1) nearest grains in `SORT_MOVE_BASE_RADIUS` (0.6c) every `SORT_MOVE_COOLDOWN_MS` (120ms). No chain. |
+| Hover and pulse | `hover_and_pulse` *(default)* | A pulse fires every `SORT_PULSE_MS` (1400ms) clearing `SORT_PULSE_GRAINS` (5) nearest grains in `SORT_PULSE_BASE_RADIUS` (1.1c). No chain. |
+| Click and chain | `click_and_chain` | Click finds the nearest grain within `SORT_CHAIN_CLICK_RADIUS` (1c, "hunt and peck"). Cleared grains propagate by type (cascading): standards roll per-direction chance (`SORT_STD_CHAIN_CHANCE = 0.25`, hard cap `SORT_STD_CHAIN_CAP = 0.95`, never 100%); rares chain `SORT_RARE_CHAIN_DIST` (2) in a random axis (50/50); foils chain `SORT_FOIL_CHAIN_DIST` (2) in all 4. |
+
+Only `hover_and_click` and `click_and_chain` respond to canvas clicks; the other two ignore clicks (mode-specific guard in the click handler).
+
+### Sorting upgrades
+Each mode has its own **cash-cost** upgrade tree (3 subtracks × 6 escalating nodes), opened via "⬆ SORTING UPGRADES" above the unsorted pile. The button always targets the active mode's tree.
+
+| Mode (branch) | Subtracks |
+|---|---|
+| `sort_click` | Max marks · Cursor radius · Marking speed |
+| `sort_move` | Cursor size · Clear speed · Cards cleared |
+| `sort_pulse` | Pulse rate · Pulse radius · Cards cleared |
+| `sort_chain` | Std chain chance · Rare chain dist · Foil chain dist |
+
+The old PAINT/CLOUT marking tree from §6 has been retired. LISTINGS (still CLOUT) is the only remaining non-sorting branch.
+
+### Debug mode & Balance Tuner
+- Toggle **Enable Debug Mode** at the top of the Game Design panel (persisted in `ripping_packs_debug_mode`). Reveals the advanced design form, exposes header chip currency injectors (click CASH → +$100,000, click CLOUT → +100), and shows a **FILL BULK** button under the activity log.
+- The **Balance Tuner** inside the Game Design panel surfaces every tuned-during-balancing knob (slot weights, pack composition, pricing) as live inputs — edits apply to the running game instantly, persist, and refresh a preview table of per-pack odds + single/Set prices + pack-EV ratio.
+- The same Balance Tuner is served standalone on mobile/touch devices in place of gameplay (which is desktop-only by design — the sort modes need a mouse).
+- The **Reset** button now also clears debug mode in addition to the save and design overrides.
+- The sort-mode cycler (click the hint text) works regardless of debug state.
+
 ---
 
 ## 1. Pitch
