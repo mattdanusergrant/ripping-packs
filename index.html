@@ -3734,8 +3734,11 @@ function totalFoilsOpened() {
 // Vintage pricing: older sets cost more. Linear scale on age — Set 30 is
 // 1× the base, Set 29 is 2×, … Set 01 is 30×. Same multiplier on box/case.
 function setAgeMult(setId) {
+  // Vintage (older) sealed product costs a premium; the current set is 1×.
+  // Single-set game today → always 1. (Was `31 - s`, which mis-scaled the
+  // lone Set 1 to 30× and made a $3 pack cost $90.)
   const s = (setId == null) ? state.activeSetId : setId;
-  return Math.max(1, 31 - s);
+  return 1 + Math.max(0, CURRENT_SET_ID - s);
 }
 function packCost(setId) { return PACK_COST * setAgeMult(setId); }
 function boxCost(setId)  { return BOX_COST  * setAgeMult(setId); }
