@@ -75,12 +75,25 @@
     animation: cash-pop 1.4s cubic-bezier(0.35, 0, 0.2, 1) forwards;
   }
 
-  .sfx-toggle {
+  .sfx-toggle, .settings-toggle {
     background: none; border: 1px solid rgba(255,255,255,0.15); color: var(--ink);
     border-radius: 6px; padding: 3px 8px; cursor: pointer;
     font-size: 0.95rem; line-height: 1;
   }
-  .sfx-toggle:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.3); }
+  .sfx-toggle:hover, .settings-toggle:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.3); }
+
+  /* Reduced-motion mode — toggled from the Settings modal. Kills CSS
+     animations and transitions across the whole page. Canvas-based
+     effects (sand-fall, particles) are gated separately in JS. */
+  body.reduced-motion *,
+  body.reduced-motion *::before,
+  body.reduced-motion *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
+  }
   .hero-chip.bump {
     animation: clout-pop 0.9s ease-out;
   }
@@ -1905,6 +1918,116 @@
     .design-rows { grid-template-columns: 1fr; }
   }
 
+  /* ---- Settings modal --------------------------------------------------- */
+  /* Reuses the design-modal chrome (backdrop, panel, header, close) but
+     swaps the body for a stack of titled sections: audio, motion,
+     save data, danger zone. */
+  .settings-modal {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .settings-modal[hidden] { display: none; }
+  .settings-modal-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(2px);
+  }
+  .settings-modal-panel {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid #3a3260; border-radius: 12px;
+    width: min(560px, 94vw); max-height: 88vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.55);
+  }
+  .settings-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .settings-modal-header h2 {
+    margin: 0; font-size: 1.1rem; letter-spacing: 3px;
+  }
+  .settings-close {
+    background: transparent; color: var(--muted);
+    border: none; font-size: 1.4rem; cursor: pointer; line-height: 1;
+    padding: 0 4px;
+  }
+  .settings-close:hover { color: var(--ink); }
+  .settings-body {
+    overflow-y: auto;
+    padding: 12px 18px 18px;
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .settings-section h3 {
+    margin: 0 0 8px;
+    font-size: 0.72rem; letter-spacing: 3px;
+    color: var(--gold);
+    border-bottom: 1px dashed rgba(245,197,66,0.25);
+    padding-bottom: 4px;
+  }
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; font-size: 0.82rem;
+    padding: 4px 0;
+  }
+  .settings-row label { color: var(--ink); }
+  .settings-row .settings-hint {
+    color: var(--muted); font-size: 0.7rem; margin-top: 2px;
+  }
+  .settings-row-stack { flex-direction: column; align-items: stretch; gap: 4px; }
+  .settings-row input[type=range] {
+    flex: 1; max-width: 220px;
+    accent-color: var(--gold);
+  }
+  .settings-row .settings-value {
+    color: var(--muted); font-size: 0.75rem; min-width: 42px; text-align: right;
+  }
+  .settings-row textarea {
+    width: 100%; min-height: 80px;
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.10); border-radius: 6px;
+    padding: 6px 8px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem; word-break: break-all;
+    resize: vertical;
+  }
+  .settings-row textarea:focus { outline: none; border-color: var(--gold); }
+  .settings-actions {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .settings-actions button {
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 6px;
+    padding: 6px 12px; cursor: pointer;
+    font-family: inherit; font-size: 0.78rem;
+  }
+  .settings-actions button:hover { background: #2e2752; }
+  .settings-actions .settings-danger {
+    background: transparent; color: #ff8a8a;
+    border-color: rgba(255,138,138,0.5);
+  }
+  .settings-actions .settings-danger:hover {
+    background: rgba(255,138,138,0.10); color: #ffb1b1;
+  }
+  .settings-toggle-pill {
+    background: var(--panel-light); color: var(--ink);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 999px;
+    padding: 4px 12px; cursor: pointer;
+    font-family: inherit; font-size: 0.75rem; letter-spacing: 1px;
+  }
+  .settings-toggle-pill:hover { background: #2e2752; }
+  .settings-toggle-pill[data-on="1"] {
+    background: var(--gold); color: #1a1530; border-color: var(--gold);
+  }
+  .settings-status {
+    font-size: 0.72rem; color: var(--muted);
+    min-height: 1em;
+  }
+  .settings-status.ok { color: #8be38b; }
+  .settings-status.err { color: #ff8a8a; }
+
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr; grid-template-rows: auto auto auto auto;
@@ -2016,8 +2139,8 @@
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
     <button class="sfx-toggle" id="sfx-toggle" title="Sound on — click to mute">🔊</button>
+    <button class="settings-toggle" id="settings-btn" title="Settings — volume, motion, save data, reset">⚙</button>
     <button class="reset" id="design-btn">Game Design</button>
-    <button class="reset" id="reset-btn">Reset</button>
   </div>
 </header>
 
@@ -2045,6 +2168,69 @@
     </div>
     <div class="upgrades-body">
       <div id="sorters-area"></div>
+    </div>
+  </div>
+</div>
+
+<div id="settings-modal" class="settings-modal" hidden>
+  <div class="settings-modal-backdrop" id="settings-backdrop"></div>
+  <div class="settings-modal-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="settings-modal-header">
+      <h2 id="settings-title">SETTINGS</h2>
+      <button class="settings-close" id="settings-close" aria-label="Close">×</button>
+    </div>
+    <div class="settings-body">
+      <div class="settings-section">
+        <h3>AUDIO</h3>
+        <div class="settings-row">
+          <label for="settings-volume">SFX volume</label>
+          <input type="range" id="settings-volume" min="0" max="100" step="5" value="100">
+          <span class="settings-value" id="settings-volume-value">100%</span>
+        </div>
+        <div class="settings-row">
+          <label>Mute all SFX</label>
+          <button type="button" class="settings-toggle-pill" id="settings-mute">OFF</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>MOTION</h3>
+        <div class="settings-row">
+          <label>
+            Reduced motion
+            <div class="settings-hint">Suppresses bounces, pulses, and shake animations.</div>
+          </label>
+          <button type="button" class="settings-toggle-pill" id="settings-reduced-motion">OFF</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>SAVE DATA</h3>
+        <div class="settings-row settings-row-stack">
+          <label>Export / import save</label>
+          <div class="settings-hint">Copy the blob below to back up your progress, or paste a blob and Import &amp; Reload to restore it.</div>
+          <textarea id="settings-save-blob" spellcheck="false" placeholder="Press Export to fill this with your current save."></textarea>
+          <div class="settings-actions">
+            <button type="button" id="settings-export">Export</button>
+            <button type="button" id="settings-copy">Copy</button>
+            <button type="button" id="settings-import">Import &amp; Reload</button>
+          </div>
+          <div class="settings-status" id="settings-save-status"></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>DANGER ZONE</h3>
+        <div class="settings-row">
+          <label>
+            Reset progress
+            <div class="settings-hint">Wipes the save and all Game Design overrides.</div>
+          </label>
+          <div class="settings-actions">
+            <button type="button" class="settings-danger" id="settings-reset">Reset everything</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2979,8 +3165,26 @@ function setCraftMultiplierEffective(){ return SET_CRAFT_MULTIPLIER+ (eff().setC
 // "sound" is a tiny oscillator + envelope; the player can mute via the
 // header chip and the preference persists in localStorage.
 const SFX_MUTE_KEY = "cryptid_sfx_muted_v1";
+const SETTINGS_KEY = "cryptid_settings_v1";
 let _audioCtx = null;
 let _sfxMuted = (() => { try { return localStorage.getItem(SFX_MUTE_KEY) === "1"; } catch (_) { return false; } })();
+// User settings persisted as a single JSON blob: SFX volume multiplier
+// (0-1, scales every playTone vol) and reduced-motion flag (toggles a
+// body class that flattens CSS animation/transition durations).
+let _userSettings = (() => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+    return {
+      sfxVolume: Number.isFinite(raw.sfxVolume) ? Math.max(0, Math.min(1, raw.sfxVolume)) : 1,
+      reducedMotion: !!raw.reducedMotion,
+    };
+  } catch (_) {
+    return { sfxVolume: 1, reducedMotion: false };
+  }
+})();
+function persistUserSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(_userSettings)); } catch (_) {}
+}
 function audioCtx() {
   if (_sfxMuted) return null;
   if (!_audioCtx) {
@@ -2995,6 +3199,8 @@ function audioCtx() {
 function playTone({ freq = 440, dur = 0.1, type = "sine", vol = 0.15, attack = 0.005, release = 0.05, freqEnd = null }) {
   const ctx = audioCtx();
   if (!ctx) return;
+  const scaled = vol * (_userSettings.sfxVolume != null ? _userSettings.sfxVolume : 1);
+  if (scaled < 0.0005) return;
   const now = ctx.currentTime;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -3004,7 +3210,7 @@ function playTone({ freq = 440, dur = 0.1, type = "sine", vol = 0.15, attack = 0
     osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), now + dur);
   }
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(vol, now + attack);
+  gain.gain.exponentialRampToValueAtTime(scaled, now + attack);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + dur + release);
   osc.connect(gain).connect(ctx.destination);
   osc.start(now);
@@ -6779,6 +6985,148 @@ function resetDesignOverrides() {
   location.reload();
 }
 
+// ---- Settings modal ------------------------------------------------------
+// Surface the player-facing toggles (volume, motion, save export/import,
+// reset) in one place. Design panel stays gated behind debug mode.
+function setReducedMotion(on) {
+  _userSettings.reducedMotion = !!on;
+  document.body.classList.toggle("reduced-motion", _userSettings.reducedMotion);
+  persistUserSettings();
+  const btn = document.getElementById("settings-reduced-motion");
+  if (btn) {
+    btn.textContent = _userSettings.reducedMotion ? "ON" : "OFF";
+    btn.dataset.on = _userSettings.reducedMotion ? "1" : "0";
+  }
+}
+function setSfxVolume(v) {
+  const clamped = Math.max(0, Math.min(1, Number(v) || 0));
+  _userSettings.sfxVolume = clamped;
+  persistUserSettings();
+  const slider = document.getElementById("settings-volume");
+  const value = document.getElementById("settings-volume-value");
+  if (slider) slider.value = String(Math.round(clamped * 100));
+  if (value) value.textContent = Math.round(clamped * 100) + "%";
+}
+function _refreshSettingsMuteBtn() {
+  const btn = document.getElementById("settings-mute");
+  if (!btn) return;
+  btn.textContent = _sfxMuted ? "ON" : "OFF";
+  btn.dataset.on = _sfxMuted ? "1" : "0";
+}
+function _setSettingsStatus(msg, kind) {
+  const el = document.getElementById("settings-save-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "settings-status" + (kind ? " " + kind : "");
+}
+function openSettingsModal() {
+  // Pre-fill controls from current state every time so toggles outside the
+  // modal (e.g. header mute button) stay in sync.
+  setSfxVolume(_userSettings.sfxVolume);
+  _refreshSettingsMuteBtn();
+  const rm = document.getElementById("settings-reduced-motion");
+  if (rm) {
+    rm.textContent = _userSettings.reducedMotion ? "ON" : "OFF";
+    rm.dataset.on = _userSettings.reducedMotion ? "1" : "0";
+  }
+  const blob = document.getElementById("settings-save-blob");
+  if (blob) blob.value = "";
+  _setSettingsStatus("");
+  $("settings-modal").hidden = false;
+}
+function closeSettingsModal() {
+  $("settings-modal").hidden = true;
+}
+// Save export/import. The blob is a base64url-ish JSON envelope so the
+// player can paste it back later (or into another browser). We bundle the
+// gameplay save + design overrides; user settings (volume, motion) are
+// browser-local and intentionally left out.
+function _buildSaveBlob() {
+  const payload = {
+    v: 1,
+    save: localStorage.getItem(SAVE_KEY) || null,
+    design: localStorage.getItem(DESIGN_KEY) || null,
+    ts: Date.now(),
+  };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+function _parseSaveBlob(blob) {
+  const json = decodeURIComponent(escape(atob(blob.trim())));
+  const parsed = JSON.parse(json);
+  if (!parsed || typeof parsed !== "object" || !parsed.save) {
+    throw new Error("Blob is missing a save payload.");
+  }
+  // Sanity-check the inner save parses as JSON before we commit it.
+  JSON.parse(parsed.save);
+  if (parsed.design) JSON.parse(parsed.design);
+  return parsed;
+}
+function exportSaveToBox() {
+  const box = document.getElementById("settings-save-blob");
+  if (!box) return;
+  try {
+    box.value = _buildSaveBlob();
+    box.select();
+    _setSettingsStatus("Save exported. Copy this text and store it somewhere safe.", "ok");
+  } catch (e) {
+    _setSettingsStatus("Couldn't build save blob: " + (e && e.message || e), "err");
+  }
+}
+function copySaveBlob() {
+  const box = document.getElementById("settings-save-blob");
+  if (!box) return;
+  // If the box is empty, fill it first so Copy always has something useful.
+  if (!box.value) {
+    try { box.value = _buildSaveBlob(); } catch (_) {}
+  }
+  if (!box.value) {
+    _setSettingsStatus("Nothing to copy.", "err");
+    return;
+  }
+  const fallback = () => {
+    box.select();
+    try {
+      document.execCommand("copy");
+      _setSettingsStatus("Copied to clipboard.", "ok");
+    } catch (_) {
+      _setSettingsStatus("Copy failed — select the text manually.", "err");
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(box.value)
+      .then(() => _setSettingsStatus("Copied to clipboard.", "ok"))
+      .catch(fallback);
+  } else {
+    fallback();
+  }
+}
+function importSaveFromBox() {
+  const box = document.getElementById("settings-save-blob");
+  if (!box || !box.value.trim()) {
+    _setSettingsStatus("Paste an exported save blob first.", "err");
+    return;
+  }
+  let parsed;
+  try {
+    parsed = _parseSaveBlob(box.value);
+  } catch (e) {
+    _setSettingsStatus("Invalid save blob: " + (e && e.message || e), "err");
+    return;
+  }
+  if (!confirm("Replace your current save with the imported one? This cannot be undone.")) return;
+  _resetting = true;
+  try {
+    localStorage.setItem(SAVE_KEY, parsed.save);
+    if (parsed.design) localStorage.setItem(DESIGN_KEY, parsed.design);
+    else localStorage.removeItem(DESIGN_KEY);
+  } catch (e) {
+    _resetting = false;
+    _setSettingsStatus("Failed to write save: " + (e && e.message || e), "err");
+    return;
+  }
+  location.reload();
+}
+
 function renderStaff() {
   // The sorter shop button lives above the unsorted pile. Before owning any
   // sorter it doubles as the purchase button; once owned it becomes the
@@ -8191,7 +8539,8 @@ $("sand-canvas").addEventListener("contextmenu", (e) => {
   e.preventDefault();
   clearMarkedGrains();
 });
-$("reset-btn").addEventListener("click", resetGame);
+// Reset lives in the Settings modal now (Danger zone). The header keeps a
+// Settings button instead — wired further down with the other settings UI.
 // Empty homie slots double as the "hire a homie" trigger (one per slot). The
 // clicked slot is the one that gets occupied, not whichever slot is lowest-
 // indexed — letting the player choose which sprite the new homie inhabits.
@@ -8239,9 +8588,35 @@ $("sorters-area").addEventListener("click", (e) => {
   }
 });
 $("design-btn").addEventListener("click", openDesignPanel);
-$("sfx-toggle").addEventListener("click", () => { setSfxMuted(!_sfxMuted); if (!_sfxMuted) SFX.buy(); });
+$("sfx-toggle").addEventListener("click", () => {
+  setSfxMuted(!_sfxMuted);
+  if (!_sfxMuted) SFX.buy();
+  _refreshSettingsMuteBtn();
+});
 // Init the toggle label from the persisted mute state on boot.
 setSfxMuted(_sfxMuted);
+// Apply persisted reduced-motion preference before any animation kicks in.
+if (_userSettings.reducedMotion) document.body.classList.add("reduced-motion");
+
+// ---- Settings modal wiring ---------------------------------------------
+$("settings-btn").addEventListener("click", openSettingsModal);
+$("settings-close").addEventListener("click", closeSettingsModal);
+$("settings-backdrop").addEventListener("click", closeSettingsModal);
+$("settings-volume").addEventListener("input", (e) => {
+  setSfxVolume(parseInt(e.target.value, 10) / 100);
+});
+// Audition the new volume on release so the player hears the change.
+$("settings-volume").addEventListener("change", () => { if (!_sfxMuted) SFX.sort(); });
+$("settings-mute").addEventListener("click", () => {
+  setSfxMuted(!_sfxMuted);
+  _refreshSettingsMuteBtn();
+  if (!_sfxMuted) SFX.buy();
+});
+$("settings-reduced-motion").addEventListener("click", () => setReducedMotion(!_userSettings.reducedMotion));
+$("settings-export").addEventListener("click", exportSaveToBox);
+$("settings-copy").addEventListener("click", copySaveBlob);
+$("settings-import").addEventListener("click", importSaveFromBox);
+$("settings-reset").addEventListener("click", resetGame);
 $("design-close").addEventListener("click", closeDesignPanel);
 $("design-cancel").addEventListener("click", closeDesignPanel);
 $("design-apply").addEventListener("click", applyDesignAndReload);

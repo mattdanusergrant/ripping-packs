@@ -55,7 +55,20 @@ the apex of the collection arc).
 11 synthesized SFX (Web Audio API, no asset files) hook into every gameplay
 event — sale chime, pack rip, sort tick, foil sparkle, mythic fanfare, craft
 arpeggio, vault tone, buy/switch/unlock confirmation, error thud. The 🔊
-toggle in the header mutes everything; preference persists in localStorage.
+toggle in the header mutes everything; the ⚙ Settings panel exposes a
+volume slider. Preferences persist in localStorage.
+
+## Settings
+
+The ⚙ button in the header opens a settings modal with:
+
+- **SFX volume** slider (0–100%) and mute toggle
+- **Reduced motion** — flattens CSS animations and transitions for
+  motion-sensitive players
+- **Save export/import** — base64 blob round-trip for backups or
+  cross-browser transfer
+- **Reset** — wipes save and Game Design overrides (was previously a
+  header button; moved here so it's less easy to hit by accident)
 
 ## Run locally
 
