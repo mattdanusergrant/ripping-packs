@@ -2109,6 +2109,97 @@
   /* Reduced-motion respect: no spotlight pulse for motion-sensitive players. */
   body.reduced-motion .coachmark-spotlight { animation: none; }
 
+  /* Big-pull reveal — full-screen takeover on a Mythic / Foil Legendary+
+     pull. Throttled to once-per-session-per-tier in JS so the player
+     doesn't see the same fanfare every rip once they're consistently
+     pulling mythics. */
+  .big-pull-overlay {
+    position: fixed; inset: 0; z-index: 90000;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px;
+    background: radial-gradient(circle at center, rgba(20,5,30,0.88), rgba(0,0,0,0.97));
+    cursor: pointer;
+    animation: bp-fade-in 0.3s ease-out;
+  }
+  @keyframes bp-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+  .big-pull-card { width: 240px; height: 340px; perspective: 1200px; }
+  .big-pull-card-inner {
+    position: relative; width: 100%; height: 100%;
+    transform-style: preserve-3d;
+    transform: rotateY(180deg);
+    animation: bp-flip 1.4s 0.25s cubic-bezier(0.5, 0.0, 0.2, 1.0) forwards;
+  }
+  @keyframes bp-flip {
+    0%   { transform: rotateY(180deg) scale(0.7); }
+    65%  { transform: rotateY(0deg)   scale(1.06); }
+    100% { transform: rotateY(0deg)   scale(1.0); }
+  }
+  .big-pull-face, .big-pull-back {
+    position: absolute; inset: 0;
+    border-radius: 16px;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 18px;
+    box-shadow: 0 16px 60px rgba(0,0,0,0.75);
+  }
+  .big-pull-back {
+    background: linear-gradient(135deg, #1a1226, #0a0814);
+    border: 2px solid var(--gold);
+    transform: rotateY(180deg);
+  }
+  .big-pull-back::before {
+    content: "RP"; font-size: 3rem; color: var(--gold);
+    letter-spacing: 6px; font-weight: 700; opacity: 0.45;
+  }
+  .big-pull-face {
+    background: linear-gradient(135deg, var(--card-color, var(--mythic)) 0%, #1a0e22 80%);
+    border: 3px solid var(--card-color, var(--mythic));
+  }
+  .big-pull-face .bp-rarity {
+    font-size: 1.45rem; letter-spacing: 4px; font-weight: 700;
+    color: var(--ink);
+    text-shadow: 0 0 14px var(--card-color, var(--mythic));
+  }
+  .big-pull-face .bp-id { font-size: 0.82rem; color: var(--ink); opacity: 0.85; letter-spacing: 1.5px; }
+  .big-pull-face.foil {
+    background: linear-gradient(135deg,
+      var(--card-color, var(--mythic)) 0%,
+      #ff42e7 35%,
+      var(--card-color, var(--mythic)) 65%,
+      #8b3dff 100%);
+    background-size: 250% 250%;
+    animation: bp-foil-shimmer 2.6s ease-in-out infinite;
+  }
+  @keyframes bp-foil-shimmer {
+    0%,100% { background-position: 0% 0%; }
+    50%     { background-position: 100% 100%; }
+  }
+
+  .big-pull-label {
+    font-size: 1.5rem; letter-spacing: 4px; font-weight: 700;
+    color: var(--gold);
+    opacity: 0;
+    animation: bp-label-in 0.6s 1.35s ease-out forwards;
+    text-shadow: 0 2px 18px rgba(245,197,66,0.6);
+  }
+  @keyframes bp-label-in {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .big-pull-hint {
+    font-size: 0.74rem; color: var(--muted); letter-spacing: 2px;
+    opacity: 0; animation: bp-hint-in 0.4s 2.3s forwards;
+  }
+  @keyframes bp-hint-in { to { opacity: 1; } }
+
+  body.reduced-motion .big-pull-overlay  { animation: none; }
+  body.reduced-motion .big-pull-card-inner { animation: none; transform: rotateY(0deg); }
+  body.reduced-motion .big-pull-face.foil  { animation: none; }
+  body.reduced-motion .big-pull-label,
+  body.reduced-motion .big-pull-hint       { animation: none; opacity: 1; transform: none; }
+
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr; grid-template-rows: auto auto auto auto;
@@ -8782,6 +8873,89 @@ function handleTypingKey(rawKey) {
   }
 }
 
+// ---- Big-pull reveal -----------------------------------------------------
+// Full-screen takeover on a Mythic / Foil Legendary+ pull from a manual
+// rip. Each tier fires at most once per page-load — _bigPullFired lives
+// in module scope (not state) so reloading resets it. Homie auto-rips
+// don't trigger because they route through a separate path that never
+// calls ripOne().
+const BIG_PULL_TIERS = {
+  foil_mythic:    { idx: 3, label: "FOIL MYTHIC PULL" },
+  mythic:         { idx: 2, label: "MYTHIC PULL" },
+  foil_legendary: { idx: 1, label: "FOIL LEGENDARY PULL" },
+};
+function bigPullTier(card) {
+  if (card.rarity === "mythic"    && card.foil) return "foil_mythic";
+  if (card.rarity === "mythic")                 return "mythic";
+  if (card.rarity === "legendary" && card.foil) return "foil_legendary";
+  return null;
+}
+const _bigPullFired = new Set();
+function maybeShowBigPullReveal(pulls) {
+  let best = null;
+  for (const c of pulls) {
+    const t = bigPullTier(c);
+    if (!t) continue;
+    if (!best || BIG_PULL_TIERS[t].idx > BIG_PULL_TIERS[best.tier].idx) best = { tier: t, card: c };
+  }
+  if (!best) return;
+  if (_bigPullFired.has(best.tier)) return;
+  _bigPullFired.add(best.tier);
+  showBigPullReveal(best.card, best.tier);
+}
+function showBigPullReveal(card, tier) {
+  // Don't stack — if a previous reveal is still mid-air, drop the new
+  // one. (Realistically can't happen since each tier fires once, but
+  // belt-and-braces against rapid Foil Mythic + Mythic in the same pack.)
+  if (document.querySelector(".big-pull-overlay")) return;
+  const idLabel = cardFullId(card.rarity, card.id, GAME_ID, state.activeSetId);
+  const rarityText = (card.foil ? "FOIL " : "") + RARITY_LABELS[card.rarity];
+  const tierLabel = BIG_PULL_TIERS[tier].label;
+  const overlay = document.createElement("div");
+  overlay.className = "big-pull-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-label", `${tierLabel}: ${idLabel}`);
+  overlay.innerHTML =
+      `<div class="big-pull-card">`
+    +   `<div class="big-pull-card-inner">`
+    +     `<div class="big-pull-back"></div>`
+    +     `<div class="big-pull-face${card.foil ? " foil" : ""}" style="--card-color:var(--${card.rarity})">`
+    +       `<div class="bp-rarity">${rarityText}</div>`
+    +       `<div class="bp-id">${idLabel}</div>`
+    +     `</div>`
+    +   `</div>`
+    + `</div>`
+    + `<div class="big-pull-label">${tierLabel}!</div>`
+    + `<div class="big-pull-hint">CLICK ANYWHERE TO CONTINUE</div>`;
+  let dismissed = false;
+  let autoTimer = 0;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    clearTimeout(autoTimer);
+    overlay.style.transition = "opacity 0.25s";
+    overlay.style.opacity = "0";
+    setTimeout(() => overlay.remove(), 280);
+    window.removeEventListener("keydown", onKey, true);
+  };
+  // Capture phase so we beat the typing-to-rip / pile keymarker handlers
+  // — and preventDefault() stops any captured key from also triggering
+  // a rip or sort while the reveal is up.
+  const onKey = (e) => {
+    if (e.key === "Tab") return; // let focus traversal through
+    e.preventDefault();
+    e.stopPropagation();
+    dismiss();
+  };
+  overlay.addEventListener("click", dismiss);
+  window.addEventListener("keydown", onKey, true);
+  document.body.appendChild(overlay);
+  try { SFX.pullMythic && SFX.pullMythic(); } catch (_) {}
+  // 4.5s is generous enough for the flip + label to fully play, while
+  // not blocking a player who wants to keep ripping.
+  autoTimer = setTimeout(dismiss, 4500);
+}
+
 function ripOne() {
   if (cur().packSupply < 1) maybeCrackBox();
   if (cur().packSupply < 1) {
@@ -8813,6 +8987,7 @@ function ripOne() {
   spawnParticles(pulls);
   showHits(pulls, { newCount, completions });
   renderAll(); save();
+  maybeShowBigPullReveal(pulls);
   const foilCount = pulls.filter(p => p.foil).length;
   if (foilCount > 0) {
     logActivity(`Nice rip — ${foilCount} foil${foilCount > 1 ? "s" : ""} pulled! ✨`, "success");

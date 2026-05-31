@@ -58,6 +58,16 @@ arpeggio, vault tone, buy/switch/unlock confirmation, error thud. The 🔊
 toggle in the header mutes everything; the ⚙ Settings panel exposes a
 volume slider. Preferences persist in localStorage.
 
+## Big-pull reveal
+
+Manual rips that produce a **Foil Mythic**, **Mythic**, or **Foil
+Legendary** trigger a full-screen takeover: a back-facing card flips
+over to reveal the pull, with a rarity-tinted face (and a holo shimmer
+for foils). Each tier fires at most once per page-load so consistent
+mythic hitters aren't fatigued. Click / Esc / Space / Enter dismisses
+early; otherwise it auto-fades after 4.5 s. Reduced-motion mode skips
+the flip and shimmer.
+
 ## Tutorial
 
 Fresh saves get a 5-step coachmark walkthrough (welcome → rip → sort →
