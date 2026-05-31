@@ -66,6 +66,15 @@ the action (first rip / first 10 sorts / first set craft). Skippable any
 time, and never re-shown after dismissal. Existing saves are treated as
 veterans and skipped silently.
 
+## Achievements
+
+The 🏆 button in the header opens an achievements modal with 18 lifetime
+milestones across Opening, Foils, Crafting, Vault, Cash, CLOUT, and
+Session. Unlocks fire a milestone log entry + sfx as they happen.
+Locked rows show a progress bar against their target. Veteran saves
+silently grant any already-earned milestones on first load instead of
+spamming the log.
+
 ## Statistics
 
 The 📊 button in the header opens a Statistics modal with lifetime totals

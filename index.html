@@ -2042,6 +2042,33 @@
   .stat-row .stat-value.cash  { color: var(--cash); }
   .stat-row .stat-value.clout { color: var(--clout); }
 
+  /* Achievement card — locked rows are muted with a 🔒, unlocked rows
+     get a gold border + 🏆. A thin progress bar appears under the body
+     text only when an achievement reports a numeric progress target. */
+  .ach-row {
+    display: grid; grid-template-columns: 32px 1fr auto;
+    gap: 10px; align-items: center;
+    padding: 8px 10px; margin-bottom: 6px;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    opacity: 0.72;
+  }
+  .ach-row.unlocked { opacity: 1; border-color: var(--gold); background: rgba(245,197,66,0.06); }
+  .ach-row .ach-icon { font-size: 1.4rem; text-align: center; line-height: 1; }
+  .ach-row .ach-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ach-row .ach-title { font-weight: 600; font-size: 0.85rem; color: var(--ink); }
+  .ach-row.unlocked .ach-title { color: var(--gold); }
+  .ach-row .ach-desc  { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
+  .ach-row .ach-progress {
+    grid-column: 2 / -1;
+    height: 4px; border-radius: 2px; margin-top: 4px;
+    background: rgba(255,255,255,0.08); overflow: hidden;
+  }
+  .ach-row .ach-progress-fill { height: 100%; background: var(--gold); transition: width 0.3s ease; }
+  .ach-row .ach-meta { font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+  .ach-row.unlocked .ach-meta { color: var(--gold); }
+
   /* Tutorial coachmark + spotlight ring around the highlighted target.
      z-index 1500 sits above page UI but below all modals (50-100k), so
      opening Settings / Upgrades hides the coachmark via the in-JS
@@ -2193,6 +2220,7 @@
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
     <button class="sfx-toggle" id="sfx-toggle" title="Sound on — click to mute">🔊</button>
+    <button class="settings-toggle" id="achievements-btn" title="Achievements — lifetime milestones">🏆</button>
     <button class="settings-toggle" id="stats-btn" title="Statistics — lifetime totals">📊</button>
     <button class="settings-toggle" id="settings-btn" title="Settings — volume, motion, save data, reset">⚙</button>
     <button class="reset" id="design-btn">Game Design</button>
@@ -2301,6 +2329,20 @@
   <div class="cm-actions">
     <button type="button" class="cm-btn" id="cm-skip">Skip tutorial</button>
     <button type="button" class="cm-btn primary" id="cm-next">Got it</button>
+  </div>
+</div>
+
+<div id="achievements-modal" class="settings-modal" hidden>
+  <div class="settings-modal-backdrop" id="achievements-backdrop"></div>
+  <div class="settings-modal-panel" role="dialog" aria-modal="true" aria-labelledby="achievements-title">
+    <div class="settings-modal-header">
+      <h2 id="achievements-title">ACHIEVEMENTS</h2>
+      <span class="settings-status" id="achievements-progress">0 / 0</span>
+      <button class="settings-close" id="achievements-close" aria-label="Close">×</button>
+    </div>
+    <div class="settings-body" id="achievements-body">
+      <!-- renderAchievements() fills this. -->
+    </div>
   </div>
 </div>
 
@@ -3536,6 +3578,10 @@ const defaultState = () => ({
   // for the life of the save. Veteran saves backfill { done: true } in
   // load() so we don't pester returning players.
   tutorial: { step: 0, done: false },
+  // Achievement unlocks — { [id]: { unlockedAt: ms } }. Sparse: only
+  // unlocked entries are stored. checkAchievements() runs each tick and
+  // fills it in based on the lifetime stat counters.
+  achievements: {},
   activity: [],
 });
 
@@ -3721,6 +3767,7 @@ function load() {
     // outright so returning players aren't shoved into onboarding. New
     // saves always start at step 0 via defaultState().
     if (!parsed.tutorial || typeof parsed.tutorial !== "object") parsed.tutorial = { done: true };
+    if (!parsed.achievements || typeof parsed.achievements !== "object") parsed.achievements = {};
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
     // Recompute firstSetCrafted from complete-set evidence. Vintage
@@ -7243,6 +7290,126 @@ function importSaveFromBox() {
   location.reload();
 }
 
+// ---- Achievements --------------------------------------------------------
+// Lifetime milestones, evaluated against the stat counters (packsOpened /
+// salesCount / biggestSale / setsCraftedCount / playTimeMs / lifetimeEarned
+// / clout) plus a couple of derived sums. Each entry has a target() that
+// returns the player's current numeric progress so we can render a bar.
+function lifetimeFoilsPulled() {
+  const buckets = (state && state.sets) || {};
+  let n = 0;
+  Object.values(buckets).forEach(b => {
+    if (!b || !b.openedFoil) return;
+    n += Object.values(b.openedFoil).reduce((s, v) => s + (v || 0), 0);
+  });
+  return n;
+}
+const ACHIEVEMENTS = [
+  // Opening
+  { id: "rip_1",    section: "Opening",  title: "First Rip",      desc: "Open your first pack.",                 target: 1,      progress: () => state.packsOpened || 0, format: fmt },
+  { id: "rip_100",  section: "Opening",  title: "Pack Rat",       desc: "Open 100 packs.",                       target: 100,    progress: () => state.packsOpened || 0, format: fmt },
+  { id: "rip_1k",   section: "Opening",  title: "Box Cracker",    desc: "Open 1,000 packs.",                     target: 1000,   progress: () => state.packsOpened || 0, format: fmt },
+  { id: "rip_10k",  section: "Opening",  title: "Case Closed",    desc: "Open 10,000 packs.",                    target: 10000,  progress: () => state.packsOpened || 0, format: fmt },
+  // Foils
+  { id: "foil_1",   section: "Foils",    title: "Shiny",          desc: "Pull your first foil.",                 target: 1,      progress: lifetimeFoilsPulled, format: fmt },
+  { id: "foil_100", section: "Foils",    title: "Mirror Master",  desc: "Pull 100 foils.",                       target: 100,    progress: lifetimeFoilsPulled, format: fmt },
+  // Crafting
+  { id: "craft_1",  section: "Crafting", title: "Set Builder",    desc: "Craft your first set.",                 target: 1,      progress: () => state.setsCraftedCount || 0, format: fmt },
+  { id: "craft_50", section: "Crafting", title: "Master Crafter", desc: "Craft 50 sets.",                        target: 50,     progress: () => state.setsCraftedCount || 0, format: fmt },
+  // Vault
+  { id: "vault_1",  section: "Vault",    title: "Sealed",         desc: "Vault a Complete Set.",                 target: 1,      progress: () => statsLifetimeTotals().vaultedNonfoil, format: fmt },
+  { id: "vault_f",  section: "Vault",    title: "Foil Sealed",    desc: "Vault the Foil Complete Set.",          target: 1,      progress: () => statsLifetimeTotals().vaultedFoil,    format: fmt },
+  // Cash
+  { id: "cash_10k", section: "Cash",     title: "Five Figures",   desc: "Earn $10,000 lifetime.",                target: 10000,  progress: () => state.lifetimeEarned || 0, format: usd },
+  { id: "cash_100k",section: "Cash",     title: "Six Figures",    desc: "Earn $100,000 lifetime.",               target: 100000, progress: () => state.lifetimeEarned || 0, format: usd },
+  { id: "sale_1k",  section: "Cash",     title: "Big Sale",       desc: "Close a single sale of $1,000+.",       target: 1000,   progress: () => state.biggestSale  || 0,   format: usd },
+  { id: "sale_10k", section: "Cash",     title: "Whale Sale",     desc: "Close a single sale of $10,000+.",      target: 10000,  progress: () => state.biggestSale  || 0,   format: usd },
+  // CLOUT — earned, not held: includes both balance + spent.
+  { id: "clout_100", section: "CLOUT",   title: "Clout Climber",  desc: "Earn 100 CLOUT lifetime.",              target: 100,    progress: () => (state.clout || 0) + (state.cloutSpent || 0), format: fmt },
+  { id: "clout_1k",  section: "CLOUT",   title: "Clout Tycoon",   desc: "Earn 1,000 CLOUT lifetime.",            target: 1000,   progress: () => (state.clout || 0) + (state.cloutSpent || 0), format: fmt },
+  // Session
+  { id: "time_1h",  section: "Session",  title: "One Hour Hero",  desc: "Play for 1 hour.",                      target: 3600000,   progress: () => state.playTimeMs || 0, format: (n) => formatPlayTime(n) },
+  { id: "time_10h", section: "Session",  title: "Lifer",          desc: "Play for 10 hours.",                    target: 36000000,  progress: () => state.playTimeMs || 0, format: (n) => formatPlayTime(n) },
+];
+const ACHIEVEMENT_BY_ID = Object.fromEntries(ACHIEVEMENTS.map(a => [a.id, a]));
+
+function checkAchievements() {
+  if (!state.achievements) state.achievements = {};
+  const now = Date.now();
+  // First call after a load is silent — veteran saves backfilled to
+  // achievements:{} would otherwise mass-unlock everything they've
+  // earned and flood the activity log. Subsequent unlocks fire the
+  // toast + SFX normally.
+  const silent = !state._achievementsInitialized;
+  let unlocked = false;
+  ACHIEVEMENTS.forEach(a => {
+    if (state.achievements[a.id]) return;
+    if (a.progress() >= a.target) {
+      state.achievements[a.id] = { unlockedAt: now, silent: silent || undefined };
+      if (!silent) {
+        logActivity(`🏆 Achievement unlocked: ${a.title} — ${a.desc}`, "milestone");
+        try { if (typeof SFX !== "undefined" && SFX.unlock) SFX.unlock(); } catch (_) {}
+      }
+      unlocked = true;
+    }
+  });
+  state._achievementsInitialized = true;
+  if (unlocked) {
+    save();
+    // Refresh the open modal so a freshly unlocked row flips state live.
+    const m = document.getElementById("achievements-modal");
+    if (m && !m.hidden) renderAchievements();
+  }
+}
+
+function renderAchievements() {
+  const body = document.getElementById("achievements-body");
+  if (!body) return;
+  const owned = state.achievements || {};
+  const ownedCount = Object.keys(owned).filter(k => ACHIEVEMENT_BY_ID[k]).length;
+  const counter = document.getElementById("achievements-progress");
+  if (counter) counter.textContent = `${ownedCount} / ${ACHIEVEMENTS.length} unlocked`;
+
+  const bySection = {};
+  ACHIEVEMENTS.forEach(a => {
+    if (!bySection[a.section]) bySection[a.section] = [];
+    bySection[a.section].push(a);
+  });
+  let html = "";
+  Object.keys(bySection).forEach(section => {
+    html += `<div class="settings-section"><h3>${section.toUpperCase()}</h3>`;
+    bySection[section].forEach(a => {
+      const isOwned = !!owned[a.id];
+      const cur = a.progress();
+      const pct = Math.min(100, Math.round((Math.min(cur, a.target) / a.target) * 100));
+      const icon = isOwned ? "🏆" : "🔒";
+      const meta = isOwned
+        ? `${a.format(a.target)}`
+        : `${a.format(Math.min(cur, a.target))} / ${a.format(a.target)}`;
+      const showBar = !isOwned && a.target > 1;
+      html += `<div class="ach-row${isOwned ? " unlocked" : ""}">`
+            + `<div class="ach-icon">${icon}</div>`
+            + `<div class="ach-text">`
+            +   `<div class="ach-title">${a.title}</div>`
+            +   `<div class="ach-desc">${a.desc}</div>`
+            + `</div>`
+            + `<div class="ach-meta">${meta}</div>`
+            + (showBar ? `<div class="ach-progress"><div class="ach-progress-fill" style="width:${pct}%"></div></div>` : "")
+            + `</div>`;
+    });
+    html += "</div>";
+  });
+  body.innerHTML = html;
+}
+function openAchievementsModal() {
+  checkAchievements();
+  renderAchievements();
+  $("achievements-modal").hidden = false;
+}
+function closeAchievementsModal() {
+  $("achievements-modal").hidden = true;
+}
+
 // ---- Statistics modal ----------------------------------------------------
 // Read-only lifetime totals. Pulls from state counters (added by save() +
 // the listing/request/craft hooks) and a few derived sums.
@@ -7372,6 +7539,7 @@ const TUTORIAL_STEPS = [
 function anyModalOpen() {
   return !!document.querySelector(
     "#settings-modal:not([hidden]), #stats-modal:not([hidden]), " +
+    "#achievements-modal:not([hidden]), " +
     "#upgrades-modal:not([hidden]), #sorters-modal:not([hidden]), " +
     "#design-modal:not([hidden])"
   );
@@ -8186,7 +8354,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderRequests(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); tickTutorial(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderRequests(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); tickTutorial(); checkAchievements(); }
 // One-shot at boot: populate the activity-log scrollback from saved
 // state. renderAll() doesn't include this because the log is append-
 // only — logActivity patches the DOM directly on each new entry, and
@@ -8944,6 +9112,9 @@ $("settings-backdrop").addEventListener("click", closeSettingsModal);
 $("stats-btn").addEventListener("click", openStatsModal);
 $("stats-close").addEventListener("click", closeStatsModal);
 $("stats-backdrop").addEventListener("click", closeStatsModal);
+$("achievements-btn").addEventListener("click", openAchievementsModal);
+$("achievements-close").addEventListener("click", closeAchievementsModal);
+$("achievements-backdrop").addEventListener("click", closeAchievementsModal);
 $("cm-next").addEventListener("click", advanceTutorial);
 $("cm-skip").addEventListener("click", skipTutorial);
 window.addEventListener("resize", renderCoachmark);
