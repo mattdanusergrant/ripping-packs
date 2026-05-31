@@ -2028,6 +2028,20 @@
   .settings-status.ok { color: #8be38b; }
   .settings-status.err { color: #ff8a8a; }
 
+  /* Stat-row: label/value pair used inside the Statistics modal. Sits in
+     the same modal chrome (.settings-modal-panel) as Settings. */
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; padding: 4px 0;
+    font-size: 0.82rem;
+    border-bottom: 1px dashed rgba(255,255,255,0.05);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row .stat-label { color: var(--muted); }
+  .stat-row .stat-value { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .stat-row .stat-value.cash  { color: var(--cash); }
+  .stat-row .stat-value.clout { color: var(--clout); }
+
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr; grid-template-rows: auto auto auto auto;
@@ -2139,6 +2153,7 @@
     <span>Packs opened: <b id="packs-opened">0</b></span>
     <span>Foils pulled: <b id="foils-pulled">0</b></span>
     <button class="sfx-toggle" id="sfx-toggle" title="Sound on — click to mute">🔊</button>
+    <button class="settings-toggle" id="stats-btn" title="Statistics — lifetime totals">📊</button>
     <button class="settings-toggle" id="settings-btn" title="Settings — volume, motion, save data, reset">⚙</button>
     <button class="reset" id="design-btn">Game Design</button>
   </div>
@@ -2231,6 +2246,19 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="stats-modal" class="settings-modal" hidden>
+  <div class="settings-modal-backdrop" id="stats-backdrop"></div>
+  <div class="settings-modal-panel" role="dialog" aria-modal="true" aria-labelledby="stats-title">
+    <div class="settings-modal-header">
+      <h2 id="stats-title">STATISTICS</h2>
+      <button class="settings-close" id="stats-close" aria-label="Close">×</button>
+    </div>
+    <div class="settings-body" id="stats-body">
+      <!-- renderStats() fills this with sectioned label/value rows. -->
     </div>
   </div>
 </div>
@@ -3374,6 +3402,15 @@ const CURRENT_SET_ID = 1;
 const defaultState = () => ({
   coins: 50,
   packsOpened: 0,
+  // Lifetime stat counters — read-only aggregates surfaced in the Stats
+  // modal. Each is incremented at exactly one site (resolveListings /
+  // fulfillRequest / craftSet) so they don't double-count.
+  lifetimeEarned: 0,    // sum of every sale payout + request payout
+  biggestSale: 0,       // max single sale payout (or request payout)
+  salesCount: 0,        // count of resolved listings (not expirations)
+  setsCraftedCount: 0,  // every craftSet() bump, foil + non-foil
+  firstPlayedAt: 0,     // unix ms — set the first time save() runs
+  playTimeMs: 0,        // active time only — incremented by the visibility-gated tick
   // Per-set state buckets — Set 1 only for now.
   activeSetId: CURRENT_SET_ID,
   sets: { [CURRENT_SET_ID]: blankSetState({ starterBox: true }) },
@@ -3613,6 +3650,14 @@ function load() {
     if (typeof parsed.activeSetId !== "number") parsed.activeSetId = CURRENT_SET_ID;
     if (typeof parsed.clout !== "number") parsed.clout = 0;
     if (typeof parsed.cloutSpent !== "number") parsed.cloutSpent = 0;
+    // Stat counters — older saves won't have these. firstPlayedAt
+    // backfills to "now" so the play-time stat starts from this load.
+    if (typeof parsed.lifetimeEarned   !== "number") parsed.lifetimeEarned   = 0;
+    if (typeof parsed.biggestSale      !== "number") parsed.biggestSale      = 0;
+    if (typeof parsed.salesCount       !== "number") parsed.salesCount       = 0;
+    if (typeof parsed.setsCraftedCount !== "number") parsed.setsCraftedCount = 0;
+    if (typeof parsed.firstPlayedAt    !== "number" || !parsed.firstPlayedAt) parsed.firstPlayedAt = Date.now();
+    if (typeof parsed.playTimeMs       !== "number") parsed.playTimeMs       = 0;
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
     // Recompute firstSetCrafted from complete-set evidence. Vintage
@@ -3800,6 +3845,7 @@ function load() {
 let _resetting = false;
 function save() {
   if (_resetting) return;
+  if (!state.firstPlayedAt) state.firstPlayedAt = Date.now();
   localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 }
 function fmt(n) {
@@ -4317,9 +4363,12 @@ function fulfillRequest(idx) {
     inv[1] -= req.quantity;
     if (inv[1] <= 0) delete inv[1];
   }
-  // Pay out cash + CLOUT.
+  // Pay out cash + CLOUT. Requests count toward lifetime earnings too;
+  // 'biggest sale' tracks the player's single largest cash inflow.
   state.coins = Math.round((state.coins + req.payout) * 100) / 100;
   state.clout = (state.clout || 0) + req.clout;
+  state.lifetimeEarned = (state.lifetimeEarned || 0) + req.payout;
+  if (req.payout > (state.biggestSale || 0)) state.biggestSale = req.payout;
   // Clear the slot — tickRequests will refill on the next tick.
   state.requests.slots[idx] = null;
   SFX.buy();
@@ -5162,6 +5211,7 @@ function craftSet(key, opts = {}) {
   else            cur().stock[track.baseRarity]     = Math.max(0, (cur().stock[track.baseRarity]     || 0) - size);
   if (!cur().invById[track.itemKey]) cur().invById[track.itemKey] = {};
   cur().invById[track.itemKey][1] = (cur().invById[track.itemKey][1] || 0) + 1;
+  state.setsCraftedCount = (state.setsCraftedCount || 0) + 1;
   // Lifetime first-craft milestone: widens homiePoolMax by +1 and
   // immediately drops a fresh IDLE 🧢 into the pool. Fires from craft-homie
   // ticks too — the homie is acting on the player's behalf, so the earned
@@ -5370,6 +5420,9 @@ function resolveListings() {
     if (now < l.resolveAt) return true;
     if (l.willResolve) {
       state.coins += l.askPrice;
+      state.lifetimeEarned = (state.lifetimeEarned || 0) + l.askPrice;
+      state.salesCount     = (state.salesCount     || 0) + 1;
+      if (l.askPrice > (state.biggestSale || 0)) state.biggestSale = l.askPrice;
       celebrateCashGain(l.askPrice);
       // NPC absorbs one unit into market inventory — drops the price of the
       // next sale of this exact (key, id). Works for both set items and
@@ -7127,6 +7180,100 @@ function importSaveFromBox() {
   location.reload();
 }
 
+// ---- Statistics modal ----------------------------------------------------
+// Read-only lifetime totals. Pulls from state counters (added by save() +
+// the listing/request/craft hooks) and a few derived sums.
+function formatPlayTime(ms) {
+  const total = Math.max(0, Math.floor((ms || 0) / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}h ${pad(m)}m ${pad(s)}s` : `${m}m ${pad(s)}s`;
+}
+function formatDate(ts) {
+  if (!ts) return "—";
+  try {
+    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch (_) { return "—"; }
+}
+// Walks state.sets for the active set and sums vaulted Complete Sets.
+// vaultedSets keys whose key starts with "complete_" are vault redemptions;
+// others (rare/foilStandard market keys) are unrelated.
+// Walks every set bucket in state.sets and aggregates the read-only
+// totals the Statistics modal cares about. Multi-set ready — the active
+// single-set build still works since state.sets only has one entry.
+function statsLifetimeTotals() {
+  const sumObj = (o) => Object.values(o || {}).reduce((s, n) => s + (n || 0), 0);
+  let vaultedNonfoil = 0, vaultedFoil = 0, cardsOpened = 0, cardsOpenedFoil = 0;
+  const buckets = (state && state.sets) || {};
+  Object.values(buckets).forEach(b => {
+    if (!b) return;
+    const v = b.vaultedSets || {};
+    if (v.completeSet)     vaultedNonfoil += 1;
+    if (v.foilCompleteSet) vaultedFoil    += 1;
+    cardsOpened     += sumObj(b.opened) + sumObj(b.openedFoil);
+    cardsOpenedFoil += sumObj(b.openedFoil);
+  });
+  return { vaultedNonfoil, vaultedFoil, cardsOpened, cardsOpenedFoil };
+}
+function renderStats() {
+  const body = document.getElementById("stats-body");
+  if (!body) return;
+  const totals = statsLifetimeTotals();
+  const foils = totals.cardsOpenedFoil;
+  const cards = totals.cardsOpened;
+  const foilRate = cards > 0 ? (foils / cards) * 100 : 0;
+  const lifetimeClout = (state.clout || 0) + (state.cloutSpent || 0);
+  const rows = [
+    ["Opening", [
+      ["Packs opened",     fmt(state.packsOpened || 0)],
+      ["Manual rips",      fmt(state.manualRips || 0)],
+      ["Cards opened",     fmt(cards)],
+      ["Foils pulled",     `${fmt(foils)}  ·  ${foilRate.toFixed(2)}%`],
+    ]],
+    ["Crafting", [
+      ["Sets crafted",         fmt(state.setsCraftedCount || 0)],
+      ["Complete Sets vaulted",fmt(totals.vaultedNonfoil)],
+      ["Foil Complete vaulted",fmt(totals.vaultedFoil)],
+    ]],
+    ["Cash", [
+      ["On hand",          { v: usd(state.coins || 0),        cls: "cash" }],
+      ["Lifetime earned",  { v: usd(state.lifetimeEarned || 0), cls: "cash" }],
+      ["Biggest single sale",{ v: usd(state.biggestSale || 0), cls: "cash" }],
+      ["Sales completed",  fmt(state.salesCount || 0)],
+    ]],
+    ["CLOUT", [
+      ["On hand",        { v: fmt(state.clout || 0),        cls: "clout" }],
+      ["Lifetime earned",{ v: fmt(lifetimeClout),           cls: "clout" }],
+      ["Spent",          { v: fmt(state.cloutSpent || 0),   cls: "clout" }],
+    ]],
+    ["Session", [
+      ["Time played",  formatPlayTime(state.playTimeMs)],
+      ["First played", formatDate(state.firstPlayedAt)],
+    ]],
+  ];
+  let html = "";
+  rows.forEach(([title, items]) => {
+    html += `<div class="settings-section"><h3>${title.toUpperCase()}</h3>`;
+    items.forEach(([label, val]) => {
+      const isObj = val && typeof val === "object";
+      const v = isObj ? val.v : val;
+      const cls = isObj && val.cls ? " " + val.cls : "";
+      html += `<div class="stat-row"><span class="stat-label">${label}</span><span class="stat-value${cls}">${v}</span></div>`;
+    });
+    html += "</div>";
+  });
+  body.innerHTML = html;
+}
+function openStatsModal() {
+  renderStats();
+  $("stats-modal").hidden = false;
+}
+function closeStatsModal() {
+  $("stats-modal").hidden = true;
+}
+
 function renderStaff() {
   // The sorter shop button lives above the unsorted pile. Before owning any
   // sorter it doubles as the purchase button; once owned it becomes the
@@ -8602,6 +8749,9 @@ if (_userSettings.reducedMotion) document.body.classList.add("reduced-motion");
 $("settings-btn").addEventListener("click", openSettingsModal);
 $("settings-close").addEventListener("click", closeSettingsModal);
 $("settings-backdrop").addEventListener("click", closeSettingsModal);
+$("stats-btn").addEventListener("click", openStatsModal);
+$("stats-close").addEventListener("click", closeStatsModal);
+$("stats-backdrop").addEventListener("click", closeStatsModal);
 $("settings-volume").addEventListener("input", (e) => {
   setSfxVolume(parseInt(e.target.value, 10) / 100);
 });
@@ -8672,6 +8822,15 @@ document.addEventListener("keydown", (e) => {
   }
 });
 setInterval(save, 5000);
+// Play-time ticker — accumulates only while the page is visible. 1Hz cadence
+// matches "Time played" precision in the Stats modal without flooding saves.
+setInterval(() => {
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+  state.playTimeMs = (state.playTimeMs || 0) + 1000;
+  // Repaint the open Stats modal so its live "Time played" doesn't freeze.
+  const m = document.getElementById("stats-modal");
+  if (m && !m.hidden) renderStats();
+}, 1000);
 // Pulse-sort tick — when SORT_MODE is "hover_and_pulse", every
 // sortPulseMsEffective() ms detonate up to pulseGrainsEffective() grains
 // nearest the cursor within pulseRadiusEffective(). Uses a high-frequency

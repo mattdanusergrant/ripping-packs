@@ -58,6 +58,13 @@ arpeggio, vault tone, buy/switch/unlock confirmation, error thud. The 🔊
 toggle in the header mutes everything; the ⚙ Settings panel exposes a
 volume slider. Preferences persist in localStorage.
 
+## Statistics
+
+The 📊 button in the header opens a Statistics modal with lifetime totals
+— packs opened, foils pulled (with rate), Sets crafted, Complete Sets
+vaulted, lifetime cash earned, biggest single sale, CLOUT earned/spent,
+time played, and first-played date.
+
 ## Settings
 
 The ⚙ button in the header opens a settings modal with:
