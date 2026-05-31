@@ -2042,6 +2042,46 @@
   .stat-row .stat-value.cash  { color: var(--cash); }
   .stat-row .stat-value.clout { color: var(--clout); }
 
+  /* Tutorial coachmark + spotlight ring around the highlighted target.
+     z-index 1500 sits above page UI but below all modals (50-100k), so
+     opening Settings / Upgrades hides the coachmark via the in-JS
+     modal-open check rather than fighting CSS. */
+  .coachmark {
+    position: fixed; z-index: 1500;
+    max-width: 320px; padding: 14px 16px;
+    background: #11141b; border: 2px solid var(--gold);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.6);
+    font-size: 0.85rem; color: var(--ink);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .coachmark .cm-step  { font-size: 0.66rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; }
+  .coachmark .cm-title { font-size: 1rem; font-weight: 600; color: var(--gold); }
+  .coachmark .cm-body  { color: #cfd6e0; line-height: 1.4; }
+  .coachmark .cm-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; }
+  .coachmark .cm-btn {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--muted);
+    padding: 5px 11px; border-radius: 6px; cursor: pointer;
+    font: inherit; font-size: 0.76rem;
+  }
+  .coachmark .cm-btn:hover { color: var(--ink); border-color: var(--ink); }
+  .coachmark .cm-btn.primary { background: var(--gold); color: #11141b; border-color: var(--gold); font-weight: 600; }
+  .coachmark .cm-btn.primary:hover { filter: brightness(1.1); }
+
+  .coachmark-spotlight {
+    position: fixed; z-index: 1499;
+    border-radius: 12px; pointer-events: none;
+    box-shadow: 0 0 0 3px var(--gold), 0 0 18px 4px rgba(245,197,66,.55);
+    animation: cm-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes cm-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px var(--gold), 0 0 12px 2px rgba(245,197,66,.4); }
+    50%      { box-shadow: 0 0 0 4px var(--gold), 0 0 26px 8px rgba(245,197,66,.7); }
+  }
+  /* Reduced-motion respect: no spotlight pulse for motion-sensitive players. */
+  body.reduced-motion .coachmark-spotlight { animation: none; }
+
   @media (max-width: 900px) {
     body {
       grid-template-columns: 1fr; grid-template-rows: auto auto auto auto;
@@ -2247,6 +2287,20 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Tutorial coachmark — positioned by renderCoachmark(). The spotlight
+     sits over the highlighted target with pointer-events:none so clicks
+     still reach the actual button beneath it. -->
+<div id="coachmark-spotlight" class="coachmark-spotlight" hidden></div>
+<div id="coachmark" class="coachmark" hidden>
+  <div class="cm-step" id="cm-step">Step 1 of 5</div>
+  <div class="cm-title" id="cm-title">Welcome</div>
+  <div class="cm-body" id="cm-body"></div>
+  <div class="cm-actions">
+    <button type="button" class="cm-btn" id="cm-skip">Skip tutorial</button>
+    <button type="button" class="cm-btn primary" id="cm-next">Got it</button>
   </div>
 </div>
 
@@ -3477,6 +3531,11 @@ const defaultState = () => ({
   // entries, capped at ACTIVITY_LOG_MAX (200). Replaces the old single-
   // line #hint ticker. Kinds drive color coding in the panel: info,
   // success, error, milestone, sale, rip, craft, buy, request.
+  // Onboarding tutorial — drives the floating coachmark for fresh saves.
+  // step indexes into TUTORIAL_STEPS; done suppresses further coachmarks
+  // for the life of the save. Veteran saves backfill { done: true } in
+  // load() so we don't pester returning players.
+  tutorial: { step: 0, done: false },
   activity: [],
 });
 
@@ -3658,6 +3717,10 @@ function load() {
     if (typeof parsed.setsCraftedCount !== "number") parsed.setsCraftedCount = 0;
     if (typeof parsed.firstPlayedAt    !== "number" || !parsed.firstPlayedAt) parsed.firstPlayedAt = Date.now();
     if (typeof parsed.playTimeMs       !== "number") parsed.playTimeMs       = 0;
+    // Veteran-save guard: pre-tutorial saves get the coachmark suppressed
+    // outright so returning players aren't shoved into onboarding. New
+    // saves always start at step 0 via defaultState().
+    if (!parsed.tutorial || typeof parsed.tutorial !== "object") parsed.tutorial = { done: true };
     if (!Array.isArray(parsed.unlockedNodes)) parsed.unlockedNodes = [];
     if (!parsed.completeSetCrafts || typeof parsed.completeSetCrafts !== "object") parsed.completeSetCrafts = {};
     // Recompute firstSetCrafted from complete-set evidence. Vintage
@@ -7266,6 +7329,135 @@ function renderStats() {
   });
   body.innerHTML = html;
 }
+// ---- Tutorial coachmark --------------------------------------------------
+// Fresh-save onboarding. Each step has an advance condition that pings
+// per renderAll/tick — actions auto-advance, so the player never has to
+// click "Next" except on the welcome / done bookends. Skippable any time.
+const TUTORIAL_STEPS = [
+  { id: "welcome",
+    title: "Welcome to Ripping Packs",
+    body: "Rip sealed product, sort cards into stock, craft full sets, then sell them for cash or vault them for CLOUT.",
+    target: null,
+    manual: true,
+  },
+  { id: "rip",
+    title: "Rip your first pack",
+    body: "Click the pack to crack it open. Cards drop into the unsorted pile below.",
+    target: "#pack",
+    check: () => (state.packsOpened || 0) >= 1,
+  },
+  { id: "sort",
+    title: "Sort the pile",
+    body: "Hover the pile to mark cards by color, then click to send marked cards into stock.",
+    target: "#sand-canvas",
+    check: () => {
+      const b = cur();
+      return RARITIES.reduce((s, r) => s + (b.opened[r] || 0) + (b.openedFoil[r] || 0), 0) >= 10;
+    },
+  },
+  { id: "craft",
+    title: "Craft a set",
+    body: "Once you hold every card of a rarity, its SET button lights up. Crafting makes a Set item you can list for cash or vault for CLOUT.",
+    target: "#stock-rows",
+    check: () => (state.setsCraftedCount || 0) >= 1,
+  },
+  { id: "done",
+    title: "You've got the loop",
+    body: "Reinvest in boxes/cases, spend CLOUT on upgrades, and chase the foil Complete Set. 📊 tracks your totals · ⚙ has settings.",
+    target: null,
+    manual: true,
+    terminal: true,
+  },
+];
+function anyModalOpen() {
+  return !!document.querySelector(
+    "#settings-modal:not([hidden]), #stats-modal:not([hidden]), " +
+    "#upgrades-modal:not([hidden]), #sorters-modal:not([hidden]), " +
+    "#design-modal:not([hidden])"
+  );
+}
+function currentTutorialStep() {
+  const t = state.tutorial;
+  if (!t || t.done) return null;
+  return TUTORIAL_STEPS[t.step] || null;
+}
+function advanceTutorial() {
+  const t = state.tutorial;
+  if (!t || t.done) return;
+  const step = TUTORIAL_STEPS[t.step];
+  if (step && step.terminal) { t.done = true; }
+  else { t.step = (t.step || 0) + 1; if (t.step >= TUTORIAL_STEPS.length) t.done = true; }
+  save();
+  renderCoachmark();
+}
+function skipTutorial() {
+  if (!state.tutorial) return;
+  state.tutorial.done = true;
+  state.tutorial.skipped = true;
+  save();
+  renderCoachmark();
+}
+function tickTutorial() {
+  const step = currentTutorialStep();
+  if (!step) { renderCoachmark(); return; }
+  if (step.check && step.check()) { advanceTutorial(); return; }
+  renderCoachmark();
+}
+// Positions the coachmark + spotlight ring. Centered when target=null;
+// otherwise places the card below the target (or above if no room), and
+// horizontally clamps it to the viewport with an 8px margin.
+function renderCoachmark() {
+  const card = document.getElementById("coachmark");
+  const ring = document.getElementById("coachmark-spotlight");
+  if (!card || !ring) return;
+  const step = currentTutorialStep();
+  const hide = !step || anyModalOpen();
+  if (hide) { card.hidden = true; ring.hidden = true; return; }
+
+  document.getElementById("cm-step").textContent  = `Step ${state.tutorial.step + 1} of ${TUTORIAL_STEPS.length}`;
+  document.getElementById("cm-title").textContent = step.title;
+  document.getElementById("cm-body").textContent  = step.body;
+  const nextBtn = document.getElementById("cm-next");
+  nextBtn.textContent = step.terminal ? "Got it" : (step.manual ? "Start" : "Got it");
+
+  card.hidden = false;
+  // Make the card measurable before positioning.
+  card.style.visibility = "hidden";
+  card.style.left = "0px"; card.style.top = "0px";
+  const cardRect = card.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight, margin = 8;
+
+  let target = null;
+  if (step.target) target = document.querySelector(step.target);
+  if (target) {
+    const r = target.getBoundingClientRect();
+    // Spotlight: clamp to viewport so off-screen targets don't draw bizarrely.
+    const sx = Math.max(margin, r.left - 6);
+    const sy = Math.max(margin, r.top  - 6);
+    const sw = Math.min(vw - sx - margin, r.width  + 12);
+    const sh = Math.min(vh - sy - margin, r.height + 12);
+    ring.style.left = sx + "px"; ring.style.top = sy + "px";
+    ring.style.width = sw + "px"; ring.style.height = sh + "px";
+    ring.hidden = false;
+
+    // Card: prefer below target; if no room, place above; otherwise center.
+    const below = vh - r.bottom - margin;
+    const above = r.top - margin;
+    let cy;
+    if (below >= cardRect.height + 12) cy = r.bottom + 12;
+    else if (above >= cardRect.height + 12) cy = r.top - cardRect.height - 12;
+    else cy = Math.max(margin, (vh - cardRect.height) / 2);
+    let cx = r.left + r.width / 2 - cardRect.width / 2;
+    cx = Math.max(margin, Math.min(vw - cardRect.width - margin, cx));
+    card.style.left = cx + "px"; card.style.top = cy + "px";
+  } else {
+    ring.hidden = true;
+    card.style.left = Math.max(margin, (vw - cardRect.width)  / 2) + "px";
+    card.style.top  = Math.max(margin, (vh - cardRect.height) / 2) + "px";
+  }
+  card.style.visibility = "visible";
+}
+
 function openStatsModal() {
   renderStats();
   $("stats-modal").hidden = false;
@@ -7994,7 +8186,7 @@ function renderSorters() {
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderRequests(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderRequests(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); tickTutorial(); }
 // One-shot at boot: populate the activity-log scrollback from saved
 // state. renderAll() doesn't include this because the log is append-
 // only — logActivity patches the DOM directly on each new entry, and
@@ -8752,6 +8944,14 @@ $("settings-backdrop").addEventListener("click", closeSettingsModal);
 $("stats-btn").addEventListener("click", openStatsModal);
 $("stats-close").addEventListener("click", closeStatsModal);
 $("stats-backdrop").addEventListener("click", closeStatsModal);
+$("cm-next").addEventListener("click", advanceTutorial);
+$("cm-skip").addEventListener("click", skipTutorial);
+window.addEventListener("resize", renderCoachmark);
+// Re-check / reposition every 500ms — catches layout shifts (sand pile
+// grows, stock rows fill in) and conditions that don't go through
+// renderAll (e.g., the typing-to-rip path resolving). Cheap: bails
+// immediately when no step is active.
+setInterval(tickTutorial, 500);
 $("settings-volume").addEventListener("input", (e) => {
   setSfxVolume(parseInt(e.target.value, 10) / 100);
 });

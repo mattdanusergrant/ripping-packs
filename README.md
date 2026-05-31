@@ -58,6 +58,14 @@ arpeggio, vault tone, buy/switch/unlock confirmation, error thud. The 🔊
 toggle in the header mutes everything; the ⚙ Settings panel exposes a
 volume slider. Preferences persist in localStorage.
 
+## Tutorial
+
+Fresh saves get a 5-step coachmark walkthrough (welcome → rip → sort →
+craft → done). Each action step auto-advances when the player completes
+the action (first rip / first 10 sorts / first set craft). Skippable any
+time, and never re-shown after dismissal. Existing saves are treated as
+veterans and skipped silently.
+
 ## Statistics
 
 The 📊 button in the header opens a Statistics modal with lifetime totals
