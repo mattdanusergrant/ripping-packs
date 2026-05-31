@@ -2081,6 +2081,7 @@
     box-shadow: 0 12px 32px rgba(0,0,0,.6);
     font-size: 0.85rem; color: var(--ink);
     display: flex; flex-direction: column; gap: 8px;
+    pointer-events: auto;
   }
   .coachmark .cm-step  { font-size: 0.66rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; }
   .coachmark .cm-title { font-size: 1rem; font-weight: 600; color: var(--gold); }
@@ -2093,6 +2094,7 @@
     font: inherit; font-size: 0.76rem;
   }
   .coachmark .cm-btn:hover { color: var(--ink); border-color: var(--ink); }
+  .coachmark .cm-btn:active { transform: translateY(1px); filter: brightness(0.85); }
   .coachmark .cm-btn.primary { background: var(--gold); color: #11141b; border-color: var(--gold); font-weight: 600; }
   .coachmark .cm-btn.primary:hover { filter: brightness(1.1); }
 
@@ -2411,15 +2413,18 @@
 
 <!-- Tutorial coachmark — positioned by renderCoachmark(). The spotlight
      sits over the highlighted target with pointer-events:none so clicks
-     still reach the actual button beneath it. -->
+     still reach the actual button beneath it. Static text below matches
+     the welcome step so a JS load failure still shows correct content.
+     onclick= attributes are belt-and-braces alongside the addEventListener
+     binds — if init aborts mid-script, the inline handlers still fire. -->
 <div id="coachmark-spotlight" class="coachmark-spotlight" hidden></div>
 <div id="coachmark" class="coachmark" hidden>
   <div class="cm-step" id="cm-step">Step 1 of 5</div>
-  <div class="cm-title" id="cm-title">Welcome</div>
-  <div class="cm-body" id="cm-body"></div>
+  <div class="cm-title" id="cm-title">Welcome to Ripping Packs</div>
+  <div class="cm-body" id="cm-body">Rip sealed product, sort cards into stock, craft full sets, then sell them for cash or vault them for CLOUT.</div>
   <div class="cm-actions">
-    <button type="button" class="cm-btn" id="cm-skip">Skip tutorial</button>
-    <button type="button" class="cm-btn primary" id="cm-next">Got it</button>
+    <button type="button" class="cm-btn" id="cm-skip" onclick="skipTutorial()">Skip tutorial</button>
+    <button type="button" class="cm-btn primary" id="cm-next" onclick="advanceTutorial()">Start</button>
   </div>
 </div>
 
@@ -7687,12 +7692,11 @@ function tickTutorial() {
 }
 // Positions the coachmark + spotlight ring. Centered when target=null;
 // otherwise places the card below the target (or above if no room), and
-// horizontally clamps it to the viewport with an 8px margin. Memoized
-// against (step.id + viewport + target-rect) so the 500ms tick doesn't
-// repaint or thrash element position when nothing has actually changed
-// — important because the previous version's visibility + (0,0) reset
-// could land mid-click and drop the click.
-let _lastCoachmarkKey = "";
+// horizontally clamps it to the viewport with an 8px margin. No memo —
+// the work is cheap (a couple of textContent writes + four left/top
+// assignments) and a stale-text bug was reported in production that
+// memoizing introduced; idempotent writes don't trigger layout/paint
+// in browsers when the value matches, so always-render is the safe call.
 function renderCoachmark() {
   const card = document.getElementById("coachmark");
   const ring = document.getElementById("coachmark-spotlight");
@@ -7701,32 +7705,19 @@ function renderCoachmark() {
   const hide = !step || anyModalOpen();
   if (hide) {
     if (!card.hidden) { card.hidden = true; ring.hidden = true; }
-    _lastCoachmarkKey = "";
     return;
   }
-  const target = step.target ? document.querySelector(step.target) : null;
-  const tRect = target ? target.getBoundingClientRect() : null;
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const key = [
-    step.id, vw, vh,
-    tRect && Math.round(tRect.x), tRect && Math.round(tRect.y),
-    tRect && Math.round(tRect.width), tRect && Math.round(tRect.height),
-  ].join("|");
-  if (key === _lastCoachmarkKey && !card.hidden) return;
-  _lastCoachmarkKey = key;
-
   document.getElementById("cm-step").textContent  = `Step ${state.tutorial.step + 1} of ${TUTORIAL_STEPS.length}`;
   document.getElementById("cm-title").textContent = step.title;
   document.getElementById("cm-body").textContent  = step.body;
   const nextBtn = document.getElementById("cm-next");
   nextBtn.textContent = step.terminal ? "Got it" : (step.manual ? "Start" : "Got it");
 
-  // Unhide first so getBoundingClientRect returns real dimensions. Width
-  // is bounded by max-width:320px so the rect is stable wherever the
-  // card currently sits — no need to reset position to (0,0) first.
   card.hidden = false;
+  const target = step.target ? document.querySelector(step.target) : null;
+  const tRect = target ? target.getBoundingClientRect() : null;
+  const vw = window.innerWidth, vh = window.innerHeight, margin = 8;
   const cardRect = card.getBoundingClientRect();
-  const margin = 8;
 
   if (tRect) {
     const sx = Math.max(margin, tRect.left - 6);
@@ -9327,8 +9318,11 @@ $("stats-backdrop").addEventListener("click", closeStatsModal);
 $("achievements-btn").addEventListener("click", openAchievementsModal);
 $("achievements-close").addEventListener("click", closeAchievementsModal);
 $("achievements-backdrop").addEventListener("click", closeAchievementsModal);
-$("cm-next").addEventListener("click", advanceTutorial);
-$("cm-skip").addEventListener("click", skipTutorial);
+// cm-next / cm-skip click handlers are bound via inline onclick= in the
+// HTML — see the coachmark markup. That way the buttons stay responsive
+// even if an earlier line in this script throws and aborts the binding
+// phase. No addEventListener pair here so a single click can't trigger
+// advanceTutorial twice (which would skip a step).
 window.addEventListener("resize", renderCoachmark);
 // Re-check / reposition every 500ms — catches layout shifts (sand pile
 // grows, stock rows fill in) and conditions that don't go through
@@ -9402,6 +9396,19 @@ document.addEventListener("keydown", (e) => {
     if (!$("design-modal").hidden)   { closeDesignPanel();   return; }
     if (!$("sorters-modal").hidden)  { closeSortersModal();  return; }
     if (!$("upgrades-modal").hidden) { closeUpgradesPanel(); return; }
+  }
+  // Tutorial keyboard fallback — fires only when the coachmark is up and
+  // not eclipsed by a modal. Enter/Space advance (same as clicking Got
+  // it/Start); Escape skips. Gives the player a click-independent route
+  // out of the tutorial, in case the button click is being eaten by
+  // something we can't see.
+  const cmEl = document.getElementById("coachmark");
+  if (cmEl && !cmEl.hidden) {
+    const t = e.target;
+    const inField = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+    if (inField) return;
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); advanceTutorial(); return; }
+    if (e.key === "Escape")                 { e.preventDefault(); skipTutorial();    return; }
   }
 });
 setInterval(save, 5000);
