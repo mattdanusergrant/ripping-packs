@@ -6553,17 +6553,14 @@ function drawSand() {
       const period  = sortPulseMsEffective();
       const elapsed = performance.now() - _lastSortPulseAt;
       const t       = Math.max(0, Math.min(1, elapsed / period));
-      const cx = cursorPos.x, cy = cursorPos.y;
-      // Wedge radius grows from a small dot to fully filling the outer
-      // pulse-radius ring, so "fully charged" reads as the whole cursor
-      // lit up. radiusCells/unit reuses the outer ring dimensions
-      // computed just above; min 3px keeps the t=0 sliver visible.
+      // Solid disk that grows from a small dot to fill the outer pulse
+      // ring as the cooldown elapses. Snaps back the instant
+      // pulseDetonate fires; stays at full if there are no grains in
+      // range (correct — fully charged, waiting for a target).
       const outerPx = radiusCells * unit;
       const innerR  = Math.max(3, outerPx * t);
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, innerR, -Math.PI / 2, -Math.PI / 2 + t * Math.PI * 2);
-      ctx.closePath();
+      ctx.arc(cursorPos.x, cursorPos.y, innerR, 0, Math.PI * 2);
       ctx.fillStyle = t >= 1 ? "rgba(220,255,140,0.95)" : "rgba(184,255,90,0.7)";
       ctx.fill();
     }
