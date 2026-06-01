@@ -8987,8 +8987,16 @@ function showBigPullReveal(card, tier) {
     + `<div class="big-pull-hint">CLICK ANYWHERE TO CONTINUE</div>`;
   let dismissed = false;
   let autoTimer = 0;
+  // Ready gate — the flip + label animations take ~2s to play. Clicks
+  // and keystrokes from the in-progress rip (the player was hammering
+  // the pack to keep ripping) routinely landed in the first frame and
+  // dismissed the reveal before the player even saw it. Block dismiss
+  // attempts until the hint appears at 2.3s; the auto-timer below is
+  // longer so the player still has time to read.
+  const READY_AT = performance.now() + 2300;
   const dismiss = () => {
     if (dismissed) return;
+    if (performance.now() < READY_AT) return;
     dismissed = true;
     clearTimeout(autoTimer);
     overlay.style.transition = "opacity 0.25s";
@@ -8998,20 +9006,21 @@ function showBigPullReveal(card, tier) {
   };
   // Capture phase so we beat the typing-to-rip / pile keymarker handlers
   // — and preventDefault() stops any captured key from also triggering
-  // a rip or sort while the reveal is up.
+  // a rip or sort while the reveal is up. We still eat the event before
+  // READY_AT so a rapid-fire keystroke doesn't leak through to the rip.
   const onKey = (e) => {
     if (e.key === "Tab") return; // let focus traversal through
     e.preventDefault();
     e.stopPropagation();
     dismiss();
   };
-  overlay.addEventListener("click", dismiss);
+  overlay.addEventListener("click", (e) => { e.stopPropagation(); dismiss(); });
   window.addEventListener("keydown", onKey, true);
   document.body.appendChild(overlay);
   try { SFX.pullMythic && SFX.pullMythic(); } catch (_) {}
-  // 4.5s is generous enough for the flip + label to fully play, while
-  // not blocking a player who wants to keep ripping.
-  autoTimer = setTimeout(dismiss, 4500);
+  // 6.5s = 2.3s ready gate + ~4s viewing window. The player who wants
+  // to keep ripping can click it away the moment the hint lights up.
+  autoTimer = setTimeout(dismiss, 6500);
 }
 
 function ripOne() {
