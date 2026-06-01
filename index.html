@@ -7656,7 +7656,7 @@ const TUTORIAL_STEPS = [
   },
   { id: "sort",
     title: "Sort the pile",
-    body: "Hover the pile to mark cards by color, then click to send marked cards into stock.",
+    body: "Hover the pile — pulses sweep cards into stock automatically. The wedge inside the cursor fills as the next pulse charges.",
     target: "#sand-canvas",
     baselineKeys: { cardsOpened: () => tutorialCardsOpened() },
     check: () => tutorialCardsOpened() - ((state.tutorial.baseline || {}).cardsOpened || 0) >= 10,
