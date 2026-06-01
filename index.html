@@ -2073,6 +2073,14 @@
      z-index 1500 sits above page UI but below all modals (50-100k), so
      opening Settings / Upgrades hides the coachmark via the in-JS
      modal-open check rather than fighting CSS. */
+  /* Critical: this [hidden] override has to come BEFORE the .coachmark
+     base rule. The UA stylesheet's `[hidden] { display: none }` has the
+     same specificity as our class selector below — without this
+     explicit higher-specificity rule, `display: flex` wins and the
+     element stays painted (and clickable!) even after card.hidden = true,
+     leaving a phantom coachmark blocking the page for any player whose
+     tutorial state is done/skipped. */
+  .coachmark[hidden], .coachmark-spotlight[hidden] { display: none !important; }
   .coachmark {
     position: fixed; z-index: 1500;
     max-width: 320px; padding: 14px 16px;
