@@ -910,110 +910,55 @@
   .vintage-pack.t-box  .vp-pack { font-size: 1.25rem; }
   .vintage-pack.t-case .vp-pack { font-size: 1.35rem; }
 
-  /* ---- Sorters ---------------------------------------------------------- */
-  #sorters-area { display: flex; flex-direction: column; gap: 5px; }
-  #sorters-area:empty { display: none; }
-  .sorter-card {
-    display: flex; flex-direction: column;
-    gap: 6px; padding: 8px 10px;
-    background: rgba(0,0,0,0.28);
-    border: 1.5px solid rgba(255,255,255,0.15);
-    border-radius: 6px;
-    font-size: 0.72rem;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  .sorter-card.has-buffer {
-    border-color: var(--gold);
-    box-shadow: 0 0 8px rgba(245,197,66,0.35);
-  }
-  .sorter-header {
-    display: flex; justify-content: space-between; align-items: baseline;
-    font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
-  }
-  .sorter-header .sorter-name { color: var(--gold); font-weight: bold; }
-  /* Action row — fixed column widths so values stack into clean vertical
-     columns across multiple sorters: hopper, rate, ⬆ SPD, spacer, sorted,
-     ⬆ BUF, spacer, LOAD (flex), COLLECT (flex). The two spacer cells
-     widen the visual gap between clusters without making any cluster's
-     columns flex with content. */
-  .sorter-row {
+  /* ---- Sorter row -----------------------------------------------------
+     10 buttons tiled below the sand canvas, each aligned with the 5
+     columns above it. Locked slots show the buy price; active slots show
+     a cooldown fill bar that drains as the next sweep approaches. */
+  #sorter-row {
     display: grid;
-    grid-template-columns: 64px 56px 78px 12px 100px 78px 12px 88px 88px;
-    align-items: stretch;
-    gap: 4px;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 2px;
+    margin: 4px 0 2px;
   }
-  .sorter-spacer { /* gap-widening column, intentionally empty */ }
-  .sorter-cell {
-    display: flex; align-items: center; justify-content: flex-end; gap: 4px;
-    padding: 4px 8px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
+  .sorter-slot {
+    position: relative;
+    padding: 5px 0;
+    background: #1a1530;
+    border: 1px solid rgba(255,255,255,0.1);
     border-radius: 4px;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-  .sorter-cell .cell-icon { opacity: 0.55; font-size: 0.7rem; }
-  .sorter-cell .cell-val { font-weight: bold; color: var(--ink); font-size: 0.85rem; }
-  .sorter-cell .cell-unit { color: var(--muted); font-size: 0.6rem; letter-spacing: 1px; }
-  /* Color flow: blue (in via hopper) → neutral (rate) → gold (out via sorted). */
-  .sorter-cell.hopper .cell-val { color: #5aa8ff; }
-  .sorter-cell.sorted .cell-val { color: var(--gold); }
-  .sorter-cell.sorted.full .cell-val { color: #ff7a3d; }
-  .sorter-cell.sorted.full .cell-val { color: #ff7a3d; }
-  .sorter-load, .sorter-collect, .sorter-upgrade {
-    background: transparent; border: 1px solid rgba(255,255,255,0.22);
-    color: var(--ink); padding: 4px 7px; cursor: pointer;
-    font-family: inherit; font-size: 0.62rem; border-radius: 4px;
-    letter-spacing: 1px;
-    transition: all 0.12s;
-    white-space: nowrap;
-  }
-  .sorter-upgrade.speed:not(:disabled)  { color: #5aa8ff; border-color: rgba(90,168,255,0.45); }
-  .sorter-upgrade.buffer:not(:disabled) { color: #b8ff5a; border-color: rgba(184,255,90,0.45); }
-  .sorter-upgrade:not(:disabled):hover { background: rgba(255,255,255,0.08); }
-  .sorter-load:not(:disabled) {
-    color: #5aa8ff; border-color: #5aa8ff; font-weight: bold;
-  }
-  .sorter-load:not(:disabled):hover { background: rgba(90,168,255,0.15); }
-  .sorter-collect:not(:disabled) {
-    color: var(--gold); border-color: var(--gold); font-weight: bold;
-    box-shadow: 0 0 6px rgba(245,197,66,0.3);
-  }
-  .sorter-collect:not(:disabled):hover { background: var(--gold); color: #111; }
-  .sorter-load:disabled, .sorter-collect:disabled, .sorter-upgrade:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  /* Sorter shop / modal-open button above the unsorted pile. Pre-purchase:
-     "BUY A SORTER — $X". Post-purchase: "SORTERS" (opens the modal). */
-  .sorter-shop-btn {
-    display: block; width: 100%;
-    background: var(--panel-light); color: var(--ink);
-    border: 1px solid #3a3260; border-radius: 8px;
-    padding: 8px 12px; margin-bottom: 6px;
+    color: var(--cash);
+    font-size: 0.7rem;
+    font-weight: bold;
     cursor: pointer;
-    font-family: inherit; font-size: 0.78rem;
-    letter-spacing: 1.5px; font-weight: bold;
-    text-align: center;
-    transition: background 0.12s ease, transform 0.08s ease, border-color 0.12s;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+    font-family: inherit;
   }
-  .sorter-shop-btn:hover:not(:disabled) { background: #2e2752; border-color: var(--gold); }
-  .sorter-shop-btn:active:not(:disabled) { transform: translateY(1px); }
-  .sorter-shop-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .sorter-shop-btn .sorter-shop-cost { color: var(--cash); margin-left: 6px; }
-
-  /* Sorters modal — reuses the upgrades-modal chrome but the body is a
-     vertical list of sorter cards, not a 4-column upgrade grid. */
-  #sorters-modal .upgrades-body { display: block; padding: 14px 18px; }
-  #sorters-modal #sorters-area { gap: 8px; }
-  .sorters-header-actions { display: flex; gap: 8px; align-items: center; }
-  .sorter-buy-modal-btn {
-    background: var(--panel-light); color: var(--ink);
-    border: 1px solid #3a3260; border-radius: 6px;
-    padding: 6px 12px; cursor: pointer;
-    font-family: inherit; font-size: 0.72rem; letter-spacing: 1px; font-weight: bold;
+  .sorter-slot.locked:disabled { opacity: 0.5; cursor: not-allowed; }
+  .sorter-slot.locked:not(:disabled):hover { background: #2e2752; border-color: var(--gold); }
+  .sorter-slot.locked:not(:disabled):active { transform: translateY(1px); }
+  .sorter-slot.active {
+    background: rgba(184,255,90,0.08);
+    border-color: rgba(184,255,90,0.45);
+    color: rgba(184,255,90,0.95);
+    cursor: default;
+    opacity: 1;
   }
-  .sorter-buy-modal-btn:hover:not(:disabled) { background: #2e2752; border-color: var(--gold); }
-  .sorter-buy-modal-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-  .sorter-buy-modal-btn .cost { color: var(--cash); margin-left: 4px; }
+  .sorter-slot .sorter-label { font-variant-numeric: tabular-nums; line-height: 1; }
+  .sorter-slot .sorter-bar {
+    display: block;
+    width: 82%;
+    height: 3px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .sorter-slot .sorter-bar-fill {
+    display: block;
+    height: 100%;
+    background: rgba(184,255,90,0.7);
+    transition: width 0.15s linear;
+  }
 
   #sand-canvas {
     /* Fixed 500×260: 50 cols × (25 grain rows + 1 click-buffer row) of 10×10
@@ -2340,21 +2285,6 @@
   </div>
 </div>
 
-<div id="sorters-modal" class="upgrades-modal" hidden>
-  <div class="upgrades-backdrop" id="sorters-backdrop"></div>
-  <div class="upgrades-panel" role="dialog" aria-modal="true" aria-labelledby="sorters-title">
-    <div class="upgrades-header">
-      <h2 id="sorters-title">SORTERS</h2>
-      <div class="sorters-header-actions">
-        <button class="sorter-buy-modal-btn" id="buy-sorter-modal" type="button">+ BUY ANOTHER<span class="cost" id="buy-sorter-modal-cost">$1,000</span></button>
-      </div>
-      <button class="upgrades-close" id="sorters-close" aria-label="Close">×</button>
-    </div>
-    <div class="upgrades-body">
-      <div id="sorters-area"></div>
-    </div>
-  </div>
-</div>
 
 <div id="settings-modal" class="settings-modal" hidden>
   <div class="settings-modal-backdrop" id="settings-backdrop"></div>
@@ -2533,7 +2463,6 @@
     </div>
   </div>
   <div>
-    <button id="sorter-shop" type="button" class="sorter-shop-btn">BUY A SORTER<span class="sorter-shop-cost" id="sorter-shop-cost">$1,000</span></button>
     <div id="sort-pile-header">
       <span>UNSORTED PILE · <span id="unsorted-total">0</span></span>
       <span class="sort-hint" id="sort-hint">
@@ -2543,6 +2472,10 @@
       <button class="upgrade-trigger" id="upgrade-sorting" type="button" data-sorting-branches>⬆ SORTING UPGRADES</button>
     </div>
     <canvas id="sand-canvas"></canvas>
+    <!-- 10 sorter slots tiled below the pile. Each slot covers 5 columns
+         above it and, once bought, sweeps one bottom grain from a random
+         covered column every SORTER_TICK_INTERVAL_MS. -->
+    <div id="sorter-row"></div>
     <div id="activity-log" aria-label="Activity log"></div>
     <button type="button" class="debug-fill-bulk debug-only" id="debug-fill-bulk">FILL BULK</button>
   </div>
@@ -3096,40 +3029,21 @@ function homiePoolMax() {
 let TYPING_UNLOCK_RIPS = def("TYPING_UNLOCK_RIPS", 50);
 const HOMIE_TICK_MS = 250;
 
-let SORTER_COST          = def("SORTER_COST", 1000);
-let SORTER_MAX           = def("SORTER_MAX", 3);
-// Speed track — interval = SORTER_BASE_MS / level. L1 = 1 card/s; each
-// upgrade adds +1 card/s (L10 = 10 cards/s).
-let SORTER_BASE_MS       = def("SORTER_BASE_MS", 1000); // L1: 1 card / 1s
-// Buffer track — +100 slots per level: L1 = 500, L10 = 1400.
-let SORTER_BUFFER_PER_LEVEL    = def("SORTER_BUFFER_PER_LEVEL", 100);
-let SORTER_BASE_CAPACITY = def("SORTER_BASE_CAPACITY", 500);
-let SORTER_LEVEL_MAX     = def("SORTER_LEVEL_MAX", 10);
-// Upgrade pricing (shared by both speed and buffer tracks): first upgrade
-// (L1 → L2) costs SORTER_UPGRADE_BASE_COST, and each subsequent upgrade
-// adds SORTER_UPGRADE_STEP. So L=1..9 pay $1k/$2k/$3k/.../$9k.
-let SORTER_UPGRADE_BASE_COST = def("SORTER_UPGRADE_BASE_COST", 1000);
-let SORTER_UPGRADE_STEP      = def("SORTER_UPGRADE_STEP", 1000);
-const SORTER_TICK_MS     = 250;
-// 50ms floor lets L10 hit the intended 10 cards/s (1000/10 = 100ms) and
-// keeps a safety net if SORTER_BASE_MS is tuned absurdly low.
-function sorterInterval(level)  { return Math.max(50, sorterBaseMsEffective() / Math.max(1, level)); }
-function sortsPerSecond(level)  { return 1000 / sorterInterval(level); }
-function sorterCapacity(bufferLevel) { return SORTER_BASE_CAPACITY + (Math.max(1, bufferLevel) - 1) * SORTER_BUFFER_PER_LEVEL; }
-// Linear cost ladder, shared by both tracks. Pay BASE + STEP × (L-1) to
-// leave level L for L+1.
-function sorterUpgradeCostAtLevel(level) {
-  return SORTER_UPGRADE_BASE_COST + SORTER_UPGRADE_STEP * (Math.max(1, level) - 1);
+// ---- Sorter row (10-slot bottom-of-pile automation) ---------------------
+// Each of 10 slots covers a 5-column band of the sand pile (slot i covers
+// columns i*5 .. i*5+4). Once bought, the slot ticks every
+// SORTER_TICK_INTERVAL_MS and clears one grain from the bottom of one
+// random column inside its band. Slots can be bought in any order; cost
+// ramps with how many are already owned.
+let SORTER_TICK_INTERVAL_MS = def("SORTER_TICK_INTERVAL_MS", 1500);
+let SORTER_BASE_COST        = def("SORTER_BASE_COST", 500);
+let SORTER_COST_STEP        = def("SORTER_COST_STEP", 500);
+const SORTER_SLOT_COUNT     = 10;
+function sorterColsPerSlot() { return Math.max(1, Math.floor(SAND_COLS / SORTER_SLOT_COUNT)); }
+function sorterSlotCost() {
+  const owned = (state.sorters || []).filter(Boolean).length;
+  return SORTER_BASE_COST + SORTER_COST_STEP * owned;
 }
-function sorterSpeedUpgradeCost(level)        { return sorterUpgradeCostAtLevel(level); }
-function sorterBufferUpgradeCost(bufferLevel) { return sorterUpgradeCostAtLevel(bufferLevel); }
-function sumBuckets(b) {
-  if (!b) return 0;
-  return Object.values(b).reduce((a, n) => a + (n || 0), 0);
-}
-function sorterInputTotal(s)  { return sumBuckets(s && s.input); }
-function sorterOutputTotal(s) { return sumBuckets(s && s.output); }
-function sorterTotal(s)       { return sorterInputTotal(s) + sorterOutputTotal(s); }
 
 // ---- Marketplace --------------------------------------------------------
 let LISTING_COOLDOWN_MIN = def("LISTING_COOLDOWN_MIN", 10); // seconds
@@ -3240,8 +3154,6 @@ const UPGRADE_NODES = [
   { id: "list2",  branch: "listings", label: "Shop Front",       desc: "+1 listing slot",     cost: 20,  effect: { listingSlots: 1 },      prereq: ["list1"] },
   { id: "list3",  branch: "listings", label: "Storefront",       desc: "+2 listing slots",    cost: 60,  effect: { listingSlots: 2 },      prereq: ["list2"] },
   { id: "list4",  branch: "listings", label: "Online Empire",    desc: "+3 listing slots",    cost: 200, effect: { listingSlots: 3 },      prereq: ["list3"] },
-  // SORTERS — all sorter upgrades now cost CASH (per-sorter level-ups via
-  // the sorter card's ⬆ button). No CLOUT-bought sorter nodes.
 ];
 const UPGRADE_BRANCHES = [
   { key: "sort_click", label: "HOVER AND CLICK",  color: "#ff7eb3", subtracks: [
@@ -3349,7 +3261,6 @@ function purchaseNode(id) {
 
 const eff = () => unlockedNodeEffects();
 function listingSlotsEffective()      { return LISTING_SLOTS       + (eff().listingSlots         || 0); }
-function sorterMaxEffective()         { return SORTER_MAX          + (eff().sorterMax            || 0); }
 function maxHighlightsEffective()     { return MAX_HIGHLIGHTS      + (eff().maxHighlights        || 0); }
 function hoverRadiusEffective()       { return HOVER_RADIUS_CELLS  + (eff().hoverRadius          || 0); }
 function hoverDwellMsEffective()      { return Math.max(5, HOVER_DWELL_MS + (eff().hoverDwellDelta || 0)); }
@@ -3381,7 +3292,6 @@ function rareChainDistEffective() {
 function foilChainDistEffective() {
   return Math.max(0, Math.round(SORT_FOIL_CHAIN_DIST + (eff().foilChainDist || 0)));
 }
-function sorterBaseMsEffective()      { return Math.max(250, SORTER_BASE_MS + (eff().sorterBaseMsDelta || 0)); }
 function listingCooldownMinEffective(){ return Math.max(1, LISTING_COOLDOWN_MIN + (eff().listingCooldownDelta || 0)); }
 function listingCooldownMaxEffective(){ return Math.max(listingCooldownMinEffective(), LISTING_COOLDOWN_MAX + (eff().listingCooldownDelta || 0)); }
 function marketDecayEffective()       { return MARKET_DECAY_RATE   + (eff().marketDecayDelta     || 0); }
@@ -3624,8 +3534,10 @@ const defaultState = () => ({
   // Shared homie token pool. Hiring any homie (rip or craft) consumes one;
   // expiry refunds one. Max = HOMIE_POOL_BASE (0) + craft milestones (0-10).
   homiePool: HOMIE_POOL_BASE,
-  sorters: [],    // [{uid, level, input:{}, output:{}, lastSortAt, setId}]
-  sorterUidCounter: 0,
+  // 10 sorter slots tiled below the sand pile — each slot is null (not
+  // bought) or { lastSortAt } once activated. ensureSorterSlots()
+  // normalizes the shape on every render/tick.
+  sorters: new Array(10).fill(null),
   clout: 0,              // CLOUT balance — spent on upgrade nodes
   cloutSpent: 0,         // lifetime CLOUT spent
   unlockedNodes: [],     // ids of purchased upgrade nodes
@@ -3854,7 +3766,6 @@ function load() {
     }
     parsed.activeSetId = CURRENT_SET_ID;
     if (Array.isArray(parsed.homies)) parsed.homies.forEach(h => { h.setId = CURRENT_SET_ID; });
-    if (Array.isArray(parsed.sorters)) parsed.sorters.forEach(s => { s.setId = CURRENT_SET_ID; });
     // Sanity backfills for top-level cross-set fields.
     if (typeof parsed.activeSetId !== "number") parsed.activeSetId = CURRENT_SET_ID;
     if (typeof parsed.clout !== "number") parsed.clout = 0;
@@ -4018,14 +3929,15 @@ function load() {
     if (typeof parsed.requests.uidCounter !== "number") parsed.requests.uidCounter = 0;
     if (!Array.isArray(parsed.homies)) parsed.homies = [];
     if (typeof parsed.homieUidCounter !== "number") parsed.homieUidCounter = 0;
-    if (!Array.isArray(parsed.sorters)) parsed.sorters = [];
-    if (typeof parsed.sorterUidCounter !== "number") parsed.sorterUidCounter = 0;
-    // Backfill the split-track sorter schema: older sorters had a single
-    // `level` that drove both speed and capacity. New sorters track them
-    // independently — default the buffer track to 1.
-    parsed.sorters.forEach(s => {
-      if (typeof s.bufferLevel !== "number") s.bufferLevel = 1;
-    });
+    // Sorters were reworked into a 10-slot row of bottom-of-pile
+    // sweepers. Any older save whose sorters didn't already match the
+    // new shape (array of length 10 of nulls / { lastSortAt }) gets
+    // reset to a fresh blank row.
+    const okSorters = Array.isArray(parsed.sorters)
+      && parsed.sorters.length === 10
+      && parsed.sorters.every(s => s == null || (typeof s === "object" && !Array.isArray(s) && !("input" in s)));
+    if (!okSorters) parsed.sorters = new Array(10).fill(null);
+    delete parsed.sorterUidCounter;
     if (!Array.isArray(parsed.listings)) parsed.listings = [];
     if (typeof parsed.listingsUidCounter !== "number") {
       parsed.listingsUidCounter = parsed.listings.reduce((m, l) => Math.max(m, l.uid || 0), 0);
@@ -4673,13 +4585,6 @@ function yearSwitchBlockReason() {
   const activeHomies = (state.homies || []).filter(h => h.setId === activeSid);
   if (activeHomies.length > 0) {
     return `Can't switch — ${activeHomies.length} homie${activeHomies.length > 1 ? "s" : ""} for The ${setYearLabel(activeSid)} Set still on the clock. Wait for them to finish.`;
-  }
-  const activeSorters = (state.sorters || []).filter(s =>
-    (s.setId == null || s.setId === activeSid) &&
-    (sorterInputTotal(s) > 0 || sorterOutputTotal(s) > 0)
-  );
-  if (activeSorters.length > 0) {
-    return `Can't switch — ${activeSorters.length} sorter${activeSorters.length > 1 ? "s" : ""} for The ${setYearLabel(activeSid)} Set still loaded. Collect them first.`;
   }
   const bulk = unsortedTotal();
   if (bulk > 0) {
@@ -6745,14 +6650,9 @@ const DESIGN_FIELDS = [
   { group: "Staff",            key: "CRAFT_HOMIE_COST",                path: "CRAFT_HOMIE_COST",          label: "Hire craft homie ($)",          step: 1,   min: 0 },
   { group: "Staff",            key: "CRAFT_HOMIE_TICK_MS",             path: "CRAFT_HOMIE_TICK_MS",       label: "Craft homie tick (sec)",        step: 0.5, min: 0.5, scale: 1000 },
   { group: "Staff",            key: "CRAFT_HOMIE_DURATION_MS",         path: "CRAFT_HOMIE_DURATION_MS",   label: "Craft homie lifetime (min)",    step: 0.5, min: 0.5, scale: 60000 },
-  { group: "Staff",            key: "SORTER_COST",                     path: "SORTER_COST",               label: "Sorter base cost ($)",         step: 50,  min: 0 },
-  { group: "Staff",            key: "SORTER_MAX",                      path: "SORTER_MAX",                label: "Max sorters",                  step: 1,   min: 1, int: true },
-  { group: "Staff",            key: "SORTER_UPGRADE_BASE_COST",        path: "SORTER_UPGRADE_BASE_COST",  label: "Sorter L1→L2 upgrade cost ($)",step: 25,  min: 0 },
-  { group: "Staff",            key: "SORTER_UPGRADE_STEP",             path: "SORTER_UPGRADE_STEP",       label: "Sorter upgrade step per level ($)",step: 25, min: 0 },
-  { group: "Staff",            key: "SORTER_BASE_MS",                  path: "SORTER_BASE_MS",            label: "Sorter base interval (sec)",   step: 0.25, min: 0.25, scale: 1000 },
-  { group: "Staff",            key: "SORTER_BASE_CAPACITY",            path: "SORTER_BASE_CAPACITY",      label: "Sorter base buffer capacity",  step: 25,  min: 1, int: true },
-  { group: "Staff",            key: "SORTER_BUFFER_PER_LEVEL",         path: "SORTER_BUFFER_PER_LEVEL",   label: "Sorter buffer slots per level",step: 25,  min: 1, int: true },
-  { group: "Staff",            key: "SORTER_LEVEL_MAX",                path: "SORTER_LEVEL_MAX",          label: "Sorter max level",             step: 1,   min: 1, int: true },
+  { group: "Staff",            key: "SORTER_BASE_COST",                path: "SORTER_BASE_COST",          label: "Sorter slot base cost ($)",    step: 50,   min: 0 },
+  { group: "Staff",            key: "SORTER_COST_STEP",                path: "SORTER_COST_STEP",          label: "Sorter slot cost step ($)",    step: 50,   min: 0 },
+  { group: "Staff",            key: "SORTER_TICK_INTERVAL_MS",         path: "SORTER_TICK_INTERVAL_MS",   label: "Sorter slot interval (sec)",   step: 0.25, min: 0.25, scale: 1000 },
 
   // Market dynamics
   { group: "Market dynamics",  key: "MARKET_TARGET_STOCK",             path: "MARKET_TARGET_STOCK",       label: "Target NPC stock (= baseline)", step: 0.5,  min: 0.5 },
@@ -6808,9 +6708,7 @@ function _liveDesignSnapshot() {
     VINTAGE_SLOTS_BASE, VINTAGE_REFRESH_MS, VINTAGE_TYPE_WEIGHTS,
     AVAILABLE_SLOTS_BASE, AVAILABLE_CONVEYOR_MS, AVAILABLE_PRICE_RATIO,
     REQUEST_SLOTS_BASE, REQUEST_EXPIRE_MS, REQUEST_PRICE_BONUS,
-    SORTER_COST, SORTER_MAX,
-    SORTER_BASE_MS, SORTER_BASE_CAPACITY, SORTER_LEVEL_MAX,
-    SORTER_UPGRADE_BASE_COST, SORTER_UPGRADE_STEP, SORTER_BUFFER_PER_LEVEL,
+    SORTER_BASE_COST, SORTER_COST_STEP, SORTER_TICK_INTERVAL_MS,
     MARKET_TARGET_STOCK, MARKET_DECAY_RATE, SET_CRAFT_MULTIPLIER,
     COMPLETE_SET_CLOUT, FOIL_COMPLETE_SET_CLOUT,
     PRICE_FLOOR_RATIO, PRICE_CEIL_RATIO,
@@ -7073,14 +6971,6 @@ function _resolveOpenBranches() {
     return UPGRADE_BRANCHES.filter(b => set.has(b.key));
   }
   return UPGRADE_BRANCHES.filter(b => b.key === _openUpgradesBranch);
-}
-
-function openSortersModal() {
-  renderSorters();
-  $("sorters-modal").hidden = false;
-}
-function closeSortersModal() {
-  $("sorters-modal").hidden = true;
 }
 
 function renderUpgrades() {
@@ -7677,7 +7567,7 @@ function anyModalOpen() {
   return !!document.querySelector(
     "#settings-modal:not([hidden]), #stats-modal:not([hidden]), " +
     "#achievements-modal:not([hidden]), " +
-    "#upgrades-modal:not([hidden]), #sorters-modal:not([hidden]), " +
+    "#upgrades-modal:not([hidden]), " +
     "#design-modal:not([hidden])"
   );
 }
@@ -7783,33 +7673,11 @@ function closeStatsModal() {
   $("stats-modal").hidden = true;
 }
 
-function renderStaff() {
-  // The sorter shop button lives above the unsorted pile. Before owning any
-  // sorter it doubles as the purchase button; once owned it becomes the
-  // entry point to the SORTERS modal.
-  const btn = $("sorter-shop");
-  const costEl = $("sorter-shop-cost");
-  if (!btn) return;
-  const sorters = state.sorters || [];
-  const owned = sorters.length;
-  const cap = sorterMaxEffective();
-  if (owned === 0) {
-    btn.firstChild.nodeValue = "BUY A SORTER";
-    if (costEl) { costEl.textContent = usd(SORTER_COST); costEl.style.display = ""; }
-    btn.disabled = state.coins < SORTER_COST;
-    btn.title = btn.disabled
-      ? `Need ${usd(SORTER_COST - state.coins)} more for a sorter`
-      : "Buy your first sorter — sorts loaded grains on its own.";
-  } else {
-    btn.firstChild.nodeValue = "SORTERS";
-    if (costEl) {
-      costEl.textContent = owned >= cap ? `· MAX (${cap})` : `· ${owned} owned`;
-      costEl.style.display = "";
-    }
-    btn.disabled = false;
-    btn.title = "Open the sorters panel";
-  }
-}
+// renderStaff used to render the BUY-A-SORTER / SORTERS shop button above
+// the pile, but the sorter rework moved all activation into the in-place
+// row below the canvas. Kept as a no-op so renderAll's call chain doesn't
+// have to be edited any time the surrounding mix changes.
+function renderStaff() {}
 
 function renderIdleHomies() {
   // One 🧢 per available pool token, stacked vertically in the left
@@ -8163,347 +8031,126 @@ function tickHomies() {
   if (acted || ended > 0) { renderAll(); save(); }
 }
 
-function buySorter() {
-  const owned = (state.sorters || []).length;
-  const cap = sorterMaxEffective();
-  if (owned >= cap) {
-    logActivity(`Max sorters (${cap}) reached.`);
-    return;
+function ensureSorterSlots() {
+  if (!Array.isArray(state.sorters) || state.sorters.length !== SORTER_SLOT_COUNT
+      || state.sorters.some(s => s != null && typeof s !== "object")) {
+    state.sorters = new Array(SORTER_SLOT_COUNT).fill(null);
   }
-  if (state.coins < SORTER_COST) {
-    logActivity(`Need ${usd(SORTER_COST - state.coins)} more for a sorter.`);
-    return;
-  }
-  state.coins -= SORTER_COST;
-  state.sorterUidCounter = (state.sorterUidCounter || 0) + 1;
-  if (!Array.isArray(state.sorters)) state.sorters = [];
-  // setId pins the sorter to the year's pile it was installed beside —
-  // LOAD scoops grains from that year's pile, COLLECT writes to that
-  // year's stock.
-  const installSetId = state.activeSetId;
-  state.sorters.push({
-    uid: state.sorterUidCounter,
-    level: 1,        // speed level: divides interval (L5 = 5× rate)
-    bufferLevel: 1,  // capacity level: +SORTER_BUFFER_PER_LEVEL slots per
-    setId: installSetId,
-    input:  { standard: 0, rare: 0, foilStandard: 0 },
-    output: { standard: 0, rare: 0, foilStandard: 0 },
-    lastSortAt: 0,
-  });
-  renderAll(); save();
-  logActivity(`Sorter installed. Click LOAD to scoop the pile's bottom row.`);
 }
-
-function upgradeSorterSpeed(uid) {
-  const s = (state.sorters || []).find(x => x.uid === uid);
-  if (!s) return;
-  if (s.level >= SORTER_LEVEL_MAX) {
-    SFX.error();
-    logActivity("Sorter speed already at max level.", "error");
-    return;
-  }
-  const cost = sorterSpeedUpgradeCost(s.level);
+function buySorterSlot(idx) {
+  ensureSorterSlots();
+  if (idx < 0 || idx >= SORTER_SLOT_COUNT) return;
+  if (state.sorters[idx]) return;
+  const cost = sorterSlotCost();
   if (state.coins < cost) {
     SFX.error();
-    logActivity(`Need ${usd(cost - state.coins)} more to upgrade speed.`, "error");
+    logActivity(`Need ${usd(cost - state.coins)} more for that sorter slot.`, "error");
     return;
   }
   state.coins -= cost;
-  s.level += 1;
-  SFX.buy();
-  renderAll(); save();
-  logActivity(`Sorter speed → Lv ${s.level} (${sortsPerSecond(s.level).toFixed(1)} cards/s).`);
-}
-
-function upgradeSorterBuffer(uid) {
-  const s = (state.sorters || []).find(x => x.uid === uid);
-  if (!s) return;
-  if ((s.bufferLevel || 1) >= SORTER_LEVEL_MAX) {
-    SFX.error();
-    logActivity("Sorter buffer already at max level.", "error");
-    return;
-  }
-  const cost = sorterBufferUpgradeCost(s.bufferLevel || 1);
-  if (state.coins < cost) {
-    SFX.error();
-    logActivity(`Need ${usd(cost - state.coins)} more to upgrade buffer.`, "error");
-    return;
-  }
-  state.coins -= cost;
-  s.bufferLevel = (s.bufferLevel || 1) + 1;
-  SFX.buy();
-  renderAll(); save();
-  logActivity(`Sorter buffer → Lv ${s.bufferLevel} (${sorterCapacity(s.bufferLevel)} slots).`);
-}
-
-// Compute what a LOAD click would scoop right now: every grain in the pile,
-// scanned bottom-up across all columns, capped by the sorter's remaining
-// capacity. LOAD always max-fills.
-function previewLoadGrains(s) {
-  const cols = sandColCount();
-  // Capacity is driven by the buffer track, not the speed track.
-  const cap = sorterCapacity(s.bufferLevel || 1);
-  const remaining = cap - sorterTotal(s);
-  let available = 0;
-  for (let c = 0; c < cols; c++) {
-    const col = cur().pile[c];
-    if (!col) continue;
-    for (let r = 0; r < col.length; r++) {
-      const k = col[r];
-      if (k && k !== "__") available += 1;
-    }
-  }
-  const count = Math.min(available, Math.max(0, remaining));
-  return { count, available, remaining, canLoad: count > 0 };
-}
-
-function loadSorter(uid) {
-  if (chainBusy) return; // wait for an in-progress chain to finish settling
-  const s = (state.sorters || []).find(x => x.uid === uid);
-  if (!s) return;
-  const sSetId = s.setId != null ? s.setId : state.activeSetId;
-  return withActiveSet(sSetId, () => _loadSorterInner(s));
-}
-
-function _loadSorterInner(s) {
-  ensureBulkInv();
-  // The pile only materializes when its set is rendered. A sorter pinned
-  // to a different year may have unsorted grains that haven't been laid
-  // out into pile[] yet — sync first so previewLoadGrains can see them.
-  syncPileWithStock();
-  const preview = previewLoadGrains(s);
-  if (preview.available === 0) {
-    logActivity("Pile is empty — nothing to load.");
-    return;
-  }
-  if (preview.remaining <= 0) {
-    logActivity("Sorter is full — collect first.");
-    return;
-  }
-  let loaded = 0;
-  const cols = sandColCount();
-  // Bottom-up sweep across every column — drain the pile into the sorter
-  // until either it's full or there's nothing left to scoop.
-  outer: for (let r = 0; loaded < preview.count; r++) {
-    let touchedAtThisRow = false;
-    for (let c = 0; c < cols && loaded < preview.count; c++) {
-      const col = cur().pile[c];
-      if (!col || r >= col.length) continue;
-      touchedAtThisRow = true;
-      const k = col[r];
-      if (!k || k === "__") continue;
-      s.input[k] = (s.input[k] || 0) + 1;
-      col[r] = "__";                                       // tombstone for settle
-      cur().unsorted[k] = Math.max(0, (cur().unsorted[k] || 0) - 1);
-      loaded += 1;
-    }
-    if (!touchedAtThisRow) break outer;                    // ran out of grains
-  }
-  settlePileAfterChain();
+  // Stagger lastSortAt so newly-bought slots don't all fire on the same
+  // tick as the existing ones — feels less mechanical.
+  state.sorters[idx] = { lastSortAt: Date.now() - Math.floor(Math.random() * SORTER_TICK_INTERVAL_MS) };
+  SFX.unlock();
+  const cols = sorterColsPerSlot();
+  const first = idx * cols + 1, last = idx * cols + cols;
+  logActivity(`Sorter slot ${idx + 1} activated — sweeps cols ${first}-${last}, ~1 grain / ${(SORTER_TICK_INTERVAL_MS/1000).toFixed(1)}s.`, "success");
   renderAll(); save();
 }
 
-function collectSorter(uid) {
-  const s = (state.sorters || []).find(x => x.uid === uid);
-  if (!s) return;
-  const total = sorterOutputTotal(s);
-  if (total === 0) return;
-  const sSetId = s.setId != null ? s.setId : state.activeSetId;
-  return withActiveSet(sSetId, () => _collectSorterInner(s, total));
-}
-
-function _collectSorterInner(s, total) {
-  ensureBulkInv();
-  SAND_BULK_KEYS.forEach(key => {
-    const count = s.output[key] || 0;
-    const baseRarity = bulkBaseRarity(key);
-    for (let i = 0; i < count; i++) {
-      if (bulkIsFoil(key)) cur().stockFoil[baseRarity] = (cur().stockFoil[baseRarity] || 0) + 1;
-      else                 cur().stock[baseRarity]     = (cur().stock[baseRarity]     || 0) + 1;
-      trackBulkCard(key, randomCardId(baseRarity));
-    }
-    s.output[key] = 0;
-  });
-  renderAll(); save();
+// Bottom-most live grain row in column c. -1 if column is empty / all tombstones.
+function _bottomGrainRow(c) {
+  const arr = (cur().pile && cur().pile[c]) || [];
+  for (let r = 0; r < arr.length; r++) {
+    if (arr[r] && arr[r] !== "__") return r;
+  }
+  return -1;
 }
 
 function tickSorters() {
-  const sorters = state.sorters || [];
-  if (sorters.length === 0) return;
+  ensureSorterSlots();
   const now = Date.now();
-  let acted = false;
-  sorters.forEach(s => {
-    if (sorterInputTotal(s) <= 0) return;
-    if (now - (s.lastSortAt || 0) < sorterInterval(s.level)) return;
-    // Pick one grain from input, weighted by what's loaded.
-    const totals = SAND_BULK_KEYS.map(k => s.input[k] || 0);
-    const sum = totals.reduce((a, b) => a + b, 0);
-    if (sum === 0) return;
-    let roll = Math.floor(Math.random() * sum);
-    let key = SAND_BULK_KEYS[SAND_BULK_KEYS.length - 1];
-    for (let j = 0; j < SAND_BULK_KEYS.length; j++) {
-      roll -= totals[j];
-      if (roll < 0) { key = SAND_BULK_KEYS[j]; break; }
+  const cols = sorterColsPerSlot();
+  let detonated = false;
+  for (let i = 0; i < SORTER_SLOT_COUNT; i++) {
+    const s = state.sorters[i];
+    if (!s) continue;
+    if (now - (s.lastSortAt || 0) < SORTER_TICK_INTERVAL_MS) continue;
+    const startCol = i * cols;
+    const available = [];
+    for (let c = startCol; c < startCol + cols; c++) {
+      const r = _bottomGrainRow(c);
+      if (r >= 0) available.push({ col: c, row: r });
     }
-    s.input[key]  = (s.input[key]  || 0) - 1;
-    s.output[key] = (s.output[key] || 0) + 1;
+    if (available.length === 0) {
+      // Nothing to sort — don't reset the timer so the slot fires the
+      // moment a grain falls into range.
+      continue;
+    }
+    const pick = available[Math.floor(Math.random() * available.length)];
     s.lastSortAt = now;
-    acted = true;
-  });
-  // Only the sorter cards' buffer counts change when a sort completes — the
-  // sorted cards stay inside the sorter's output until the player hits
-  // COLLECT, so nothing else in the UI is affected. Render just the sorters
-  // (instead of renderAll) to avoid thrashing unrelated DOM on every tick.
-  if (acted) { renderSorters(); save(); }
-  // No `else renderSorters()` — repainting at 4 Hz on idle sorters was
-  // interrupting CSS :hover transitions and causing the LOAD/COLLECT/UPGRADE
-  // buttons to flicker. Buffer counts only change when a sort completes (this
-  // branch) or when the player loads/collects (those handlers render
-  // explicitly), so there's nothing live to paint between sort events.
+    runChainCritFromMarks([pick], () => { settlePileAfterChain(); }, { propagate: false });
+    detonated = true;
+  }
+  // Bars update every tick whether or not a detonation happened so the
+  // cooldown progress reads smoothly.
+  renderSorterRow();
+  if (detonated) save();
 }
 
-function buildSorterCard(uid) {
-  const card = document.createElement("div");
-  card.className = "sorter-card";
-  card.dataset.uid = uid;
-  // Header strip (sorter index + level + year chip) on top, then the
-  // action row in a strict fixed-width grid so columns align vertically
-  // across every stacked sorter card. Spacer cells widen the gap between
-  // the rate / sorted / load clusters without making each cluster's
-  // columns flex with content.
-  card.innerHTML = `
-    <div class="sorter-header">
-      <span class="sorter-name"></span>
-    </div>
-    <div class="sorter-row">
-      <div class="sorter-cell hopper" title="In hopper — waiting to be sorted">
-        <span class="cell-icon">⌛</span><span class="cell-val sorter-hopper-val"></span>
-      </div>
-      <div class="sorter-cell rate" title="">
-        <span class="cell-val sorter-rate-val"></span><span class="cell-unit">/s</span>
-      </div>
-      <button class="sorter-upgrade speed" data-upgrade-speed="${uid}" title=""></button>
-      <div class="sorter-spacer"></div>
-      <div class="sorter-cell sorted" title="Sorted — ready to collect">
-        <span class="cell-icon">✓</span><span class="cell-val sorter-sorted-val"></span>
-      </div>
-      <button class="sorter-upgrade buffer" data-upgrade-buffer="${uid}" title=""></button>
-      <div class="sorter-spacer"></div>
-      <button class="sorter-load"    data-load="${uid}"></button>
-      <button class="sorter-collect" data-collect="${uid}"></button>
-    </div>`;
-  return card;
+function buildSorterRowHTML() {
+  let html = "";
+  for (let i = 0; i < SORTER_SLOT_COUNT; i++) {
+    html += `<button type="button" class="sorter-slot locked" data-sorter-slot="${i}">`
+          +   `<span class="sorter-label"></span>`
+          +   `<span class="sorter-bar"><span class="sorter-bar-fill"></span></span>`
+          + `</button>`;
+  }
+  return html;
 }
 
-function renderSorters() {
-  const wrap = $("sorters-area");
-  if (!wrap) return;
-  const sorters = state.sorters || [];
-
-  const buyBtn = $("buy-sorter-modal");
-  const costEl = $("buy-sorter-modal-cost");
-  const owned = sorters.length;
-  const cap = sorterMaxEffective();
-  if (costEl) costEl.textContent = owned >= cap ? `MAX (${cap})` : usd(SORTER_COST);
-  if (buyBtn) buyBtn.disabled = owned >= cap || state.coins < SORTER_COST;
-
-  // Incremental update — preserve DOM nodes (and :hover) across ticks.
-  const wanted = new Set(sorters.map(s => String(s.uid)));
-  Array.from(wrap.querySelectorAll(".sorter-card")).forEach(el => {
-    if (!wanted.has(el.dataset.uid)) el.remove();
-  });
-
-  sorters.forEach((s, i) => {
-    let card = wrap.querySelector(`.sorter-card[data-uid="${s.uid}"]`);
-    if (!card) {
-      card = buildSorterCard(s.uid);
-      wrap.appendChild(card);
+function renderSorterRow() {
+  const row = $("sorter-row");
+  if (!row) return;
+  ensureSorterSlots();
+  if (!row.firstChild) row.innerHTML = buildSorterRowHTML();
+  const now = Date.now();
+  const cost = sorterSlotCost();
+  const colsPer = sorterColsPerSlot();
+  for (let i = 0; i < SORTER_SLOT_COUNT; i++) {
+    const cell = row.children[i];
+    if (!cell) continue;
+    const s = state.sorters[i];
+    const label = cell.querySelector(".sorter-label");
+    const fill  = cell.querySelector(".sorter-bar-fill");
+    const first = i * colsPer + 1, last = i * colsPer + colsPer;
+    if (s) {
+      const elapsed = now - (s.lastSortAt || 0);
+      const pct = Math.max(0, Math.min(100, (elapsed / SORTER_TICK_INTERVAL_MS) * 100));
+      cell.classList.add("active");
+      cell.classList.remove("locked");
+      cell.disabled = true;
+      label.textContent = "✓";
+      fill.style.width = pct + "%";
+      cell.title = `Sorter slot ${i + 1} — cols ${first}-${last}, sweeps 1 grain / ${(SORTER_TICK_INTERVAL_MS/1000).toFixed(1)}s.`;
+    } else {
+      cell.classList.remove("active");
+      cell.classList.add("locked");
+      const unaffordable = state.coins < cost;
+      cell.disabled = unaffordable;
+      label.textContent = compactUsd(cost);
+      fill.style.width = "0%";
+      cell.title = unaffordable
+        ? `Need ${usd(cost - state.coins)} more for sorter slot ${i + 1} (cols ${first}-${last}).`
+        : `Buy sorter slot ${i + 1} — ${usd(cost)}. Sweeps cols ${first}-${last}, ~1 grain / ${(SORTER_TICK_INTERVAL_MS/1000).toFixed(1)}s.`;
     }
-    const speedLevel = s.level;
-    const bufferLevel = s.bufferLevel || 1;
-    const cap        = sorterCapacity(bufferLevel);
-    const inputN     = sorterInputTotal(s);
-    const outputN    = sorterOutputTotal(s);
-    const totalN     = inputN + outputN;
-    const speedAtMax  = speedLevel  >= SORTER_LEVEL_MAX;
-    const bufferAtMax = bufferLevel >= SORTER_LEVEL_MAX;
-    const speedCost   = sorterSpeedUpgradeCost(speedLevel);
-    const bufferCost  = sorterBufferUpgradeCost(bufferLevel);
-    const preview    = previewLoadGrains(s);
-    const canLoad    = preview.canLoad;
-    const canCollect = outputN > 0;
-    const canUpSpeed  = !speedAtMax  && state.coins >= speedCost;
-    const canUpBuffer = !bufferAtMax && state.coins >= bufferCost;
-
-    card.classList.toggle("has-buffer", canCollect);
-
-    // Header strip.
-    const nameEl = card.querySelector(".sorter-name");
-    const nameText = `SORTER ${i + 1} · SPD LV ${speedLevel} · BUF LV ${bufferLevel}`;
-    if (nameEl.textContent !== nameText) nameEl.textContent = nameText;
-    // Hopper count (unsorted input waiting to be processed).
-    const hopperVal = card.querySelector(".sorter-hopper-val");
-    const hopperText = String(inputN);
-    if (hopperVal.textContent !== hopperText) hopperVal.textContent = hopperText;
-
-    // Rate display.
-    const rateCellEl = card.querySelector(".sorter-cell.rate");
-    const rateVal = card.querySelector(".sorter-rate-val");
-    const rateText = String(sortsPerSecond(speedLevel));
-    if (rateVal.textContent !== rateText) rateVal.textContent = rateText;
-    const rateTitle = `Current sort rate: ${rateText} cards/s`;
-    if (rateCellEl.title !== rateTitle) rateCellEl.title = rateTitle;
-
-    // Speed upgrade button — compact "⬆ $500".
-    const speedBtn = card.querySelector(".sorter-upgrade.speed");
-    const speedText = speedAtMax ? "MAX" : `⬆ ${usd(speedCost)}`;
-    if (speedBtn.textContent !== speedText) speedBtn.textContent = speedText;
-    const speedTitle = speedAtMax
-      ? "Speed at max level"
-      : `Upgrade speed Lv ${speedLevel} → ${speedLevel + 1}: ${sortsPerSecond(speedLevel)} → ${sortsPerSecond(speedLevel + 1)} cards/s (${usd(speedCost)})`;
-    if (speedBtn.title !== speedTitle) speedBtn.title = speedTitle;
-    if (speedBtn.disabled !== !canUpSpeed) speedBtn.disabled = !canUpSpeed;
-
-    // Sorted count + capacity context.
-    const sortedVal = card.querySelector(".sorter-sorted-val");
-    const sortedText = `${outputN}/${cap}`;
-    if (sortedVal.textContent !== sortedText) sortedVal.textContent = sortedText;
-    card.querySelector(".sorter-cell.sorted").classList.toggle("full", totalN >= cap);
-
-    // Buffer upgrade button — compact "⬆ $500".
-    const bufBtn = card.querySelector(".sorter-upgrade.buffer");
-    const bufBtnText = bufferAtMax ? "MAX" : `⬆ ${usd(bufferCost)}`;
-    if (bufBtn.textContent !== bufBtnText) bufBtn.textContent = bufBtnText;
-    const bufBtnTitle = bufferAtMax
-      ? "Buffer at max level"
-      : `Upgrade buffer Lv ${bufferLevel} → ${bufferLevel + 1}: ${cap} → ${sorterCapacity(bufferLevel + 1)} slots (${usd(bufferCost)})`;
-    if (bufBtn.title !== bufBtnTitle) bufBtn.title = bufBtnTitle;
-    if (bufBtn.disabled !== !canUpBuffer) bufBtn.disabled = !canUpBuffer;
-
-    // LOAD button.
-    const loadBtn = card.querySelector(".sorter-load");
-    const loadText = preview.count > 0 ? `LOAD ${preview.count}` : "LOAD";
-    if (loadBtn.textContent !== loadText) loadBtn.textContent = loadText;
-    const loadTitle = preview.canLoad
-      ? `Scoop ${preview.count} grain${preview.count > 1 ? "s" : ""} from the pile into this sorter`
-      : (preview.available === 0
-          ? "Pile is empty"
-          : "Sorter is full — collect first");
-    if (loadBtn.title !== loadTitle) loadBtn.title = loadTitle;
-    if (loadBtn.disabled !== !canLoad) loadBtn.disabled = !canLoad;
-
-    // COLLECT button.
-    const collectBtn = card.querySelector(".sorter-collect");
-    const collectText = `COLLECT${outputN > 0 ? " " + outputN : ""}`;
-    if (collectBtn.textContent !== collectText) collectBtn.textContent = collectText;
-    if (collectBtn.disabled !== !canCollect) collectBtn.disabled = !canCollect;
-  });
+  }
 }
 
 // renderTypingZone is intentionally NOT called here — that DOM is owned by
 // the typing module and any external rebuild wipes the transient .hit class
 // that drives the letter-flash animation.
-function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderRequests(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorters(); renderRipUnlock(); paintUpgradeTriggers(); tickTutorial(); checkAchievements(); }
+function renderAll() { renderHeader(); renderVault(); renderListings(); renderAvailable(); renderRequests(); renderVintageShop(); renderVaultGrid(); renderSandPile(); renderStaff(); renderHomieSprites(); renderIdleHomies(); renderSorterRow(); renderRipUnlock(); paintUpgradeTriggers(); tickTutorial(); checkAchievements(); }
 // One-shot at boot: populate the activity-log scrollback from saved
 // state. renderAll() doesn't include this because the log is append-
 // only — logActivity patches the DOM directly on each new entry, and
@@ -9309,35 +8956,13 @@ $("pack-area").addEventListener("click", (e) => {
   const slotIdx = parseInt(slot.dataset.slot, 10);
   hireHomie(Number.isFinite(slotIdx) ? slotIdx : undefined);
 });
-// Pre-purchase the button buys the first sorter; once any sorter is owned it
-// opens the SORTERS modal where the player can buy more / load / collect.
-$("sorter-shop").addEventListener("click", () => {
-  if ((state.sorters || []).length === 0) buySorter();
-  else openSortersModal();
-});
-$("buy-sorter-modal").addEventListener("click", buySorter);
-$("sorters-close").addEventListener("click", closeSortersModal);
-$("sorters-backdrop").addEventListener("click", closeSortersModal);
-$("sorters-area").addEventListener("click", (e) => {
-  const load = e.target.closest(".sorter-load");
-  if (load && load.dataset.load && !load.disabled) {
-    loadSorter(parseInt(load.dataset.load, 10));
-    return;
-  }
-  const collect = e.target.closest(".sorter-collect");
-  if (collect && collect.dataset.collect && !collect.disabled) {
-    collectSorter(parseInt(collect.dataset.collect, 10));
-    return;
-  }
-  const upSpeed = e.target.closest(".sorter-upgrade.speed");
-  if (upSpeed && upSpeed.dataset.upgradeSpeed && !upSpeed.disabled) {
-    upgradeSorterSpeed(parseInt(upSpeed.dataset.upgradeSpeed, 10));
-    return;
-  }
-  const upBuffer = e.target.closest(".sorter-upgrade.buffer");
-  if (upBuffer && upBuffer.dataset.upgradeBuffer && !upBuffer.disabled) {
-    upgradeSorterBuffer(parseInt(upBuffer.dataset.upgradeBuffer, 10));
-  }
+// Click anywhere on a locked sorter slot to buy it; active slots are
+// disabled so clicks bounce off naturally.
+$("sorter-row").addEventListener("click", (e) => {
+  const slot = e.target.closest(".sorter-slot");
+  if (!slot || slot.disabled) return;
+  const idx = parseInt(slot.dataset.sorterSlot, 10);
+  if (Number.isFinite(idx)) buySorterSlot(idx);
 });
 $("design-btn").addEventListener("click", openDesignPanel);
 $("sfx-toggle").addEventListener("click", () => {
@@ -9436,7 +9061,6 @@ document.querySelector("#design-modal .design-modal-backdrop").addEventListener(
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!$("design-modal").hidden)   { closeDesignPanel();   return; }
-    if (!$("sorters-modal").hidden)  { closeSortersModal();  return; }
     if (!$("upgrades-modal").hidden) { closeUpgradesPanel(); return; }
   }
   // Tutorial keyboard fallback — fires only when the coachmark is up and
@@ -9479,7 +9103,10 @@ setInterval(() => {
   }
 }, 30);
 setInterval(tickHomies, HOMIE_TICK_MS);
-setInterval(tickSorters, SORTER_TICK_MS);
+// 200ms tick = smooth fill bars without thrashing the canvas; the actual
+// per-slot cooldown is gated inside tickSorters against
+// SORTER_TICK_INTERVAL_MS.
+setInterval(tickSorters, 200);
 setInterval(resolveListings, LISTING_TICK_MS);
 // Tick the listing + craft-homie countdown displays each second so the
 // "WORKING · 4m" text and the marketplace timers visibly decrement. Craft
@@ -9507,10 +9134,8 @@ window.addEventListener("keydown", (e) => {
   // input/textarea, or a modifier is held.
   const designModal   = document.getElementById("design-modal");
   const upgradesModal = document.getElementById("upgrades-modal");
-  const sortersModal  = document.getElementById("sorters-modal");
   if (designModal   && !designModal.hidden)   return;
   if (upgradesModal && !upgradesModal.hidden) return;
-  if (sortersModal  && !sortersModal.hidden)  return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
   if (e.key === "Escape") { clearMarkedGrains(); return; }
