@@ -6806,18 +6806,18 @@ const LIVE_TUNERS = {
   "COMPLETE_SET_PREMIUM": { get: () => COMPLETE_SET_PREMIUM, set: v => { COMPLETE_SET_PREMIUM = v; } },
 };
 const LIVE_TUNER_LAYOUT = [
-  { title: "Rare-slot weights", fields: [
-    { path: "RARE_SLOT_WEIGHTS.rare",      label: "Rare",      step: 0.01, min: 0 },
-    { path: "RARE_SLOT_WEIGHTS.epic",      label: "Epic",      step: 0.01, min: 0 },
-    { path: "RARE_SLOT_WEIGHTS.legendary", label: "Legendary", step: 0.01, min: 0 },
-    { path: "RARE_SLOT_WEIGHTS.mythic",    label: "Mythic",    step: 0.01, min: 0 },
+  { title: "Rare-slot odds (1 in N packs)", fields: [
+    { path: "RARE_SLOT_WEIGHTS.rare",      label: "Rare",      step: 1, min: 1, int: true, oneInN: true },
+    { path: "RARE_SLOT_WEIGHTS.epic",      label: "Epic",      step: 1, min: 1, int: true, oneInN: true },
+    { path: "RARE_SLOT_WEIGHTS.legendary", label: "Legendary", step: 1, min: 1, int: true, oneInN: true },
+    { path: "RARE_SLOT_WEIGHTS.mythic",    label: "Mythic",    step: 1, min: 1, int: true, oneInN: true },
   ]},
-  { title: "Foil-slot weights", fields: [
-    { path: "FOIL_SLOT_WEIGHTS.standard",  label: "Standard",  step: 0.01, min: 0 },
-    { path: "FOIL_SLOT_WEIGHTS.rare",      label: "Rare",      step: 0.01, min: 0 },
-    { path: "FOIL_SLOT_WEIGHTS.epic",      label: "Epic",      step: 0.01, min: 0 },
-    { path: "FOIL_SLOT_WEIGHTS.legendary", label: "Legendary", step: 0.01, min: 0 },
-    { path: "FOIL_SLOT_WEIGHTS.mythic",    label: "Mythic",    step: 0.01, min: 0 },
+  { title: "Foil-slot odds (1 in N packs)", fields: [
+    { path: "FOIL_SLOT_WEIGHTS.standard",  label: "Standard",  step: 1, min: 1, int: true, oneInN: true },
+    { path: "FOIL_SLOT_WEIGHTS.rare",      label: "Rare",      step: 1, min: 1, int: true, oneInN: true },
+    { path: "FOIL_SLOT_WEIGHTS.epic",      label: "Epic",      step: 1, min: 1, int: true, oneInN: true },
+    { path: "FOIL_SLOT_WEIGHTS.legendary", label: "Legendary", step: 1, min: 1, int: true, oneInN: true },
+    { path: "FOIL_SLOT_WEIGHTS.mythic",    label: "Mythic",    step: 1, min: 1, int: true, oneInN: true },
   ]},
   { title: "Pack composition", fields: [
     { path: "PACK_COST",         label: "Pack cost ($)", step: 0.5, min: 0 },
@@ -6849,14 +6849,64 @@ function _persistLiveTune(path, value) {
   }
   try { localStorage.setItem(DESIGN_KEY, JSON.stringify(_designOverrides)); } catch (_) {}
 }
+// Convert the current raw weight at `path` into the integer "1 in N packs"
+// the rarity inputs display. Uses the same per-pack rate the preview
+// table on the right shows, so the tuner number matches what the player
+// reads from the live drop-rates table.
+function _oneInNFromWeight(path) {
+  const foil = path.startsWith("FOIL_SLOT_WEIGHTS.");
+  const rarity = path.split(".")[1];
+  const rate = specificCardRatePerPack(rarity, foil);
+  return rate > 0 ? Math.max(1, Math.round(1 / rate)) : 0;
+}
+// Inverse: solve for the raw weight that yields a specific-card rate of
+// 1/oneInN while holding the OTHER rarities' weights constant. Returns
+// null if oneInN is impossible (would require a per-slot probability > 1).
+function _weightFromOneInN(path, oneInN) {
+  const foil = path.startsWith("FOIL_SLOT_WEIGHTS.");
+  const rarity = path.split(".")[1];
+  const weights = foil ? FOIL_SLOT_WEIGHTS : RARE_SLOT_WEIGHTS;
+  const K = foil ? FOIL_PER_PACK : PACK_RARE_SLOTS;
+  const N = SET_SIZES[rarity] || 0;
+  if (!(oneInN > 0) || !(K > 0) || !(N > 0)) return null;
+  const target = 1 / oneInN;
+  let sumOther = 0;
+  for (const k in weights) if (k !== rarity) sumOther += Math.max(0, weights[k] || 0);
+  // weight = target × N × sumOther / (K − target × N).
+  // If denom ≤ 0 the requested rate exceeds what the slot pool can deliver;
+  // saturate by returning a value far larger than the others so this rarity
+  // dominates (it's still a valid weight, just not exactly 1/oneInN).
+  const denom = K - target * N;
+  if (denom <= 0) return sumOther > 0 ? sumOther * 1e3 : 1;
+  return target * N * sumOther / denom;
+}
+function _isOneInNPath(path) {
+  return path.startsWith("RARE_SLOT_WEIGHTS.") || path.startsWith("FOIL_SLOT_WEIGHTS.");
+}
+
 function liveTuneSet(path, raw) {
   const tuner = LIVE_TUNERS[path];
   if (!tuner) return;
-  const n = parseFloat(raw);
+  let n = parseFloat(raw);
   if (!isFinite(n)) return;
+  if (_isOneInNPath(path)) {
+    if (n < 1) return; // 1-in-N requires N ≥ 1
+    const w = _weightFromOneInN(path, n);
+    if (w == null || !isFinite(w) || w < 0) return;
+    n = w;
+  }
   tuner.set(n);
   _persistLiveTune(path, n);
   if (!_mobileGateMode) renderAll(); // no live game UI to refresh on mobile
+  // The other rarities' "1 in N" displays shift when one weight changes
+  // (they share a denominator). Refresh sibling inputs without rebuilding
+  // the whole tuner so the input the player is editing keeps focus.
+  document.querySelectorAll("[data-tuner-path]").forEach(input => {
+    const p = input.dataset.tunerPath;
+    if (p === path || !_isOneInNPath(p)) return;
+    const next = String(_oneInNFromWeight(p));
+    if (input.value !== next) input.value = next;
+  });
   renderTunerPreview();
 }
 function buildBalanceTuner(root) {
@@ -6868,10 +6918,19 @@ function buildBalanceTuner(root) {
   for (const section of LIVE_TUNER_LAYOUT) {
     html += `<div class="tuner-section"><h4>${section.title}</h4>`;
     for (const f of section.fields) {
-      const v = LIVE_TUNERS[f.path].get();
-      const shown = (typeof v === "number" && isFinite(v))
-        ? (f.int ? String(Math.round(v)) : String(v))
-        : "";
+      // oneInN fields show the "1 in N packs" integer derived from the
+      // live per-pack rate, not the raw slot weight stored in state. The
+      // setter converts back via _weightFromOneInN.
+      let shown;
+      if (f.oneInN) {
+        const oneIn = _oneInNFromWeight(f.path);
+        shown = oneIn > 0 ? String(oneIn) : "";
+      } else {
+        const v = LIVE_TUNERS[f.path].get();
+        shown = (typeof v === "number" && isFinite(v))
+          ? (f.int ? String(Math.round(v)) : String(v))
+          : "";
+      }
       const max = f.max != null ? ` max="${f.max}"` : "";
       html += `<div class="tuner-row">
         <label>${f.label}</label>
